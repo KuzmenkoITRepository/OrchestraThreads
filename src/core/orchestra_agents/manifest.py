@@ -5,7 +5,7 @@ from __future__ import annotations
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 
@@ -63,7 +63,7 @@ class AgentConfig:
 
     working_dir: str
     http_endpoint: str
-    system_prompt_file: Optional[str] = None
+    system_prompt_file: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -97,7 +97,7 @@ class RuntimeConfig:
 
     driver: str
     image: str
-    entrypoint: Optional[str] = None
+    entrypoint: str | None = None
     command: list[str] = field(default_factory=list)
     mounts: list[RuntimeMount] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
@@ -139,13 +139,13 @@ class AgentManifest:
     agent: AgentConfig
     runtime: RuntimeConfig
     backend: BackendConfig
-    manifest_path: Optional[Path] = field(default=None, compare=False)
+    manifest_path: Path | None = field(default=None, compare=False)
 
     @property
     def is_active(self) -> bool:
         return self.status.lower() == "active"
 
-    def resolve_http_endpoint(self, *, container_name: Optional[str] = None) -> str:
+    def resolve_http_endpoint(self, *, container_name: str | None = None) -> str:
         values = {
             "slug": self.slug,
             "container_name": container_name or f"orchestra-agent-{self.slug}",
@@ -182,13 +182,13 @@ class AgentManifest:
         cls,
         text: str,
         *,
-        manifest_path: Optional[Path] = None,
-    ) -> "AgentManifest":
+        manifest_path: Path | None = None,
+    ) -> AgentManifest:
         raw = yaml.safe_load(text) or {}
         return cls.from_dict(raw, manifest_path=manifest_path)
 
     @classmethod
-    def from_file(cls, path: Path) -> "AgentManifest":
+    def from_file(cls, path: Path) -> AgentManifest:
         return cls.from_yaml_text(path.read_text(encoding="utf-8"), manifest_path=path.resolve())
 
     @classmethod
@@ -196,8 +196,8 @@ class AgentManifest:
         cls,
         raw: dict[str, Any],
         *,
-        manifest_path: Optional[Path] = None,
-    ) -> "AgentManifest":
+        manifest_path: Path | None = None,
+    ) -> AgentManifest:
         if not isinstance(raw, dict):
             raise ManifestValidationError(["manifest root must be an object"])
 
@@ -224,7 +224,9 @@ class AgentManifest:
         system_prompt_file = str(agent_raw.get("system_prompt_file") or "").strip() or None
 
         runtime_raw = _as_dict(normalized.get("runtime"), "runtime", errors=errors)
-        runtime_driver = _as_string(runtime_raw.get("driver", "docker"), "runtime.driver", errors=errors)
+        runtime_driver = _as_string(
+            runtime_raw.get("driver", "docker"), "runtime.driver", errors=errors
+        )
         if runtime_driver and runtime_driver.lower() != "docker":
             errors.append("runtime.driver must be docker in v1")
         runtime_image = _as_string(runtime_raw.get("image"), "runtime.image", errors=errors)
@@ -255,8 +257,12 @@ class AgentManifest:
             mounts.append(
                 RuntimeMount(
                     type=mount_type or "bind",
-                    source=_as_string(mount_raw.get("source"), f"runtime.mounts[{index}].source", errors=errors),
-                    target=_as_string(mount_raw.get("target"), f"runtime.mounts[{index}].target", errors=errors),
+                    source=_as_string(
+                        mount_raw.get("source"), f"runtime.mounts[{index}].source", errors=errors
+                    ),
+                    target=_as_string(
+                        mount_raw.get("target"), f"runtime.mounts[{index}].target", errors=errors
+                    ),
                     mode=mount_mode or "rw",
                 )
             )
@@ -267,9 +273,7 @@ class AgentManifest:
             errors.append("runtime.env must be an object")
         else:
             env = {
-                str(key).strip(): str(value)
-                for key, value in env_raw.items()
-                if str(key).strip()
+                str(key).strip(): str(value) for key, value in env_raw.items() if str(key).strip()
             }
 
         env_passthrough: list[str] = []
@@ -277,7 +281,9 @@ class AgentManifest:
         if not isinstance(env_passthrough_raw, list):
             errors.append("runtime.env_passthrough must be a list")
         else:
-            env_passthrough = [str(item).strip() for item in env_passthrough_raw if str(item).strip()]
+            env_passthrough = [
+                str(item).strip() for item in env_passthrough_raw if str(item).strip()
+            ]
 
         backend_raw = _as_dict(normalized.get("backend"), "backend", errors=errors)
         backend_type = _as_string(backend_raw.get("type"), "backend.type", errors=errors)

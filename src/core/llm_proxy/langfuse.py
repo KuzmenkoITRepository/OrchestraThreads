@@ -3,10 +3,10 @@ from __future__ import annotations
 import hashlib
 import importlib
 import logging
+from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
-
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -130,11 +130,7 @@ def summarize_request_input(
     route_policy: str,
     request_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    stream_value = (
-        request_metadata.get("stream")
-        if isinstance(request_metadata, Mapping)
-        else None
-    )
+    stream_value = request_metadata.get("stream") if isinstance(request_metadata, Mapping) else None
     payload: dict[str, Any] = {
         "instructions_preview": truncate_text(instructions, limit=300),
         "input_item_count": len(list(input_items or [])),
@@ -266,7 +262,7 @@ class RequestTrace(AbstractContextManager["RequestTrace"]):
 
 
 class NullRequestTrace(RequestTrace):
-    def __enter__(self) -> "NullRequestTrace":
+    def __enter__(self) -> NullRequestTrace:
         return self
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
@@ -328,14 +324,12 @@ class LangfuseRequestTrace(RequestTrace):
         self._input_payload = input_payload
         self._version = _ascii_limited(version, limit=120)
         self._tags = [
-            item
-            for item in (_ascii_limited(tag, limit=120) for tag in list(tags or []))
-            if item
+            item for item in (_ascii_limited(tag, limit=120) for tag in list(tags or [])) if item
         ]
         self._trace: Any | None = None
         self._finalized = False
 
-    def __enter__(self) -> "LangfuseRequestTrace":
+    def __enter__(self) -> LangfuseRequestTrace:
         self._trace = self._client.trace(
             name=self._trace_name,
             session_id=self._session_id,
@@ -421,7 +415,7 @@ class LangfuseTelemetry:
             return None
         try:
             langfuse_module = importlib.import_module("langfuse")
-            client_type = getattr(langfuse_module, "Langfuse")
+            client_type = langfuse_module.Langfuse
 
             kwargs = {
                 "public_key": self.settings.public_key,

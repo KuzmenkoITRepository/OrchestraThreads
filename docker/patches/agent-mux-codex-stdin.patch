@@ -15,13 +15,13 @@ index e6343be..6f4ac9a 100644
 +			closeCodexStdinAfterStart = strings.EqualFold(strings.TrimSpace(v), "true")
 +		}
 +	}
- 
+
  	handleHarnessEvent := func(evt *types.HarnessEvent) {
  		var observedSessionID string
 @@ -706,16 +715,18 @@ func (e *LoopEngine) Dispatch(ctx context.Context, spec *types.DispatchSpec) (*t
  		stdinPipeReady = false
  	}
- 
+
 -	if bridge, err := startSoftStdinBridge(spec.ArtifactDir, signals); err == nil {
 -		stdinBridge = bridge
 -		stdinPipeReady = true
@@ -45,7 +45,7 @@ index e6343be..6f4ac9a 100644
 +			), nil
 +		}
  	}
- 
+
  	currentRun, currentStderr, err = startRun(currentGen, args)
 @@ -728,6 +739,10 @@ func (e *LoopEngine) Dispatch(ctx context.Context, spec *types.DispatchSpec) (*t
  			"Check that the binary is installed and accessible.",
@@ -55,6 +55,6 @@ index e6343be..6f4ac9a 100644
 +		_ = currentRun.stdinPipe.Close()
 +		currentRun.stdinPipe = nil
 +	}
- 
+
  	watchdogTicker := time.NewTicker(5 * time.Second)
  	defer watchdogTicker.Stop()

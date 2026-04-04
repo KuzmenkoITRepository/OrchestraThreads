@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Optional
 
 from aiohttp import web
 
@@ -28,7 +27,7 @@ class StandardAgentApplication:
         self.backend = backend
         self.host = host
         self.port = int(port)
-        self.runner: Optional[web.AppRunner] = None
+        self.runner: web.AppRunner | None = None
 
     def build_app(self) -> web.Application:
         app = web.Application()

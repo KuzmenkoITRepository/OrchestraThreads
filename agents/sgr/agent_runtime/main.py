@@ -34,13 +34,22 @@ async def _run() -> None:
     manifest = load_manifest()
     manifest_backend_config = manifest.backend.config if manifest is not None else {}
     backend = SGRMinimaxBackend(
-        agent_slug=str(os.getenv("ORCHESTRA_AGENT_SLUG") or (manifest.slug if manifest else "sgr")).strip() or "sgr",
+        agent_slug=str(
+            os.getenv("ORCHESTRA_AGENT_SLUG") or (manifest.slug if manifest else "sgr")
+        ).strip()
+        or "sgr",
         backend_type=(
-            str(os.getenv("ORCHESTRA_AGENT_BACKEND_TYPE") or (manifest.backend.type if manifest else "sgr_minimax")).strip()
+            str(
+                os.getenv("ORCHESTRA_AGENT_BACKEND_TYPE")
+                or (manifest.backend.type if manifest else "sgr_minimax")
+            ).strip()
             or "sgr_minimax"
         ),
         working_dir=(
-            str(os.getenv("ORCHESTRA_AGENT_WORKING_DIR") or (manifest.agent.working_dir if manifest else "/workspace/agents/sgr")).strip()
+            str(
+                os.getenv("ORCHESTRA_AGENT_WORKING_DIR")
+                or (manifest.agent.working_dir if manifest else "/workspace/agents/sgr")
+            ).strip()
             or "/workspace/agents/sgr"
         ),
         config=manifest_backend_config,

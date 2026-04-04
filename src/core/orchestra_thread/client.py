@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 import aiohttp
 
@@ -16,19 +16,17 @@ class OrchestraThreadsClient:
     def __init__(
         self,
         *,
-        base_url: Optional[str] = None,
-        timeout_seconds: Optional[float] = None,
+        base_url: str | None = None,
+        timeout_seconds: float | None = None,
     ) -> None:
         self.base_url = str(
-            base_url
-            or os.getenv("ORCHESTRA_THREADS_URL")
-            or "http://127.0.0.1:8788"
+            base_url or os.getenv("ORCHESTRA_THREADS_URL") or "http://127.0.0.1:8788"
         ).rstrip("/")
         self.timeout_seconds = max(
             1.0,
             float(timeout_seconds or os.getenv("ORCHESTRA_THREADS_HTTP_TIMEOUT_SECONDS", "10")),
         )
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
 
     async def close(self) -> None:
         if self._session is not None:
@@ -47,7 +45,7 @@ class OrchestraThreadsClient:
         *,
         method: str,
         path: str,
-        json_payload: Optional[dict[str, Any]] = None,
+        json_payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         session = await self._session_or_create()
         async with session.request(
@@ -76,9 +74,9 @@ class OrchestraThreadsClient:
         from_agent_slug: str,
         to_agent_slug: str,
         message_text: str,
-        thread_id: Optional[str] = None,
-        parent_thread_id: Optional[str] = None,
-        client_request_id: Optional[str] = None,
+        thread_id: str | None = None,
+        parent_thread_id: str | None = None,
+        client_request_id: str | None = None,
     ) -> dict[str, Any]:
         return await self._request(
             method="POST",
@@ -97,11 +95,11 @@ class OrchestraThreadsClient:
         self,
         *,
         agent_slug: str,
-        base_url: Optional[str] = None,
-        display_name: Optional[str] = None,
-        event_callback_url: Optional[str] = None,
-        stop_callback_url: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        base_url: str | None = None,
+        display_name: str | None = None,
+        event_callback_url: str | None = None,
+        stop_callback_url: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return await self._request(
             method="POST",
@@ -139,7 +137,7 @@ class OrchestraThreadsClient:
         thread_id: str,
         status: str,
         message_text: str,
-        client_request_id: Optional[str] = None,
+        client_request_id: str | None = None,
     ) -> dict[str, Any]:
         return await self._request(
             method="POST",
@@ -154,7 +152,7 @@ class OrchestraThreadsClient:
             },
         )
 
-    async def get_thread(self, *, thread_id: str, limit: Optional[int] = None) -> dict[str, Any]:
+    async def get_thread(self, *, thread_id: str, limit: int | None = None) -> dict[str, Any]:
         suffix = ""
         if limit is not None:
             suffix = f"?limit={max(1, int(limit))}"
@@ -169,7 +167,9 @@ class OrchestraThreadsClient:
             path=f"/api/v1/threads/{thread_id}/compact",
         )
 
-    async def get_instruction(self, *, view: str = "compact", section: Optional[str] = None) -> dict[str, Any]:
+    async def get_instruction(
+        self, *, view: str = "compact", section: str | None = None
+    ) -> dict[str, Any]:
         suffix = f"?view={str(view or 'compact').strip() or 'compact'}"
         if section:
             suffix += f"&section={str(section).strip()}"

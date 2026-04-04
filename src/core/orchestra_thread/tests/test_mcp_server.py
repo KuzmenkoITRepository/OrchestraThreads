@@ -19,7 +19,9 @@ def _structured(result: dict) -> dict:
 
 class OrchestraThreadsMCPServerTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        self.context_path = Path(tempfile.mkdtemp(prefix="orchestra_threads_mcp_ctx_")) / "active_context.json"
+        self.context_path = (
+            Path(tempfile.mkdtemp(prefix="orchestra_threads_mcp_ctx_")) / "active_context.json"
+        )
         self.original_context_path = active_context_module.ACTIVE_CONTEXT_PATH
         active_context_module.ACTIVE_CONTEXT_PATH = self.context_path
         clear_active_context()
@@ -93,7 +95,9 @@ class OrchestraThreadsMCPServerTestCase(unittest.IsolatedAsyncioTestCase):
 
         server = self._server("orchestra")
         try:
-            current = _structured(await server.handle_tools_call(name="thread_current", arguments={}))
+            current = _structured(
+                await server.handle_tools_call(name="thread_current", arguments={})
+            )
             self.assertTrue(current["active"])
             self.assertEqual(current["thread_id"], root_thread_id)
             self.assertEqual(current["peer_agent_slug"], "secretary")
@@ -172,7 +176,9 @@ class OrchestraThreadsMCPServerTestCase(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(status["delivered"])
 
             await self.harness.wait_for(
-                lambda: any(event.get("notification_status") == "review" for event in self.secretary.events),
+                lambda: any(
+                    event.get("notification_status") == "review" for event in self.secretary.events
+                ),
                 message="secretary did not receive review notification from MCP status tool",
             )
 
@@ -232,10 +238,16 @@ class OrchestraThreadsMCPServerTestCase(unittest.IsolatedAsyncioTestCase):
                     "jsonrpc": "2.0",
                     "id": 1,
                     "method": "initialize",
-                    "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "test", "version": "0"}},
+                    "params": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {},
+                        "clientInfo": {"name": "test", "version": "0"},
+                    },
                 }
             )
-            resources = await server.handle_request({"jsonrpc": "2.0", "id": 2, "method": "resources/list", "params": {}})
+            resources = await server.handle_request(
+                {"jsonrpc": "2.0", "id": 2, "method": "resources/list", "params": {}}
+            )
             templates = await server.handle_request(
                 {"jsonrpc": "2.0", "id": 3, "method": "resources/templates/list", "params": {}}
             )

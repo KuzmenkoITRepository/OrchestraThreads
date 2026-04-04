@@ -5,19 +5,21 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from core.orchestra_agents.runtime import EventDelivery
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _sanitize_fragment(value: str) -> str:
-    text = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in str(value or "").strip())
+    text = "".join(
+        ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in str(value or "").strip()
+    )
     return text.strip("._") or "item"
 
 
@@ -43,17 +45,17 @@ class QueueEntry:
     payload: dict[str, Any]
 
     @property
-    def event_id(self) -> Optional[str]:
+    def event_id(self) -> str | None:
         normalized = str(self.payload.get("event_id") or "").strip()
         return normalized or None
 
     @property
-    def event_kind(self) -> Optional[str]:
+    def event_kind(self) -> str | None:
         normalized = str(self.payload.get("event_kind") or "").strip()
         return normalized or None
 
     @property
-    def processing_key(self) -> Optional[str]:
+    def processing_key(self) -> str | None:
         normalized = str(self.payload.get("processing_key") or "").strip()
         return normalized or None
 
@@ -130,14 +132,18 @@ class AgentMuxRuntimeState:
         duplicate_events = 0
 
         for index, event in enumerate(delivery.events):
-            event_id = str(event.event_id or "").strip() or f"{delivery.delivery_id or 'delivery'}-{index}"
+            event_id = (
+                str(event.event_id or "").strip() or f"{delivery.delivery_id or 'delivery'}-{index}"
+            )
             if handled.get(event_id):
                 duplicate_events += 1
                 continue
             queue_counter = self._next_queue_counter()
             queue_id = f"{queue_counter:08d}-{_sanitize_fragment(event_id)}"
             queue_path = self.queue_dir / f"{queue_id}.json"
-            processing_key = str((event.raw_payload or {}).get("processing_key") or "").strip() or None
+            processing_key = (
+                str((event.raw_payload or {}).get("processing_key") or "").strip() or None
+            )
             payload = {
                 "queue_id": queue_id,
                 "delivery_id": delivery.delivery_id,
@@ -167,7 +173,9 @@ class AgentMuxRuntimeState:
 
     def queue_size(self) -> int:
         self.ensure_layout()
-        return sum(1 for _ in self.queue_dir.glob("*.json")) + sum(1 for _ in self.processing_dir.glob("*.json"))
+        return sum(1 for _ in self.queue_dir.glob("*.json")) + sum(
+            1 for _ in self.processing_dir.glob("*.json")
+        )
 
     def context_snapshot(self) -> dict[str, Any]:
         self.ensure_layout()
@@ -202,7 +210,7 @@ class AgentMuxRuntimeState:
         self,
         *,
         context_id: str,
-        previous_context_id: Optional[str],
+        previous_context_id: str | None,
         generation: int,
     ) -> None:
         self.ensure_layout()
@@ -227,10 +235,10 @@ class AgentMuxRuntimeState:
         context_id: str,
         role: str,
         text: str,
-        event_id: Optional[str] = None,
-        event_kind: Optional[str] = None,
-        source_agent_slug: Optional[str] = None,
-        metadata_summary: Optional[str] = None,
+        event_id: str | None = None,
+        event_kind: str | None = None,
+        source_agent_slug: str | None = None,
+        metadata_summary: str | None = None,
         max_entries: int = 16,
     ) -> None:
         self.ensure_layout()
@@ -254,7 +262,14 @@ class AgentMuxRuntimeState:
         if entries:
             previous = entries[-1]
             duplicate = True
-            for key in ("role", "event_id", "event_kind", "source_agent_slug", "text_preview", "metadata_summary"):
+            for key in (
+                "role",
+                "event_id",
+                "event_kind",
+                "source_agent_slug",
+                "text_preview",
+                "metadata_summary",
+            ):
                 if previous.get(key) != entry.get(key):
                     duplicate = False
                     break
@@ -263,7 +278,9 @@ class AgentMuxRuntimeState:
         entries.append(entry)
         snapshot["recent_entries"] = entries[-max(1, int(max_entries)) :]
         snapshot["last_event_id"] = str(event_id or "").strip() or snapshot.get("last_event_id")
-        snapshot["last_event_kind"] = str(event_kind or "").strip() or snapshot.get("last_event_kind")
+        snapshot["last_event_kind"] = str(event_kind or "").strip() or snapshot.get(
+            "last_event_kind"
+        )
         snapshot["updated_at"] = _utc_now()
         self._write_json_object(self.context_file, snapshot)
 
@@ -271,10 +288,10 @@ class AgentMuxRuntimeState:
         self,
         *,
         context_id: str,
-        dispatch_id: Optional[str],
-        session_id: Optional[str],
-        event_id: Optional[str],
-        event_kind: Optional[str],
+        dispatch_id: str | None,
+        session_id: str | None,
+        event_id: str | None,
+        event_kind: str | None,
     ) -> None:
         self.ensure_layout()
         snapshot = self.context_snapshot()
@@ -283,11 +300,13 @@ class AgentMuxRuntimeState:
         snapshot["last_dispatch_id"] = str(dispatch_id or "").strip() or None
         snapshot["last_session_id"] = str(session_id or "").strip() or None
         snapshot["last_event_id"] = str(event_id or "").strip() or snapshot.get("last_event_id")
-        snapshot["last_event_kind"] = str(event_kind or "").strip() or snapshot.get("last_event_kind")
+        snapshot["last_event_kind"] = str(event_kind or "").strip() or snapshot.get(
+            "last_event_kind"
+        )
         snapshot["updated_at"] = _utc_now()
         self._write_json_object(self.context_file, snapshot)
 
-    def claim_next_entry(self) -> Optional[QueueEntry]:
+    def claim_next_entry(self) -> QueueEntry | None:
         self.ensure_layout()
         candidates: list[tuple[str, Path, dict[str, Any]]] = []
         for path in self.queue_dir.glob("*.json"):
@@ -325,12 +344,10 @@ class AgentMuxRuntimeState:
         target_path = self.failed_dir / entry.path.name
         entry.path.replace(target_path)
 
-    def clear_entries_matching(self, **fields: Optional[str]) -> int:
+    def clear_entries_matching(self, **fields: str | None) -> int:
         self.ensure_layout()
         normalized = {
-            key: str(value).strip()
-            for key, value in fields.items()
-            if str(value or "").strip()
+            key: str(value).strip() for key, value in fields.items() if str(value or "").strip()
         }
         if not normalized:
             return 0
@@ -369,8 +386,8 @@ class AgentMuxRuntimeState:
         self,
         *,
         dispatch_id: str,
-        event_id: Optional[str],
-        event_kind: Optional[str],
+        event_id: str | None,
+        event_kind: str | None,
         artifact_dir: str | None = None,
         queue_id: str | None = None,
     ) -> None:

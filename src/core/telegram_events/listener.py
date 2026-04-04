@@ -1,10 +1,8 @@
 """Telegram message listener for OrchestraThreads."""
 
-import asyncio
 import logging
-import os
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Optional, Callable, Awaitable
 
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -19,9 +17,9 @@ class TelegramListener:
         self,
         api_id: int,
         api_hash: str,
-        session_string: Optional[str] = None,
-        session_file: Optional[str] = None,
-        on_message: Optional[Callable[[dict], Awaitable[None]]] = None,
+        session_string: str | None = None,
+        session_file: str | None = None,
+        on_message: Callable[[dict], Awaitable[None]] | None = None,
     ):
         """
         Initialize Telegram listener.
@@ -37,7 +35,7 @@ class TelegramListener:
         self.api_hash = api_hash
         self.session_string = session_string
         self.session_file = session_file
-        self.client: Optional[TelegramClient] = None
+        self.client: TelegramClient | None = None
         self.on_message = on_message
 
     def _create_session(self):
@@ -84,9 +82,7 @@ class TelegramListener:
                 session_string = self.client.session.save()
                 if session_string:
                     logger.info("Session authenticated successfully!")
-                    logger.info(
-                        f"Save this to TELEGRAM_SESSION_STRING: {session_string}"
-                    )
+                    logger.info(f"Save this to TELEGRAM_SESSION_STRING: {session_string}")
             except Exception as e:
                 logger.warning(f"Could not save session string: {e}")
 

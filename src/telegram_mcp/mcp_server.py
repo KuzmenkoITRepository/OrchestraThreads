@@ -1,24 +1,22 @@
 from __future__ import annotations
 
 # pyright: reportMissingImports=false
-
 import asyncio
 import json
 import logging
 import os
 import sys
-from typing import Any, Optional
+from typing import Any
 
 from .config import TelegramMCPConfig
 from .telegram_client import TelegramClient
-
 
 logger = logging.getLogger(__name__)
 
 PROTOCOL_VERSION = "2024-11-05"
 
 
-def _normalize_optional_str(value: Any) -> Optional[str]:
+def _normalize_optional_str(value: Any) -> str | None:
     normalized = str(value or "").strip()
     return normalized or None
 
@@ -34,7 +32,7 @@ class TelegramMCPServer:
     def __init__(
         self,
         *,
-        config: Optional[TelegramMCPConfig] = None,
+        config: TelegramMCPConfig | None = None,
     ) -> None:
         self.config = config or TelegramMCPConfig()
         self.client = TelegramClient(
@@ -55,18 +53,14 @@ class TelegramMCPServer:
         self._client_started = False
 
     @staticmethod
-    def _tool(
-        name: str, description: str, input_schema: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _tool(name: str, description: str, input_schema: dict[str, Any]) -> dict[str, Any]:
         return {
             "name": name,
             "description": description,
             "inputSchema": input_schema,
         }
 
-    def _result(
-        self, payload: dict[str, Any], *, text: Optional[str] = None
-    ) -> dict[str, Any]:
+    def _result(self, payload: dict[str, Any], *, text: str | None = None) -> dict[str, Any]:
         return {
             "structuredContent": payload,
             "content": [
@@ -106,16 +100,12 @@ class TelegramMCPServer:
             ]
         }
 
-    async def handle_tools_call(
-        self, name: str, arguments: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def handle_tools_call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if name == "send_telegram_message":
             return await self._handle_send_telegram_message(arguments)
         return self._result({"ok": False, "error": f"Unknown tool: {name}"})
 
-    async def _handle_send_telegram_message(
-        self, arguments: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _handle_send_telegram_message(self, arguments: dict[str, Any]) -> dict[str, Any]:
         try:
             await self._ensure_client_started()
             message = _ensure_text(arguments.get("message"), field_name="message")
@@ -129,9 +119,7 @@ class TelegramMCPServer:
                 return self._result(
                     {
                         "ok": False,
-                        "error": str(
-                            send_result.get("error") or "Telegram send failed"
-                        ),
+                        "error": str(send_result.get("error") or "Telegram send failed"),
                         "error_code": int(send_result.get("error_code") or 500),
                         "chat_id": chat_id,
                         "recipient": recipient or self.config.default_recipient,
@@ -152,7 +140,7 @@ class TelegramMCPServer:
             logger.error("Telegram tool failed: %s", exc, exc_info=True)
             return self._result({"ok": False, "error": str(exc)})
 
-    async def handle_request(self, request: dict[str, Any]) -> Optional[dict[str, Any]]:
+    async def handle_request(self, request: dict[str, Any]) -> dict[str, Any] | None:
         method = request.get("method")
         request_id = request.get("id")
         params = request.get("params", {})
@@ -204,8 +192,8 @@ def _encode_message(payload: dict[str, Any], *, framing: str) -> bytes:
 async def _read_message(
     reader,
     *,
-    framing_hint: Optional[str] = None,
-) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+    framing_hint: str | None = None,
+) -> tuple[dict[str, Any] | None, str | None]:
     if framing_hint == "content_length":
         return await _read_content_length_message(reader), "content_length"
     if framing_hint == "newline":
@@ -216,14 +204,10 @@ async def _read_message(
         return None, None
     if first_byte in b"{[":
         return await _read_newline_message(reader, first_chunk=first_byte), "newline"
-    return await _read_content_length_message(
-        reader, first_chunk=first_byte
-    ), "content_length"
+    return await _read_content_length_message(reader, first_chunk=first_byte), "content_length"
 
 
-async def _read_newline_message(
-    reader, *, first_chunk: bytes = b""
-) -> Optional[dict[str, Any]]:
+async def _read_newline_message(reader, *, first_chunk: bytes = b"") -> dict[str, Any] | None:
     line = first_chunk + await asyncio.to_thread(reader.readline)
     if not line:
         return None
@@ -232,7 +216,7 @@ async def _read_newline_message(
 
 async def _read_content_length_message(
     reader, *, first_chunk: bytes = b""
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     header_bytes = bytes(first_chunk)
     while True:
         chunk = await asyncio.to_thread(reader.read, 1)
@@ -256,19 +240,15 @@ async def _read_content_length_message(
 
 async def main_async() -> None:
     server = TelegramMCPServer()
-    framing: Optional[str] = None
+    framing: str | None = None
     try:
         while True:
-            request, framing = await _read_message(
-                sys.stdin.buffer, framing_hint=framing
-            )
+            request, framing = await _read_message(sys.stdin.buffer, framing_hint=framing)
             if request is None:
                 break
             response = await server.handle_request(request)
             if response is not None:
-                sys.stdout.buffer.write(
-                    _encode_message(response, framing=framing or "newline")
-                )
+                sys.stdout.buffer.write(_encode_message(response, framing=framing or "newline"))
                 sys.stdout.buffer.flush()
     finally:
         await server.close()

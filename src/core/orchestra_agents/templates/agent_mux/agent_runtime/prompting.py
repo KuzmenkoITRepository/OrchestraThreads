@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from core.orchestra_agents.runtime import AgentEvent
-
 
 # Standard event keys that are recognized and handled specially.
 # Thread-related fields (thread_id, root_thread_id, parent_thread_id, owner_agent_slug)
@@ -63,9 +63,7 @@ def build_compact_wakeup_block(
 
     source_context = event.raw_payload.get("source_context")
     if isinstance(source_context, Mapping) and source_context:
-        lines.append(
-            f"source_context: {_compact_json(dict(source_context), limit=500)}"
-        )
+        lines.append(f"source_context: {_compact_json(dict(source_context), limit=500)}")
 
     extra_metadata = {
         str(key): value
@@ -84,9 +82,7 @@ def build_context_memory_block(
     *, context_id: str, entries: Sequence[Mapping[str, Any]] | None = None
 ) -> str:
     normalized_context_id = str(context_id or "").strip() or "unknown"
-    recent_entries = [
-        dict(item) for item in (entries or []) if isinstance(item, Mapping)
-    ]
+    recent_entries = [dict(item) for item in (entries or []) if isinstance(item, Mapping)]
     lines = [
         "=== AGENT CONTEXT ===",
         f"context_id: {normalized_context_id}",

@@ -5,7 +5,7 @@ import socket
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import aiohttp
 from aiohttp import web
@@ -38,7 +38,9 @@ class FakeDriver:
             "running": manifest.slug in self.started or manifest.slug in self.restarted,
             "healthy": True,
             "backend_type": manifest.backend.type,
-            "http_endpoint": manifest.resolve_http_endpoint(container_name=self.container_name(manifest.slug)),
+            "http_endpoint": manifest.resolve_http_endpoint(
+                container_name=self.container_name(manifest.slug)
+            ),
             "docker_status": "running",
             "health_status": {"ok": True},
             "started_at": "2025-01-01T00:00:00Z",
@@ -108,10 +110,12 @@ backend:
         self,
         method: str,
         path: str,
-        payload: Optional[dict[str, Any]] = None,
+        payload: dict[str, Any] | None = None,
         expected_status: int = 200,
     ) -> dict[str, Any]:
-        async with self.session.request(method, f"http://127.0.0.1:{self.port}{path}", json=payload) as response:
+        async with self.session.request(
+            method, f"http://127.0.0.1:{self.port}{path}", json=payload
+        ) as response:
             raw = await response.text()
             data = json.loads(raw) if raw else {}
             if response.status != expected_status:

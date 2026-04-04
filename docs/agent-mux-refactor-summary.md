@@ -1,6 +1,6 @@
 # agent-mux Refactor - Completion Summary
 
-**Date**: 2026-04-03  
+**Date**: 2026-04-03
 **Status**: ✅ Completed
 
 ## Objective

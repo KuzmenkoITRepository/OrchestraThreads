@@ -88,14 +88,18 @@ class FakeUpstream:
         payload = await request.json()
         account_id = str(request.headers.get("chatgpt-account-id") or "")
         self.codex_requests.append({"account_id": account_id, "payload": payload})
-        behavior = self.codex_behaviors.get(account_id, {"status": 200, "content": "codex ok", "error": "error"})
+        behavior = self.codex_behaviors.get(
+            account_id, {"status": 200, "content": "codex ok", "error": "error"}
+        )
         if int(behavior["status"]) >= 400:
             return web.json_response(
                 {"error": {"message": behavior["error"]}},
                 status=int(behavior["status"]),
             )
         text = str(behavior["content"])
-        response = web.StreamResponse(status=200, headers={"Content-Type": "text/event-stream; charset=utf-8"})
+        response = web.StreamResponse(
+            status=200, headers={"Content-Type": "text/event-stream; charset=utf-8"}
+        )
         await response.prepare(request)
         events = [
             {
@@ -119,7 +123,7 @@ class FakeUpstream:
             },
         ]
         for event in events:
-            await response.write(f"data: {json.dumps(event)}\n\n".encode("utf-8"))
+            await response.write(f"data: {json.dumps(event)}\n\n".encode())
         await response.write(b"data: [DONE]\n\n")
         await response.write_eof()
         return response
@@ -141,7 +145,10 @@ class FakeUpstream:
                 "choices": [
                     {
                         "index": 0,
-                        "message": {"role": "assistant", "content": self.fallback_behavior["content"]},
+                        "message": {
+                            "role": "assistant",
+                            "content": self.fallback_behavior["content"],
+                        },
                         "finish_reason": "stop",
                     }
                 ],
@@ -154,7 +161,7 @@ class FakeGenerationContext:
     def __init__(self, record: dict[str, Any]) -> None:
         self.record = record
 
-    def __enter__(self) -> "FakeGenerationContext":
+    def __enter__(self) -> FakeGenerationContext:
         return self
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
@@ -168,7 +175,7 @@ class FakeRequestTrace:
     def __init__(self, record: dict[str, Any]) -> None:
         self.record = record
 
-    def __enter__(self) -> "FakeRequestTrace":
+    def __enter__(self) -> FakeRequestTrace:
         return self
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
@@ -197,7 +204,9 @@ class FakeRequestTrace:
     def mark_success(self, *, output: Any = None, metadata: dict[str, Any] | None = None) -> None:
         self.record["success"] = {"output": output, "metadata": metadata or {}}
 
-    def mark_error(self, *, error: Exception | str, output: Any = None, metadata: dict[str, Any] | None = None) -> None:
+    def mark_error(
+        self, *, error: Exception | str, output: Any = None, metadata: dict[str, Any] | None = None
+    ) -> None:
         self.record["error"] = {"message": str(error), "output": output, "metadata": metadata or {}}
 
 
@@ -398,8 +407,12 @@ class LLMProxyServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[DONE]", body)
 
     async def test_managed_auto_falls_back_to_minimax_when_all_codex_accounts_fail(self) -> None:
-        self.upstream.set_codex_behavior("acct-primary", status=503, error="temporarily unavailable")
-        self.upstream.set_codex_behavior("acct-secondary", status=503, error="temporarily unavailable")
+        self.upstream.set_codex_behavior(
+            "acct-primary", status=503, error="temporarily unavailable"
+        )
+        self.upstream.set_codex_behavior(
+            "acct-secondary", status=503, error="temporarily unavailable"
+        )
         self.upstream.set_fallback_behavior(content="fallback reply")
         result = await self._request(
             "POST",
@@ -424,7 +437,9 @@ class LLMProxyServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
             "/minimax/v1/codex/responses",
             {
                 "instructions": "You are a helper.",
-                "input_items": [{"role": "user", "content": [{"type": "input_text", "text": "ping"}]}],
+                "input_items": [
+                    {"role": "user", "content": [{"type": "input_text", "text": "ping"}]}
+                ],
                 "tools": None,
             },
         )
@@ -439,7 +454,9 @@ class LLMProxyServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
             "/codex/v1/responses",
             {
                 "instructions": "You are a helper.",
-                "input_items": [{"role": "user", "content": [{"type": "input_text", "text": "ping"}]}],
+                "input_items": [
+                    {"role": "user", "content": [{"type": "input_text", "text": "ping"}]}
+                ],
                 "tools": None,
             },
         )
@@ -472,7 +489,9 @@ class LLMProxyServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
             "/codex/v1/codex/responses",
             {
                 "instructions": "You are a helper.",
-                "input_items": [{"role": "user", "content": [{"type": "input_text", "text": "ping"}]}],
+                "input_items": [
+                    {"role": "user", "content": [{"type": "input_text", "text": "ping"}]}
+                ],
                 "tools": None,
             },
             expected_status=503,
@@ -497,7 +516,9 @@ class LLMProxyServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.telemetry.requests[0]["group_key"], "orchestra:ctx-001")
         self.assertEqual(self.telemetry.requests[1]["group_key"], "orchestra:ctx-001")
         self.assertEqual(self.telemetry.requests[0]["metadata"]["request_kind"], "responses")
-        self.assertEqual(self.telemetry.requests[0]["success"]["metadata"]["selected_transport"], "codex")
+        self.assertEqual(
+            self.telemetry.requests[0]["success"]["metadata"]["selected_transport"], "codex"
+        )
 
     async def test_langfuse_rotates_group_after_context_change(self) -> None:
         self.upstream.set_codex_behavior("acct-primary", content="context reply")
@@ -519,11 +540,17 @@ class LLMProxyServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
             headers={"X-Orchestra-Agent-Slug": "orchestra", "X-Orchestra-Context-Id": "ctx-002"},
         )
         self.assertEqual(len(self.telemetry.requests), 2)
-        self.assertNotEqual(self.telemetry.requests[0]["group_key"], self.telemetry.requests[1]["group_key"])
+        self.assertNotEqual(
+            self.telemetry.requests[0]["group_key"], self.telemetry.requests[1]["group_key"]
+        )
 
     async def test_langfuse_records_fallback_attempt(self) -> None:
-        self.upstream.set_codex_behavior("acct-primary", status=503, error="temporarily unavailable")
-        self.upstream.set_codex_behavior("acct-secondary", status=503, error="temporarily unavailable")
+        self.upstream.set_codex_behavior(
+            "acct-primary", status=503, error="temporarily unavailable"
+        )
+        self.upstream.set_codex_behavior(
+            "acct-secondary", status=503, error="temporarily unavailable"
+        )
         self.upstream.set_fallback_behavior(content="fallback reply")
         await self._request(
             "POST",
@@ -532,7 +559,10 @@ class LLMProxyServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 "model": "gpt-5.4",
                 "messages": [{"role": "user", "content": "hello"}],
             },
-            headers={"X-Orchestra-Agent-Slug": "orchestra", "X-Orchestra-Context-Id": "ctx-fallback"},
+            headers={
+                "X-Orchestra-Agent-Slug": "orchestra",
+                "X-Orchestra-Context-Id": "ctx-fallback",
+            },
         )
         latest = self.telemetry.requests[-1]
         self.assertEqual(latest["group_key"], "orchestra:ctx-fallback")

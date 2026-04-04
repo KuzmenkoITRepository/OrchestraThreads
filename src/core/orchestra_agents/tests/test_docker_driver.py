@@ -53,11 +53,15 @@ class DockerDriverTests(unittest.TestCase):
             driver = DockerDriver(manifests_root=manifests_root, default_network="agents-net")
 
             with patch.dict("os.environ", {"OPENAI_API_KEY": "secret"}, clear=False):
-                command = driver._build_run_command(manifest, container_name="orchestra-agent-coding_agent")  # noqa: SLF001
+                command = driver._build_run_command(
+                    manifest, container_name="orchestra-agent-coding_agent"
+                )  # noqa: SLF001
 
             rendered = " ".join(command)
             self.assertIn("--network agents-net", rendered)
-            self.assertIn("ORCHESTRA_AGENT_MANIFEST=/orchestra/agents/coding_agent/manifest.yaml", rendered)
+            self.assertIn(
+                "ORCHESTRA_AGENT_MANIFEST=/orchestra/agents/coding_agent/manifest.yaml", rendered
+            )
             self.assertIn("ORCHESTRA_AGENT_BACKEND_TYPE=codex_framework", rendered)
             self.assertIn("--health-cmd", rendered)
             self.assertIn("127.0.0.1:8787/healthz", rendered)
@@ -67,9 +71,19 @@ class DockerDriverTests(unittest.TestCase):
     def test_status_combines_docker_and_health(self) -> None:
         manifest = AgentManifest.from_dict(_manifest_payload())
         driver = DockerDriver(manifests_root="/tmp")
-        state = {"Running": True, "Status": "running", "StartedAt": "2025-01-01T00:00:00Z", "Error": ""}
-        with patch("core.orchestra_agents.docker_driver._run", return_value=CompletedProcess([], 0, json.dumps(state), "")):
-            with patch.object(driver, "_probe_health", return_value={"ok": True, "payload": {"status": "ok"}}):
+        state = {
+            "Running": True,
+            "Status": "running",
+            "StartedAt": "2025-01-01T00:00:00Z",
+            "Error": "",
+        }
+        with patch(
+            "core.orchestra_agents.docker_driver._run",
+            return_value=CompletedProcess([], 0, json.dumps(state), ""),
+        ):
+            with patch.object(
+                driver, "_probe_health", return_value={"ok": True, "payload": {"status": "ok"}}
+            ):
                 status = driver.status(manifest)
 
         self.assertTrue(status["exists"])
@@ -88,7 +102,11 @@ class DockerDriverTests(unittest.TestCase):
             driver = DockerDriver(manifests_root=manifests_root)
 
             with patch.object(driver, "_container_exists", return_value=False):
-                with patch.object(driver, "status", return_value={"exists": True, "running": True, "healthy": False}):
+                with patch.object(
+                    driver,
+                    "status",
+                    return_value={"exists": True, "running": True, "healthy": False},
+                ):
                     with patch(
                         "core.orchestra_agents.docker_driver._run",
                         return_value=CompletedProcess([], 0, "container-id\n", ""),
@@ -126,7 +144,11 @@ class DockerDriverTests(unittest.TestCase):
                 raise AssertionError(f"unexpected docker command: {cmd}")
 
             with patch.object(driver, "_container_exists", return_value=False):
-                with patch.object(driver, "status", return_value={"exists": True, "running": True, "healthy": False}):
+                with patch.object(
+                    driver,
+                    "status",
+                    return_value={"exists": True, "running": True, "healthy": False},
+                ):
                     with patch("core.orchestra_agents.docker_driver._run", side_effect=fake_run):
                         result = driver.start(manifest)
 

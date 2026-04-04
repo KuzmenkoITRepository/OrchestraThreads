@@ -67,7 +67,9 @@ class AllCodexAccountsUnavailable(RuntimeError):
     def __init__(self, attempts: list[dict[str, Any]]) -> None:
         self.attempts = attempts
         if attempts:
-            summary = "; ".join(f"{item.get('profile_id')}: {item.get('error')}" for item in attempts)
+            summary = "; ".join(
+                f"{item.get('profile_id')}: {item.get('error')}" for item in attempts
+            )
         else:
             summary = "no codex accounts available"
         super().__init__(summary)
@@ -405,7 +407,9 @@ def openai_messages_to_codex_input(messages: list[dict[str, Any]]) -> list[dict[
                     {
                         "type": "message",
                         "role": "assistant",
-                        "content": [{"type": "output_text", "text": content_text, "annotations": []}],
+                        "content": [
+                            {"type": "output_text", "text": content_text, "annotations": []}
+                        ],
                         "status": "completed",
                         "id": f"msg_{index}",
                     }
@@ -515,7 +519,9 @@ def openai_tools_to_codex(
     return converted or None
 
 
-def codex_tools_to_openai_tools(tools_payload: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+def codex_tools_to_openai_tools(
+    tools_payload: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]] | None:
     if not isinstance(tools_payload, list) or not tools_payload:
         return None
     converted: list[dict[str, Any]] = []
@@ -568,7 +574,9 @@ def codex_input_items_to_openai_messages(input_items: list[dict[str, Any]]) -> l
                 if "content" not in messages[-1]:
                     messages[-1]["content"] = None
             else:
-                messages.append({"role": "assistant", "content": None, "tool_calls": [function_call]})
+                messages.append(
+                    {"role": "assistant", "content": None, "tool_calls": [function_call]}
+                )
             continue
         if item_type == "function_call_output":
             messages.append(
@@ -586,10 +594,16 @@ def normalize_usage(usage: dict[str, Any] | None) -> dict[str, Any]:
     prompt_tokens = int(payload.get("input_tokens") or payload.get("prompt_tokens") or 0)
     completion_tokens = int(payload.get("output_tokens") or payload.get("completion_tokens") or 0)
     total_tokens = int(payload.get("total_tokens") or (prompt_tokens + completion_tokens))
-    prompt_details = payload.get("input_tokens_details") or payload.get("prompt_tokens_details") or {"cached_tokens": 0}
-    completion_details = payload.get("output_tokens_details") or payload.get("completion_tokens_details") or {
-        "reasoning_tokens": 0
-    }
+    prompt_details = (
+        payload.get("input_tokens_details")
+        or payload.get("prompt_tokens_details")
+        or {"cached_tokens": 0}
+    )
+    completion_details = (
+        payload.get("output_tokens_details")
+        or payload.get("completion_tokens_details")
+        or {"reasoning_tokens": 0}
+    )
     return {
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,

@@ -19,9 +19,7 @@ class ScaffoldAgentTests(unittest.TestCase):
             )
 
             manifest_text = (output_dir / "manifest.yaml").read_text(encoding="utf-8")
-            main_text = (output_dir / "agent_runtime" / "main.py").read_text(
-                encoding="utf-8"
-            )
+            main_text = (output_dir / "agent_runtime" / "main.py").read_text(encoding="utf-8")
             self.assertIn("slug: coding_agent", manifest_text)
             self.assertIn("type: codex_framework", manifest_text)
             self.assertIn("Coding Agent", manifest_text)
@@ -39,9 +37,7 @@ class ScaffoldAgentTests(unittest.TestCase):
             )
 
             manifest_text = (output_dir / "manifest.yaml").read_text(encoding="utf-8")
-            backend_text = (output_dir / "agent_runtime" / "backend.py").read_text(
-                encoding="utf-8"
-            )
+            backend_text = (output_dir / "agent_runtime" / "backend.py").read_text(encoding="utf-8")
             agent_mux_config = output_dir / ".agent-mux" / "config.toml"
             codex_config = output_dir / ".codex" / "config.toml"
 

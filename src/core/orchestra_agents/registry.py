@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from .manifest import AgentManifest
 
@@ -16,7 +15,7 @@ class ManifestLoadIssue:
 
     manifest_path: str
     error: str
-    slug_hint: Optional[str] = None
+    slug_hint: str | None = None
 
     def to_dict(self) -> dict[str, str | None]:
         return {
@@ -29,8 +28,12 @@ class ManifestLoadIssue:
 class AgentManifestRegistry:
     """Load, validate, and query manifest files from a local directory."""
 
-    def __init__(self, manifests_root: Optional[str | Path] = None) -> None:
-        root = manifests_root or os.getenv("ORCHESTRA_AGENTS_MANIFESTS_DIR") or os.path.join(os.getcwd(), "agents")
+    def __init__(self, manifests_root: str | Path | None = None) -> None:
+        root = (
+            manifests_root
+            or os.getenv("ORCHESTRA_AGENTS_MANIFESTS_DIR")
+            or os.path.join(os.getcwd(), "agents")
+        )
         self.manifests_root = Path(root).expanduser().resolve()
         self._manifests: dict[str, AgentManifest] = {}
         self._issues: list[ManifestLoadIssue] = []
@@ -86,7 +89,7 @@ class AgentManifestRegistry:
     def issues(self) -> list[ManifestLoadIssue]:
         return list(self._issues)
 
-    def get(self, slug: str) -> Optional[AgentManifest]:
+    def get(self, slug: str) -> AgentManifest | None:
         return self._manifests.get(str(slug).strip())
 
     def require(self, slug: str) -> AgentManifest:

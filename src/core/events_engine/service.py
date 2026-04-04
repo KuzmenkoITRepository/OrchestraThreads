@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import os
-from typing import Optional
 
 import aiohttp
 from aiohttp import web
@@ -19,16 +18,14 @@ class EventsEngine:
         orchestra_agents_url: str = "http://orchestra-agents:8790",
     ):
         self.orchestra_agents_url = orchestra_agents_url
-        self.http_session: Optional[aiohttp.ClientSession] = None
-        self.app: Optional[web.Application] = None
+        self.http_session: aiohttp.ClientSession | None = None
+        self.app: web.Application | None = None
 
     async def start(self):
         """Start the events engine service."""
         logger.info("Starting events engine service...")
 
-        self.http_session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=30.0)
-        )
+        self.http_session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30.0))
 
         self.app = web.Application()
         self.app.router.add_post("/deliver", self._handle_deliver)
@@ -102,7 +99,7 @@ class EventsEngine:
             logger.error(f"Error handling delivery request: {e}", exc_info=True)
             return web.json_response({"success": False, "error": str(e)}, status=500)
 
-    async def _get_agent_endpoint(self, agent_slug: str) -> Optional[str]:
+    async def _get_agent_endpoint(self, agent_slug: str) -> str | None:
         """Get agent HTTP endpoint from orchestra-agents service."""
         try:
             url = f"{self.orchestra_agents_url}/api/v1/agents/{agent_slug}/status"

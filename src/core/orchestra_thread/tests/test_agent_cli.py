@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from typing import Any, Optional
+from typing import Any
 
 from core.orchestra_thread.agent_cli import ManualAgentCLI
 from core.orchestra_thread.client import OrchestraThreadsClient
@@ -37,7 +37,7 @@ class FakeThreadsClient:
         self.thread_list_calls.append({"scope": scope, "limit": limit})
         return {"success": True, "threads": []}
 
-    async def get_thread(self, *, thread_id: str, limit: Optional[int] = None) -> dict[str, Any]:
+    async def get_thread(self, *, thread_id: str, limit: int | None = None) -> dict[str, Any]:
         self.thread_get_calls.append({"thread_id": thread_id, "limit": limit})
         return {"success": True, "thread": {"thread_id": thread_id}, "events": []}
 
@@ -47,9 +47,9 @@ class FakeThreadsClient:
         from_agent_slug: str,
         to_agent_slug: str,
         message_text: str,
-        thread_id: Optional[str] = None,
-        parent_thread_id: Optional[str] = None,
-        client_request_id: Optional[str] = None,
+        thread_id: str | None = None,
+        parent_thread_id: str | None = None,
+        client_request_id: str | None = None,
     ) -> dict[str, Any]:
         self.message_calls.append(
             {
@@ -80,7 +80,7 @@ class FakeThreadsClient:
         thread_id: str,
         status: str,
         message_text: str,
-        client_request_id: Optional[str] = None,
+        client_request_id: str | None = None,
     ) -> dict[str, Any]:
         self.notification_calls.append(
             {

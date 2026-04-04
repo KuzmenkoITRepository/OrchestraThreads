@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-
 ACTIVE_CONTEXT_PATH = Path(
     os.getenv(
         "ORCHESTRA_THREADS_ACTIVE_CONTEXT_PATH",

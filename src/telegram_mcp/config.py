@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 
 class TelegramMCPConfig:
@@ -16,9 +15,7 @@ class TelegramMCPConfig:
     def __init__(self) -> None:
         self.api_id: int = int(self._require_env("TELEGRAM_API_ID"))
         self.api_hash: str = self._require_env("TELEGRAM_API_HASH")
-        self.session_string: Optional[str] = (
-            os.getenv("TELEGRAM_SESSION_STRING", "").strip() or None
-        )
+        self.session_string: str | None = os.getenv("TELEGRAM_SESSION_STRING", "").strip() or None
         chat_id_ivan = self._parse_chat_id(self._require_env("TELEGRAM_CHAT_ID_IVAN"))
         if chat_id_ivan is None:
             raise ValueError("TELEGRAM_CHAT_ID_IVAN must be a valid integer chat ID")
@@ -34,12 +31,10 @@ class TelegramMCPConfig:
             raise ValueError("LOG_LEVEL must not be empty")
         self.log_level = self.log_level.strip().upper()
 
-        self.timeout_seconds: float = self._parse_float_env(
-            "TELEGRAM_TIMEOUT_SECONDS", "10.0"
-        )
+        self.timeout_seconds: float = self._parse_float_env("TELEGRAM_TIMEOUT_SECONDS", "10.0")
         self.max_retries: int = self._parse_int_env("TELEGRAM_MAX_RETRIES", "3")
 
-    def resolve_chat_id(self, recipient: Optional[str]) -> int:
+    def resolve_chat_id(self, recipient: str | None) -> int:
         """Resolve a recipient alias to a Telegram chat ID."""
         alias = (recipient or self.default_recipient).strip().lower()
 
@@ -57,7 +52,7 @@ class TelegramMCPConfig:
         return value.strip()
 
     @staticmethod
-    def _parse_chat_id(value: Optional[str]) -> Optional[int]:
+    def _parse_chat_id(value: str | None) -> int | None:
         """Parse a Telegram chat ID from an environment value."""
         if value is None:
             return None

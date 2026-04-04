@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
-from typing import Any, Optional
+from typing import Any
 
 from aiohttp import web
 
@@ -13,7 +12,6 @@ from .docker_driver import DockerDriver
 from .errors import ServiceError
 from .manifest import AgentManifest
 from .registry import AgentManifestRegistry
-
 
 logger = logging.getLogger(__name__)
 SERVICE_APP_KEY = web.AppKey("service", "OrchestraAgentsService")
@@ -29,9 +27,9 @@ class OrchestraAgentsService:
     def __init__(
         self,
         *,
-        manifests_root: Optional[str] = None,
-        registry: Optional[AgentManifestRegistry] = None,
-        driver: Optional[DockerDriver] = None,
+        manifests_root: str | None = None,
+        registry: AgentManifestRegistry | None = None,
+        driver: DockerDriver | None = None,
     ) -> None:
         self.registry = registry or AgentManifestRegistry(manifests_root=manifests_root)
         self.driver = driver or DockerDriver(manifests_root=self.registry.manifests_root)
@@ -53,7 +51,7 @@ class OrchestraAgentsService:
             return_exceptions=False,
         )
         agents = []
-        for manifest, status in zip(manifests, statuses):
+        for manifest, status in zip(manifests, statuses, strict=False):
             agents.append(
                 {
                     "slug": manifest.slug,

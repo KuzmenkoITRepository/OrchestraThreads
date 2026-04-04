@@ -4,26 +4,25 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
 from .common import THREAD_TERMINAL_STATUSES, normalize_participants, normalize_status
 
-
 SCHEMA_SQL = Path(__file__).with_name("schema.sql").read_text(encoding="utf-8")
 SCHEMA_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
-def _parse_timestamp(value: Any) -> Optional[datetime]:
+def _parse_timestamp(value: Any) -> datetime | None:
     if value is None:
         return None
     if isinstance(value, datetime):
         if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
     normalized = str(value).strip()
     if not normalized:
         return None
@@ -36,7 +35,7 @@ def _normalize_value(value: Any) -> Any:
     return value
 
 
-def _row_to_dict(row: Any) -> Optional[dict[str, Any]]:
+def _row_to_dict(row: Any) -> dict[str, Any] | None:
     if row is None:
         return None
     payload = dict(row)
@@ -103,14 +102,14 @@ class ThreadStore:
         self.min_pool_size = max(1, int(min_pool_size))
         self.max_pool_size = max(self.min_pool_size, int(max_pool_size))
         self.command_timeout_seconds = max(1.0, float(command_timeout_seconds))
-        self.pool: Optional[asyncpg.Pool] = None
+        self.pool: asyncpg.Pool | None = None
 
     @staticmethod
     def timestamp_within_lease(value: Any, *, lease_seconds: int) -> bool:
         parsed = _parse_timestamp(value)
         if parsed is None:
             return False
-        return datetime.now(timezone.utc) - parsed <= timedelta(seconds=lease_seconds)
+        return datetime.now(UTC) - parsed <= timedelta(seconds=lease_seconds)
 
     async def start(self) -> None:
         if self.pool is not None:
@@ -137,7 +136,9 @@ class ThreadStore:
     async def drop_schema(self) -> None:
         if self.schema_name == "public":
             return
-        conn = await asyncpg.connect(dsn=self.database_url, command_timeout=self.command_timeout_seconds)
+        conn = await asyncpg.connect(
+            dsn=self.database_url, command_timeout=self.command_timeout_seconds
+        )
         try:
             await conn.execute(f"DROP SCHEMA IF EXISTS {_quote_ident(self.schema_name)} CASCADE")
         finally:
@@ -198,7 +199,7 @@ class ThreadStore:
             )
         return _row_to_dict(row) or {}
 
-    async def touch_agent(self, *, agent_slug: str) -> Optional[dict[str, Any]]:
+    async def touch_agent(self, *, agent_slug: str) -> dict[str, Any] | None:
         assert self.pool is not None
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -212,7 +213,7 @@ class ThreadStore:
             )
         return _row_to_dict(row)
 
-    async def get_agent(self, agent_slug: str) -> Optional[dict[str, Any]]:
+    async def get_agent(self, agent_slug: str) -> dict[str, Any] | None:
         assert self.pool is not None
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -237,7 +238,9 @@ class ThreadStore:
             )
         return [_row_to_dict(row) for row in rows if row is not None]
 
-    async def get_idempotent_result(self, *, from_agent_slug: str, client_request_id: str) -> Optional[dict[str, Any]]:
+    async def get_idempotent_result(
+        self, *, from_agent_slug: str, client_request_id: str
+    ) -> dict[str, Any] | None:
         assert self.pool is not None
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -283,7 +286,7 @@ class ThreadStore:
                 response_payload,
             )
 
-    async def get_thread(self, thread_id: str) -> Optional[dict[str, Any]]:
+    async def get_thread(self, thread_id: str) -> dict[str, Any] | None:
         assert self.pool is not None
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -441,7 +444,7 @@ class ThreadStore:
             )
         return [_row_to_dict(row) for row in rows if row is not None]
 
-    async def get_latest_thread_event(self, *, thread_id: str) -> Optional[dict[str, Any]]:
+    async def get_latest_thread_event(self, *, thread_id: str) -> dict[str, Any] | None:
         assert self.pool is not None
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -608,7 +611,7 @@ class ThreadStore:
         event_id: str,
         thread_id: str,
         event_kind: str,
-        notification_status: Optional[str],
+        notification_status: str | None,
         from_agent_slug: str,
         to_agent_slug: str,
         message_text: str,
@@ -616,7 +619,7 @@ class ThreadStore:
         requires_response: bool,
         touch_activity: bool,
         update_last_message_sender: bool,
-        set_thread_status: Optional[str] = None,
+        set_thread_status: str | None = None,
         set_terminal: bool = False,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         assert self.pool is not None
@@ -636,7 +639,7 @@ class ThreadStore:
                 if normalize_status(str(thread["status"] or "")) in THREAD_TERMINAL_STATUSES:
                     raise ValueError(f"Thread {thread_id} is already terminal")
 
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 next_sequence = int(thread["last_sequence_no"] or 0) + 1
                 event = await conn.fetchrow(
                     """
@@ -703,7 +706,7 @@ class ThreadStore:
 
     async def list_due_pending_events(self, *, now_iso: str, limit: int) -> list[dict[str, Any]]:
         assert self.pool is not None
-        now = _parse_timestamp(now_iso) or datetime.now(timezone.utc)
+        now = _parse_timestamp(now_iso) or datetime.now(UTC)
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """
@@ -745,7 +748,9 @@ class ThreadStore:
                 event_id,
             )
 
-    async def mark_event_failed(self, *, event_id: str, error_text: str, retry_base_seconds: int, retry_max_seconds: int) -> None:
+    async def mark_event_failed(
+        self, *, event_id: str, error_text: str, retry_base_seconds: int, retry_max_seconds: int
+    ) -> None:
         assert self.pool is not None
         async with self.pool.acquire() as conn:
             async with conn.transaction():
@@ -761,8 +766,10 @@ class ThreadStore:
                 if row is None:
                     return
                 next_attempt_count = int(row["delivery_attempt_count"] or 0) + 1
-                delay_seconds = min(retry_max_seconds, retry_base_seconds * (2 ** min(next_attempt_count - 1, 10)))
-                next_time = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
+                delay_seconds = min(
+                    retry_max_seconds, retry_base_seconds * (2 ** min(next_attempt_count - 1, 10))
+                )
+                next_time = datetime.now(UTC) + timedelta(seconds=delay_seconds)
                 await conn.execute(
                     """
                     UPDATE thread_events
@@ -793,7 +800,9 @@ class ThreadStore:
             )
         return _rowcount_from_status(status_text)
 
-    async def update_thread_terminal_status(self, *, thread_id: str, status: str) -> Optional[dict[str, Any]]:
+    async def update_thread_terminal_status(
+        self, *, thread_id: str, status: str
+    ) -> dict[str, Any] | None:
         assert self.pool is not None
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -812,9 +821,11 @@ class ThreadStore:
             return _row_to_dict(row)
         return await self.get_thread(thread_id)
 
-    async def list_inactivity_candidates(self, *, timeout_seconds: int, limit: int) -> list[dict[str, Any]]:
+    async def list_inactivity_candidates(
+        self, *, timeout_seconds: int, limit: int
+    ) -> list[dict[str, Any]]:
         assert self.pool is not None
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=timeout_seconds)
+        cutoff = datetime.now(UTC) - timedelta(seconds=timeout_seconds)
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """

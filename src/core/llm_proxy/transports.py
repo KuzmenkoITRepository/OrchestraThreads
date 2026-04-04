@@ -142,7 +142,9 @@ class OpenAICompatibleTransport:
     def supports(self, *, model_override: str | None = None) -> bool:
         return bool(self.base_url and ((model_override or "").strip() or self.model))
 
-    def complete_chat(self, payload: dict[str, Any], *, model_override: str | None = None) -> dict[str, Any]:
+    def complete_chat(
+        self, payload: dict[str, Any], *, model_override: str | None = None
+    ) -> dict[str, Any]:
         effective_model = str(model_override or payload.get("model") or self.model).strip()
         if not self.base_url or not effective_model:
             raise RuntimeError("OpenAI-compatible fallback is not configured")
@@ -250,7 +252,9 @@ class CodexDirectTransport:
         effective_temperature = self.temperature if temperature is None else temperature
         if effective_temperature is not None and codex_supports_temperature(str(body["model"])):
             body["temperature"] = effective_temperature
-        effective_effort = reasoning_effort if reasoning_effort is not None else self.reasoning_effort
+        effective_effort = (
+            reasoning_effort if reasoning_effort is not None else self.reasoning_effort
+        )
         if effective_effort:
             body["reasoning"] = {
                 "effort": clamp_reasoning_effort(body["model"], effective_effort),
@@ -262,13 +266,16 @@ class CodexDirectTransport:
         usage: dict[str, Any] | None = None
         stop_reason = "stop"
         try:
-            with _session() as session, session.post(
-                url,
-                headers=headers,
-                json=body,
-                stream=True,
-                timeout=(10, self.request_timeout_seconds),
-            ) as response:
+            with (
+                _session() as session,
+                session.post(
+                    url,
+                    headers=headers,
+                    json=body,
+                    stream=True,
+                    timeout=(10, self.request_timeout_seconds),
+                ) as response,
+            ):
                 if response.status_code >= 400:
                     message = parse_error_payload(response.status_code, response.text)
                     raise CodexUpstreamError(
@@ -387,9 +394,13 @@ class CodexDirectTransport:
                                 for part in content_parts:
                                     if not isinstance(part, dict):
                                         continue
-                                    if part.get("type") == "output_text" and isinstance(part.get("text"), str):
+                                    if part.get("type") == "output_text" and isinstance(
+                                        part.get("text"), str
+                                    ):
                                         parts.append(part["text"])
-                                    elif part.get("type") == "refusal" and isinstance(part.get("refusal"), str):
+                                    elif part.get("type") == "refusal" and isinstance(
+                                        part.get("refusal"), str
+                                    ):
                                         parts.append(part["refusal"])
                                 if parts:
                                     current_text.text = "".join(parts).strip()
@@ -408,7 +419,9 @@ class CodexDirectTransport:
                         response_payload = event.get("response", {})
                         if isinstance(response_payload, dict):
                             usage = response_payload.get("usage")
-                            status = str(response_payload.get("status") or "completed").strip().lower()
+                            status = (
+                                str(response_payload.get("status") or "completed").strip().lower()
+                            )
                             if status in {"failed", "cancelled"}:
                                 stop_reason = "error"
                             elif status == "incomplete":

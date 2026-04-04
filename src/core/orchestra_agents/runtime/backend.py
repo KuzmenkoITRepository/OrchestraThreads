@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from typing import Any, Optional
 import uuid
+from abc import ABC, abstractmethod
+from typing import Any
 
 from .contracts import ClearContextRequest, EventDelivery, EventDeliveryResult, StopRequest
 
@@ -18,16 +18,16 @@ class BaseAgentBackend(ABC):
         agent_slug: str,
         backend_type: str,
         working_dir: str,
-        config: Optional[dict[str, Any]] = None,
+        config: dict[str, Any] | None = None,
     ) -> None:
         self.agent_slug = agent_slug
         self.backend_type = backend_type
         self.working_dir = working_dir
         self.config = dict(config or {})
-        self.last_delivery_id: Optional[str] = None
-        self.last_event_kind: Optional[str] = None
-        self.last_message_preview: Optional[str] = None
-        self.stop_reason: Optional[str] = None
+        self.last_delivery_id: str | None = None
+        self.last_event_kind: str | None = None
+        self.last_message_preview: str | None = None
+        self.stop_reason: str | None = None
         self.context_generation = 0
         self.current_context_id = self._generate_context_id()
 
@@ -35,11 +35,13 @@ class BaseAgentBackend(ABC):
     def _generate_context_id() -> str:
         return uuid.uuid4().hex[:12]
 
-    async def on_start(self) -> None:
+    async def on_start(self) -> None:  # noqa: B027
         """Optional startup hook."""
+        pass
 
-    async def on_shutdown(self) -> None:
+    async def on_shutdown(self) -> None:  # noqa: B027
         """Optional shutdown hook."""
+        pass
 
     @abstractmethod
     async def handle_events(self, delivery: EventDelivery) -> EventDeliveryResult:

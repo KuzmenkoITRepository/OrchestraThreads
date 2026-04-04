@@ -151,7 +151,7 @@ mcp_servers:
 ```bash
 lsp_diagnostics src/telegram_mcp --extension .py
 ```
-**Результат:** 
+**Результат:**
 - Files scanned: 5
 - Files with errors: 0
 - Total diagnostics: 0
@@ -170,7 +170,7 @@ lsp_diagnostics src/telegram_mcp --extension .py
 ```bash
 lsp_diagnostics src/telegram_mcp --extension .py
 ```
-**Результат:** 
+**Результат:**
 - Files scanned: 5
 - Files with errors: 0
 - Total diagnostics: 0

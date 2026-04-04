@@ -2,7 +2,13 @@
 
 from .app import StandardAgentApplication
 from .backend import BaseAgentBackend
-from .contracts import AgentEvent, ClearContextRequest, EventDelivery, EventDeliveryResult, StopRequest
+from .contracts import (
+    AgentEvent,
+    ClearContextRequest,
+    EventDelivery,
+    EventDeliveryResult,
+    StopRequest,
+)
 
 __all__ = [
     "AgentEvent",

@@ -17,17 +17,16 @@ from .client_config import (
     ROUTE_POLICY_MANAGED_AUTO,
     ROUTE_POLICY_MINIMAX_ONLY,
 )
+from .langfuse import LangfuseTelemetry, TelemetrySettings
 from .protocol import (
     AllCodexAccountsUnavailable,
-    codex_response_to_dict,
     codex_response_stream_events,
+    codex_response_to_dict,
     completion_stream_chunks,
     normalize_responses_input_items,
 )
-from .langfuse import LangfuseTelemetry, TelemetrySettings
 from .router import UnifiedLLMRouter
 from .transports import is_retryable_codex_error_message
-
 
 DEFAULT_MODEL = "gpt-5.4"
 DEFAULT_BASE_URL = "https://chatgpt.com/backend-api"
@@ -258,7 +257,9 @@ def build_app(service: LLMProxyService) -> web.Application:
         chat_route_policy = resolve_route_policy(request.path, endpoint="chat")
         codex_route_policy = resolve_route_policy(request.path, endpoint="codex")
         if chat_route_policy is None and codex_route_policy is None:
-            return web.json_response({"error": {"message": f"Unknown path: {request.path}"}}, status=404)
+            return web.json_response(
+                {"error": {"message": f"Unknown path: {request.path}"}}, status=404
+            )
         try:
             payload = await request.json()
         except Exception as exc:
@@ -304,7 +305,7 @@ def build_app(service: LLMProxyService) -> web.Application:
                 response.headers["Connection"] = "keep-alive"
                 await response.prepare(request)
                 for chunk in completion_stream_chunks(response_payload):
-                    event = f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode("utf-8")
+                    event = f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode()
                     await response.write(event)
                 await response.write(b"data: [DONE]\n\n")
                 await response.write_eof()
@@ -313,10 +314,14 @@ def build_app(service: LLMProxyService) -> web.Application:
         instructions = str(payload.get("instructions") or "").strip()
         input_items = normalize_responses_input_items(payload)
         if input_items is None:
-            return web.json_response({"error": {"message": "Expected input or input_items"}}, status=400)
+            return web.json_response(
+                {"error": {"message": "Expected input or input_items"}}, status=400
+            )
         tools = payload.get("tools")
         if tools is not None and not isinstance(tools, list):
-            return web.json_response({"error": {"message": "Expected tools list or null"}}, status=400)
+            return web.json_response(
+                {"error": {"message": "Expected tools list or null"}}, status=400
+            )
         trace_metadata.update(
             {
                 "request_kind": "responses",
@@ -363,7 +368,7 @@ def build_app(service: LLMProxyService) -> web.Application:
             stream.headers["Connection"] = "keep-alive"
             await stream.prepare(request)
             for event in codex_response_stream_events(response):
-                await stream.write(f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8"))
+                await stream.write(f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode())
             await stream.write(b"data: [DONE]\n\n")
             await stream.write_eof()
             return stream

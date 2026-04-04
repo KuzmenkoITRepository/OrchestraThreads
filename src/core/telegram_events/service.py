@@ -2,7 +2,6 @@
 
 import logging
 import os
-from typing import Optional
 
 import httpx
 
@@ -18,8 +17,8 @@ class TelegramEventsService:
         self,
         api_id: int,
         api_hash: str,
-        session_string: Optional[str] = None,
-        session_file: Optional[str] = None,
+        session_string: str | None = None,
+        session_file: str | None = None,
         events_engine_url: str = "http://events-engine:8789",
         target_agent_slug: str = "secretary",
     ):
@@ -43,7 +42,7 @@ class TelegramEventsService:
             session_file=session_file,
             on_message=self._forward_to_events_engine,
         )
-        self.http_client: Optional[httpx.AsyncClient] = None
+        self.http_client: httpx.AsyncClient | None = None
 
     async def start(self):
         """Start the service."""
@@ -112,14 +111,12 @@ class TelegramEventsService:
                 )
 
         except Exception as e:
-            logger.error(
-                f"Error forwarding message to events-engine: {e}", exc_info=True
-            )
+            logger.error(f"Error forwarding message to events-engine: {e}", exc_info=True)
 
     def _format_event_payload(self, message_data: dict) -> dict:
         """Format message data into EventDelivery contract format."""
         prompt_parts = [
-            f"New Telegram message received:",
+            "New Telegram message received:",
             f"From: {message_data['sender_name']}",
         ]
 
@@ -130,8 +127,8 @@ class TelegramEventsService:
             [
                 f"Chat: {message_data['chat_name']}",
                 f"Time: {message_data['timestamp']}",
-                f"",
-                f"Message:",
+                "",
+                "Message:",
                 message_data["text"],
             ]
         )

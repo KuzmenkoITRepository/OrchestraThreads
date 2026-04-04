@@ -9,7 +9,7 @@ import os
 import socket
 import unittest
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 import aiohttp
 from aiohttp import web
@@ -27,10 +27,10 @@ def _free_port() -> int:
 class FakeAgent:
     """Small callback-capable agent used by the e2e tests."""
 
-    def __init__(self, slug: str, port: Optional[int] = None) -> None:
+    def __init__(self, slug: str, port: int | None = None) -> None:
         self.slug = slug
         self.port = port or _free_port()
-        self.runner: Optional[web.AppRunner] = None
+        self.runner: web.AppRunner | None = None
         self.events: list[dict[str, Any]] = []
         self.stops: list[dict[str, Any]] = []
         self.fail_event_delivery = False
@@ -65,7 +65,9 @@ class FakeAgent:
             return web.json_response({"accepted": False, "error": "forced failure"}, status=503)
         payload = await request.json()
         self.events.extend(payload.get("events") or [])
-        return web.json_response({"accepted": True, "event_count": len(payload.get("events") or [])})
+        return web.json_response(
+            {"accepted": True, "event_count": len(payload.get("events") or [])}
+        )
 
     async def _handle_stop(self, request: web.Request) -> web.Response:
         payload = await request.json()
@@ -98,9 +100,9 @@ class E2EHarness:
         )
         self.service.delivery_poll_interval_seconds = 0.1
         self.service.inactivity_timeout_seconds = 2
-        self.app_runner: Optional[web.AppRunner] = None
-        self.base_url: Optional[str] = None
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.app_runner: web.AppRunner | None = None
+        self.base_url: str | None = None
+        self.session: aiohttp.ClientSession | None = None
         self.agents: list[FakeAgent] = []
 
     async def start(self) -> None:
@@ -155,7 +157,7 @@ class E2EHarness:
         *,
         method: str,
         path: str,
-        payload: Optional[dict[str, Any]] = None,
+        payload: dict[str, Any] | None = None,
         expected_status: int = 200,
     ) -> dict[str, Any]:
         assert self.session is not None
@@ -192,8 +194,8 @@ class E2EHarness:
         from_agent_slug: str,
         to_agent_slug: str,
         message_text: str,
-        thread_id: Optional[str] = None,
-        parent_thread_id: Optional[str] = None,
+        thread_id: str | None = None,
+        parent_thread_id: str | None = None,
         expected_status: int = 200,
     ) -> dict[str, Any]:
         payload = {
@@ -266,7 +268,9 @@ class E2EHarness:
     async def list_threads(self, *, scope: str = "active") -> dict[str, Any]:
         return await self.request_json(method="GET", path=f"/api/v1/threads?scope={scope}")
 
-    async def get_instruction(self, *, view: str = "compact", section: Optional[str] = None) -> dict[str, Any]:
+    async def get_instruction(
+        self, *, view: str = "compact", section: str | None = None
+    ) -> dict[str, Any]:
         path = f"/api/v1/instructions?view={view}"
         if section:
             path += f"&section={section}"
@@ -305,14 +309,13 @@ class OrchestraThreadsE2ETestCase(unittest.IsolatedAsyncioTestCase):
         orchestra = await self.harness.add_agent("orchestra")
 
         agents_payload = await self.harness.list_agents()
-        online_map = {
-            item["agent_slug"]: bool(item["online"])
-            for item in agents_payload["agents"]
-        }
+        online_map = {item["agent_slug"]: bool(item["online"]) for item in agents_payload["agents"]}
         self.assertTrue(online_map.get(secretary.slug))
         self.assertTrue(online_map.get(orchestra.slug))
 
-        before = next(item for item in agents_payload["agents"] if item["agent_slug"] == secretary.slug)["last_seen_at"]
+        before = next(
+            item for item in agents_payload["agents"] if item["agent_slug"] == secretary.slug
+        )["last_seen_at"]
         await asyncio.sleep(0.02)
         heartbeat_payload = await self.harness.heartbeat(secretary.slug)
         after = heartbeat_payload["agent"]["last_seen_at"]
@@ -397,7 +400,10 @@ class OrchestraThreadsE2ETestCase(unittest.IsolatedAsyncioTestCase):
 
         async def _thread_ready() -> Any:
             threads_payload = await self.harness.list_threads(scope="active")
-            thread = next((item for item in threads_payload["threads"] if item["thread_id"] == thread_id), None)
+            thread = next(
+                (item for item in threads_payload["threads"] if item["thread_id"] == thread_id),
+                None,
+            )
             if not thread:
                 return None
             if thread.get("pending_delivery_count") != 0:
@@ -426,7 +432,9 @@ class OrchestraThreadsE2ETestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(detail["thread"]["event_count"], 1)
         self.assertEqual(detail["thread"]["pending_delivery_count"], 0)
         self.assertEqual(detail["thread"]["child_thread_count"], 0)
-        self.assertEqual(detail["thread"]["last_event"]["message_preview"], "Prepare a short update.")
+        self.assertEqual(
+            detail["thread"]["last_event"]["message_preview"], "Prepare a short update."
+        )
         self.assertEqual(detail["events"][0]["from_agent"]["slug"], secretary.slug)
         self.assertEqual(detail["events"][0]["to_agent"]["slug"], orchestra.slug)
         self.assertTrue(detail["events"][0]["requires_action"])
@@ -621,7 +629,9 @@ class OrchestraThreadsE2ETestCase(unittest.IsolatedAsyncioTestCase):
             timeout=6.0,
             message="secretary did not receive inactivity wakeup",
         )
-        inactivity_event = next(event for event in secretary.events if event.get("event_kind") == "inactive")
+        inactivity_event = next(
+            event for event in secretary.events if event.get("event_kind") == "inactive"
+        )
         self.assertEqual(inactivity_event["thread_id"], inactivity_thread_id)
 
         await orchestra.stop()
@@ -637,7 +647,9 @@ class OrchestraThreadsE2ETestCase(unittest.IsolatedAsyncioTestCase):
             thread = await self.harness.service.store.get_thread(retry_thread_id)
             if not thread:
                 return False
-            events = await self.harness.service.store.list_thread_events(thread_id=retry_thread_id, limit=20)
+            events = await self.harness.service.store.list_thread_events(
+                thread_id=retry_thread_id, limit=20
+            )
             return bool(events) and int(events[-1]["delivery_attempt_count"]) >= 1
 
         await self.harness.wait_for(

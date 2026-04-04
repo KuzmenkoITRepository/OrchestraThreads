@@ -8,7 +8,7 @@ import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 from .manifest import AgentManifest, RuntimeMount
@@ -35,12 +35,12 @@ class DockerDriver:
         self,
         *,
         manifests_root: str | Path,
-        container_name_prefix: Optional[str] = None,
-        default_network: Optional[str] = None,
-        manifest_mount_path: Optional[str] = None,
-        health_timeout_seconds: Optional[float] = None,
-        build_context_root: Optional[str | Path] = None,
-        auto_build_local_images: Optional[bool] = None,
+        container_name_prefix: str | None = None,
+        default_network: str | None = None,
+        manifest_mount_path: str | None = None,
+        health_timeout_seconds: float | None = None,
+        build_context_root: str | Path | None = None,
+        auto_build_local_images: bool | None = None,
     ) -> None:
         self.manifests_root = Path(manifests_root).expanduser().resolve()
         self.container_name_prefix = str(
@@ -48,11 +48,10 @@ class DockerDriver:
             or os.getenv("ORCHESTRA_AGENTS_CONTAINER_NAME_PREFIX")
             or "orchestra-agent-"
         )
-        self.default_network = str(
-            default_network
-            or os.getenv("ORCHESTRA_AGENTS_DOCKER_NETWORK")
-            or ""
-        ).strip() or None
+        self.default_network = (
+            str(default_network or os.getenv("ORCHESTRA_AGENTS_DOCKER_NETWORK") or "").strip()
+            or None
+        )
         self.manifest_mount_path = str(
             manifest_mount_path
             or os.getenv("ORCHESTRA_AGENTS_MANIFEST_MOUNT_PATH")
@@ -60,16 +59,26 @@ class DockerDriver:
         ).rstrip("/")
         self.health_timeout_seconds = max(
             0.2,
-            float(health_timeout_seconds or os.getenv("ORCHESTRA_AGENTS_HEALTH_TIMEOUT_SECONDS", "2")),
+            float(
+                health_timeout_seconds or os.getenv("ORCHESTRA_AGENTS_HEALTH_TIMEOUT_SECONDS", "2")
+            ),
         )
         auto_build_value = auto_build_local_images
         if auto_build_value is None:
-            normalized = str(os.getenv("ORCHESTRA_AGENTS_AUTO_BUILD_LOCAL_IMAGES", "true")).strip().lower()
+            normalized = (
+                str(os.getenv("ORCHESTRA_AGENTS_AUTO_BUILD_LOCAL_IMAGES", "true")).strip().lower()
+            )
             auto_build_value = normalized not in {"0", "false", "no", "off"}
         self.auto_build_local_images = bool(auto_build_value)
-        self.build_context_root = Path(
-            build_context_root or os.getenv("ORCHESTRA_AGENTS_IMAGE_BUILD_CONTEXT") or self.manifests_root.parent
-        ).expanduser().resolve()
+        self.build_context_root = (
+            Path(
+                build_context_root
+                or os.getenv("ORCHESTRA_AGENTS_IMAGE_BUILD_CONTEXT")
+                or self.manifests_root.parent
+            )
+            .expanduser()
+            .resolve()
+        )
 
     def container_name(self, slug: str) -> str:
         return f"{self.container_name_prefix}{str(slug).strip()}"
@@ -140,7 +149,11 @@ class DockerDriver:
             ["docker", "inspect", container_name, "--format", "{{json .State}}"],
             timeout=30,
         )
-        endpoint = manifest.resolve_http_endpoint(container_name=container_name) if manifest is not None else None
+        endpoint = (
+            manifest.resolve_http_endpoint(container_name=container_name)
+            if manifest is not None
+            else None
+        )
         if inspect_result.returncode != 0:
             return {
                 "slug": slug,
@@ -229,7 +242,7 @@ class DockerDriver:
             "--health-cmd",
             (
                 "python -c "
-                f"\"import sys,urllib.request; "
+                f'"import sys,urllib.request; '
                 f"sys.exit(0 if urllib.request.urlopen('{health_url}').status == 200 else 1)\""
             ),
             "--health-interval",
@@ -249,13 +262,17 @@ class DockerDriver:
         container_manifest_path = self._container_manifest_path(manifest)
         command.extend(["-e", f"ORCHESTRA_AGENT_MANIFEST={container_manifest_path}"])
         if manifest.agent.system_prompt_file:
-            command.extend(["-e", f"ORCHESTRA_AGENT_SYSTEM_PROMPT_FILE={manifest.agent.system_prompt_file}"])
+            command.extend(
+                ["-e", f"ORCHESTRA_AGENT_SYSTEM_PROMPT_FILE={manifest.agent.system_prompt_file}"]
+            )
 
         for key, value in self._render_env(manifest, container_name=container_name).items():
             command.extend(["-e", f"{key}={value}"])
 
         for mount in manifest.runtime.mounts:
-            command.extend(["-v", self._render_mount_spec(manifest, mount, container_name=container_name)])
+            command.extend(
+                ["-v", self._render_mount_spec(manifest, mount, container_name=container_name)]
+            )
 
         if manifest.runtime.entrypoint:
             command.extend(["--entrypoint", manifest.runtime.entrypoint])
@@ -285,17 +302,16 @@ class DockerDriver:
             "container_name": container_name,
             "backend_type": manifest.backend.type,
         }
-        rendered = {
-            key: str(value).format(**values)
-            for key, value in manifest.runtime.env.items()
-        }
+        rendered = {key: str(value).format(**values) for key, value in manifest.runtime.env.items()}
         for key in manifest.runtime.env_passthrough:
             host_value = os.getenv(key)
             if host_value is not None:
                 rendered[key] = host_value
         return rendered
 
-    def _render_mount_spec(self, manifest: AgentManifest, mount: RuntimeMount, *, container_name: str) -> str:
+    def _render_mount_spec(
+        self, manifest: AgentManifest, mount: RuntimeMount, *, container_name: str
+    ) -> str:
         values = {
             "slug": manifest.slug,
             "container_name": container_name,
@@ -307,7 +323,9 @@ class DockerDriver:
             source_path = Path(source)
             if not source_path.is_absolute():
                 if manifest.manifest_path is None:
-                    raise RuntimeError(f"cannot resolve relative bind mount {source!r} without manifest path")
+                    raise RuntimeError(
+                        f"cannot resolve relative bind mount {source!r} without manifest path"
+                    )
                 source_path = (manifest.manifest_path.parent / source_path).resolve()
             if not source_path.exists():
                 raise RuntimeError(f"bind mount source does not exist: {source_path}")
@@ -316,12 +334,22 @@ class DockerDriver:
 
     def _container_exists(self, container_name: str) -> bool:
         result = _run(
-            ["docker", "ps", "-a", "--filter", f"name=^{container_name}$", "--format", "{{.Names}}"],
+            [
+                "docker",
+                "ps",
+                "-a",
+                "--filter",
+                f"name=^{container_name}$",
+                "--format",
+                "{{.Names}}",
+            ],
             timeout=30,
         )
         if result.returncode != 0:
             return False
-        return container_name in {line.strip() for line in result.stdout.splitlines() if line.strip()}
+        return container_name in {
+            line.strip() for line in result.stdout.splitlines() if line.strip()
+        }
 
     def _image_exists(self, image: str) -> bool:
         result = _run(["docker", "image", "inspect", image], timeout=60)
@@ -335,9 +363,7 @@ class DockerDriver:
         if dockerfile_name is None:
             return
         if not self.auto_build_local_images:
-            raise RuntimeError(
-                f"docker image {normalized} is missing and auto-build is disabled"
-            )
+            raise RuntimeError(f"docker image {normalized} is missing and auto-build is disabled")
         dockerfile_path = (self.build_context_root / dockerfile_name).resolve()
         if not dockerfile_path.exists():
             raise RuntimeError(
@@ -367,7 +393,9 @@ class DockerDriver:
         )
         if result.returncode != 0:
             return False
-        return container_name in {line.strip() for line in result.stdout.splitlines() if line.strip()}
+        return container_name in {
+            line.strip() for line in result.stdout.splitlines() if line.strip()
+        }
 
     def _probe_health(self, endpoint: str) -> dict[str, Any]:
         url = f"{endpoint.rstrip('/')}/healthz"

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from .accounts import (
     build_account_status_rows,
@@ -139,10 +140,7 @@ class UnifiedLLMRouter:
             "request_path",
             "stream",
         ):
-            if (
-                trace_metadata_overrides
-                and trace_metadata_overrides.get(key) is not None
-            ):
+            if trace_metadata_overrides and trace_metadata_overrides.get(key) is not None:
                 payload[key] = trace_metadata_overrides.get(key)
         return {key: value for key, value in payload.items() if value is not None}
 
@@ -199,9 +197,7 @@ class UnifiedLLMRouter:
                     state = profiles.setdefault(profile_id, {})
                     disabled_until = state.get("disabled_until")
                     disabled_until_ts = (
-                        float(disabled_until)
-                        if isinstance(disabled_until, (int, float))
-                        else None
+                        float(disabled_until) if isinstance(disabled_until, int | float) else None
                     )
                     if disabled_until_ts and disabled_until_ts > now_ts:
                         continue
@@ -245,9 +241,7 @@ class UnifiedLLMRouter:
                 state["last_error_at"] = utc_now_iso()
                 if exc.should_try_next_profile:
                     state["status"] = "cooldown"
-                    state["disabled_until"] = (
-                        time.time() + self.account_failure_cooldown_seconds
-                    )
+                    state["disabled_until"] = time.time() + self.account_failure_cooldown_seconds
                 else:
                     state["status"] = "error"
                 return payload
@@ -279,9 +273,7 @@ class UnifiedLLMRouter:
                 configured_profile_ids=self.profile_ids or None,
                 primary_profile_id=self.profile_id,
             ),
-            "fallback": load_runtime_state_or_default(self.rotation_state_path).get(
-                "fallback", {}
-            ),
+            "fallback": load_runtime_state_or_default(self.rotation_state_path).get("fallback", {}),
             "primary_profile_id": self.profile_id,
             "configured_profile_ids": list(self.profile_ids),
         }
@@ -312,9 +304,7 @@ class UnifiedLLMRouter:
             payload["temperature"] = temperature
         return payload
 
-    def _select_model_for_route(
-        self, requested_model: str | None, *, route_policy: str
-    ) -> str:
+    def _select_model_for_route(self, requested_model: str | None, *, route_policy: str) -> str:
         normalized_route_policy = normalize_route_policy(route_policy)
         requested = str(requested_model or "").strip()
         fallback_model = str(self.fallback_transport.model or "").strip()
@@ -347,9 +337,7 @@ class UnifiedLLMRouter:
         trace_metadata_overrides: dict[str, Any] | None = None,
     ) -> CodexModelResponse:
         normalized_route_policy = normalize_route_policy(route_policy)
-        effective_model = self._select_model_for_route(
-            model, route_policy=normalized_route_policy
-        )
+        effective_model = self._select_model_for_route(model, route_policy=normalized_route_policy)
         attempts: list[dict[str, Any]] = []
         request_metadata = self._request_trace_metadata(
             route_policy=normalized_route_policy,
@@ -372,26 +360,20 @@ class UnifiedLLMRouter:
             context_id=context_id,
             metadata=request_metadata,
             input_payload=request_summary,
-            tags=self._trace_tags(
-                route_policy=normalized_route_policy, agent_slug=agent_slug
-            ),
+            tags=self._trace_tags(route_policy=normalized_route_policy, agent_slug=agent_slug),
         ) as request_trace:
             try:
                 if normalized_route_policy == ROUTE_POLICY_MINIMAX_ONLY:
-                    if not self.fallback_transport.supports(
-                        model_override=effective_model
-                    ):
+                    if not self.fallback_transport.supports(model_override=effective_model):
                         raise RuntimeError(
                             "llm_proxy minimax_only route requested but fallback is not configured"
                         )
-                    fallback_request_payload = (
-                        self._fallback_payload_from_codex_request(
-                            instructions=instructions,
-                            input_items=input_items,
-                            tools=tools,
-                            model=effective_model,
-                            temperature=temperature,
-                        )
+                    fallback_request_payload = self._fallback_payload_from_codex_request(
+                        instructions=instructions,
+                        input_items=input_items,
+                        tools=tools,
+                        model=effective_model,
+                        temperature=temperature,
                     )
                     with request_trace.generation(
                         name=GENERATION_NAME_FALLBACK,
@@ -402,9 +384,7 @@ class UnifiedLLMRouter:
                             "selected_transport": "fallback",
                             "route_policy": normalized_route_policy,
                         },
-                        model_parameters_payload=model_parameters(
-                            temperature=temperature
-                        ),
+                        model_parameters_payload=model_parameters(temperature=temperature),
                     ) as generation:
                         started_at = time.perf_counter()
                         try:
@@ -429,9 +409,7 @@ class UnifiedLLMRouter:
                         latency_ms = int((time.perf_counter() - started_at) * 1000)
                         generation.update(
                             output=summarize_openai_response(fallback_payload),
-                            usage_details=normalize_usage(
-                                fallback_payload.get("usage")
-                            ),
+                            usage_details=normalize_usage(fallback_payload.get("usage")),
                             metadata={
                                 "transport": "fallback",
                                 "selected_transport": "fallback",
@@ -531,14 +509,12 @@ class UnifiedLLMRouter:
                     normalized_route_policy != ROUTE_POLICY_CODEX_ONLY
                     and self.fallback_transport.enabled
                 ):
-                    fallback_request_payload = (
-                        self._fallback_payload_from_codex_request(
-                            instructions=instructions,
-                            input_items=input_items,
-                            tools=tools,
-                            model=effective_model,
-                            temperature=temperature,
-                        )
+                    fallback_request_payload = self._fallback_payload_from_codex_request(
+                        instructions=instructions,
+                        input_items=input_items,
+                        tools=tools,
+                        model=effective_model,
+                        temperature=temperature,
                     )
                     with request_trace.generation(
                         name=GENERATION_NAME_FALLBACK,
@@ -549,9 +525,7 @@ class UnifiedLLMRouter:
                             "route_policy": normalized_route_policy,
                             "codex_attempts": len(attempts),
                         },
-                        model_parameters_payload=model_parameters(
-                            temperature=temperature
-                        ),
+                        model_parameters_payload=model_parameters(temperature=temperature),
                     ) as generation:
                         started_at = time.perf_counter()
                         try:
@@ -579,9 +553,7 @@ class UnifiedLLMRouter:
                         latency_ms = int((time.perf_counter() - started_at) * 1000)
                         generation.update(
                             output=summarize_openai_response(fallback_payload),
-                            usage_details=normalize_usage(
-                                fallback_payload.get("usage")
-                            ),
+                            usage_details=normalize_usage(fallback_payload.get("usage")),
                             metadata={
                                 "transport": "fallback",
                                 "latency_ms": latency_ms,
@@ -628,14 +600,10 @@ class UnifiedLLMRouter:
         messages = payload.get("messages")
         if not isinstance(messages, list) or not messages:
             raise RuntimeError("Expected non-empty 'messages' list")
-        model = self._select_model_for_route(
-            payload.get("model"), route_policy=route_policy
-        )
+        model = self._select_model_for_route(payload.get("model"), route_policy=route_policy)
         instructions = build_instructions(messages, default_system_instructions)
         input_items = openai_messages_to_codex_input(messages)
-        codex_tools = openai_tools_to_codex(
-            payload.get("tools"), payload.get("tool_choice")
-        )
+        codex_tools = openai_tools_to_codex(payload.get("tools"), payload.get("tool_choice"))
         temperature = payload.get("temperature")
         if temperature is not None:
             temperature = float(temperature)

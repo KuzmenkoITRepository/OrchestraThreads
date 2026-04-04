@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import socket
 import unittest
-from typing import Any, Optional
+from typing import Any
 
 import aiohttp
 
-from core.orchestra_agents.runtime import BaseAgentBackend, EventDelivery, EventDeliveryResult, StandardAgentApplication
+from core.orchestra_agents.runtime import (
+    BaseAgentBackend,
+    EventDelivery,
+    EventDeliveryResult,
+    StandardAgentApplication,
+)
 
 
 def _free_port() -> int:
@@ -44,8 +48,12 @@ class RuntimeContractTests(unittest.IsolatedAsyncioTestCase):
         await self.session.close()
         await self.app.stop()
 
-    async def _request(self, method: str, path: str, payload: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-        async with self.session.request(method, f"http://127.0.0.1:{self.port}{path}", json=payload) as response:
+    async def _request(
+        self, method: str, path: str, payload: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        async with self.session.request(
+            method, f"http://127.0.0.1:{self.port}{path}", json=payload
+        ) as response:
             raw = await response.text()
             data = json.loads(raw) if raw else {}
             if response.status >= 400:

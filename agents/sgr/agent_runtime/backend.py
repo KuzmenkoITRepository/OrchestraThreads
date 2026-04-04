@@ -9,10 +9,9 @@ import os
 import re
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import aiohttp
-
 from core.llm_proxy.client_config import (
     LLM_PROXY_TRACE_AGENT_HEADER,
     LLM_PROXY_TRACE_CONTEXT_HEADER,
@@ -40,7 +39,6 @@ from core.orchestra_thread.active_context import (
 from core.orchestra_thread.client import OrchestraThreadsClient
 from core.orchestra_thread.mcp_server import OrchestraThreadsMCPServer
 
-
 logger = logging.getLogger(__name__)
 _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 
@@ -52,7 +50,7 @@ def _message_preview(text: str, *, limit: int = 160) -> str:
     return f"{preview[: max(0, limit - 3)]}..."
 
 
-def _normalize_optional_str(value: Any) -> Optional[str]:
+def _normalize_optional_str(value: Any) -> str | None:
     normalized = str(value or "").strip()
     return normalized or None
 
@@ -90,7 +88,7 @@ def _strip_think_blocks(text: str) -> str:
 
 @dataclass(frozen=True)
 class SGRRuntimeSettings:
-    threads_url: Optional[str]
+    threads_url: str | None
     http_endpoint: str
     heartbeat_interval_seconds: float
     guide_view: str
@@ -104,9 +102,9 @@ class ToolExecutionOutcome:
     tool_name: str
     result_text: str
     emitted_message: bool = False
-    published_status: Optional[str] = None
-    message_preview: Optional[str] = None
-    route: Optional[str] = None
+    published_status: str | None = None
+    message_preview: str | None = None
+    route: str | None = None
 
 
 @dataclass
@@ -117,10 +115,10 @@ class AgentTurnOutcome:
     statuses_published: int = 0
     used_tools: list[str] = field(default_factory=list)
     direct_text_ignored: bool = False
-    ignored_text_preview: Optional[str] = None
-    last_reply_preview: Optional[str] = None
-    last_status_preview: Optional[str] = None
-    last_published_status: Optional[str] = None
+    ignored_text_preview: str | None = None
+    last_reply_preview: str | None = None
+    last_status_preview: str | None = None
+    last_published_status: str | None = None
 
     @property
     def action_emitted(self) -> bool:
@@ -136,9 +134,9 @@ class SGRMinimaxBackend(BaseAgentBackend):
         agent_slug: str,
         backend_type: str,
         working_dir: str,
-        config: Optional[dict[str, Any]] = None,
+        config: dict[str, Any] | None = None,
         system_prompt: str = "",
-        http_endpoint: Optional[str] = None,
+        http_endpoint: str | None = None,
     ) -> None:
         super().__init__(
             agent_slug=agent_slug,
@@ -164,14 +162,10 @@ class SGRMinimaxBackend(BaseAgentBackend):
             threads_url_raw = os.getenv("ORCHESTRA_THREADS_URL")
         self.settings = SGRRuntimeSettings(
             threads_url=_normalize_optional_str(
-                threads_url_raw.rstrip("/")
-                if isinstance(threads_url_raw, str)
-                else threads_url_raw
+                threads_url_raw.rstrip("/") if isinstance(threads_url_raw, str) else threads_url_raw
             ),
             http_endpoint=(
-                str(
-                    http_endpoint or os.getenv("ORCHESTRA_AGENT_HTTP_ENDPOINT") or ""
-                ).rstrip("/")
+                str(http_endpoint or os.getenv("ORCHESTRA_AGENT_HTTP_ENDPOINT") or "").rstrip("/")
             ),
             heartbeat_interval_seconds=max(
                 2.0,
@@ -181,14 +175,10 @@ class SGRMinimaxBackend(BaseAgentBackend):
                     default=10.0,
                 ),
             ),
-            guide_view=str(raw_config.get("guide_view") or "compact").strip().lower()
-            or "compact",
-            react_to_inactive=_normalize_bool(
-                raw_config.get("react_to_inactive"), default=True
-            ),
+            guide_view=str(raw_config.get("guide_view") or "compact").strip().lower() or "compact",
+            react_to_inactive=_normalize_bool(raw_config.get("react_to_inactive"), default=True),
             max_reasoning_steps=_normalize_int(
-                os.getenv("SGR_MAX_REASONING_STEPS")
-                or raw_config.get("max_reasoning_steps"),
+                os.getenv("SGR_MAX_REASONING_STEPS") or raw_config.get("max_reasoning_steps"),
                 default=8,
                 minimum=1,
             ),
@@ -199,22 +189,22 @@ class SGRMinimaxBackend(BaseAgentBackend):
                 minimum=0,
             ),
         )
-        self.thread_client: Optional[OrchestraThreadsClient] = None
-        self.mcp_server: Optional[OrchestraThreadsMCPServer] = None
+        self.thread_client: OrchestraThreadsClient | None = None
+        self.mcp_server: OrchestraThreadsMCPServer | None = None
         self._openai_tools = self._build_openai_tools()
-        self._http_session: Optional[aiohttp.ClientSession] = None
-        self._heartbeat_task: Optional[asyncio.Task[None]] = None
+        self._http_session: aiohttp.ClientSession | None = None
+        self._heartbeat_task: asyncio.Task[None] | None = None
         self._registered_in_threads = False
         self._guide_loaded = False
         self._guide_text: str = ""
         self._turn_lock = asyncio.Lock()
-        self.last_thread_id: Optional[str] = None
-        self.last_peer_agent_slug: Optional[str] = None
-        self.last_reply_preview: Optional[str] = None
-        self.last_status_preview: Optional[str] = None
-        self.last_published_status: Optional[str] = None
-        self.last_ignored_output_preview: Optional[str] = None
-        self.last_llm_model: Optional[str] = None
+        self.last_thread_id: str | None = None
+        self.last_peer_agent_slug: str | None = None
+        self.last_reply_preview: str | None = None
+        self.last_status_preview: str | None = None
+        self.last_published_status: str | None = None
+        self.last_ignored_output_preview: str | None = None
+        self.last_llm_model: str | None = None
         self.last_delivery_duplicate = False
         self.last_action_emitted = False
         self.last_tool_actions: list[str] = []
@@ -223,9 +213,7 @@ class SGRMinimaxBackend(BaseAgentBackend):
 
     async def on_start(self) -> None:
         if not llm_proxy_enabled():
-            raise RuntimeError(
-                "LLM_PROXY_ENABLED=false, but the sgr example requires llm_proxy"
-            )
+            raise RuntimeError("LLM_PROXY_ENABLED=false, but the sgr example requires llm_proxy")
         clear_active_context()
 
     async def on_shutdown(self) -> None:
@@ -292,24 +280,16 @@ class SGRMinimaxBackend(BaseAgentBackend):
                     thread_id=event.thread_id
                 )
                 thread_summary = compact_payload.get("thread") or {}
-                peer_agent_slug = self._peer_agent_slug(
-                    thread_summary=thread_summary, event=event
-                )
+                peer_agent_slug = self._peer_agent_slug(thread_summary=thread_summary, event=event)
             else:
-                peer_agent_slug = (
-                    _normalize_optional_str(event.from_agent_slug) or "unknown"
-                )
+                peer_agent_slug = _normalize_optional_str(event.from_agent_slug) or "unknown"
             outcome = await self._run_turn(
                 delivery=delivery,
                 primary_event=event,
                 thread_summary=thread_summary,
                 peer_agent_slug=peer_agent_slug,
             )
-            if (
-                event.thread_id
-                and event.requires_response
-                and not outcome.action_emitted
-            ):
+            if event.thread_id and event.requires_response and not outcome.action_emitted:
                 raise RuntimeError(
                     "SGR turn completed without emitting any orchestra-thread MCP action for a response-required event"
                 )
@@ -437,9 +417,7 @@ class SGRMinimaxBackend(BaseAgentBackend):
     def _thread_client(self) -> OrchestraThreadsClient:
         if self.thread_client is None:
             if not self.settings.threads_url:
-                raise RuntimeError(
-                    "ORCHESTRA_THREADS_URL is required for thread operations"
-                )
+                raise RuntimeError("ORCHESTRA_THREADS_URL is required for thread operations")
             self.thread_client = OrchestraThreadsClient(
                 base_url=self.settings.threads_url,
                 timeout_seconds=max(
@@ -475,9 +453,7 @@ class SGRMinimaxBackend(BaseAgentBackend):
                         await self._register_with_thread_service()
                         self._registered_in_threads = True
                 except Exception as register_exc:
-                    logger.warning(
-                        "re-register failed for %s: %s", self.agent_slug, register_exc
-                    )
+                    logger.warning("re-register failed for %s: %s", self.agent_slug, register_exc)
 
     def _build_openai_tools(self) -> list[dict[str, Any]]:
         tool_entries = [
@@ -616,12 +592,8 @@ class SGRMinimaxBackend(BaseAgentBackend):
         self.handled_event_ids.discard(stale)
 
     def _peer_agent_slug(self, *, thread_summary: dict[str, Any], event: Any) -> str:
-        participant_a = _normalize_optional_str(
-            thread_summary.get("participant_a_agent_slug")
-        )
-        participant_b = _normalize_optional_str(
-            thread_summary.get("participant_b_agent_slug")
-        )
+        participant_a = _normalize_optional_str(thread_summary.get("participant_a_agent_slug"))
+        participant_b = _normalize_optional_str(thread_summary.get("participant_b_agent_slug"))
         if participant_a == self.agent_slug and participant_b:
             return participant_b
         if participant_b == self.agent_slug and participant_a:
@@ -678,19 +650,15 @@ class SGRMinimaxBackend(BaseAgentBackend):
                     }
                 )
                 outcome.llm_turns += 1
-                assistant_message, assistant_text, tool_calls = (
-                    self._extract_completion(response_payload)
+                assistant_message, assistant_text, tool_calls = self._extract_completion(
+                    response_payload
                 )
                 messages.append(assistant_message)
                 if tool_calls:
                     direct_text_retries = 0
                     for tool_call in tool_calls:
                         outcome.tool_calls += 1
-                        function = (
-                            tool_call.get("function")
-                            if isinstance(tool_call, dict)
-                            else {}
-                        )
+                        function = tool_call.get("function") if isinstance(tool_call, dict) else {}
                         tool_name = _normalize_optional_str(
                             function.get("name") if isinstance(function, dict) else None
                         )
@@ -707,8 +675,7 @@ class SGRMinimaxBackend(BaseAgentBackend):
                             {
                                 "role": "tool",
                                 "tool_call_id": str(tool_call.get("id") or "").strip(),
-                                "content": execution.result_text
-                                or "(empty tool result)",
+                                "content": execution.result_text or "(empty tool result)",
                             }
                         )
                     continue
@@ -791,9 +758,7 @@ class SGRMinimaxBackend(BaseAgentBackend):
         ]
         return "\n".join(f"- {item}" for item in rules)
 
-    def _operational_notes(
-        self, *, thread_summary: dict[str, Any], peer_agent_slug: str
-    ) -> str:
+    def _operational_notes(self, *, thread_summary: dict[str, Any], peer_agent_slug: str) -> str:
         notes: list[str] = []
         if self._guide_text:
             notes.append(self._guide_text)
@@ -824,12 +789,10 @@ class SGRMinimaxBackend(BaseAgentBackend):
     ) -> str:
         scope = str(thread_summary.get("scope") or "unknown").strip() or "unknown"
         participant_a = (
-            _normalize_optional_str(thread_summary.get("participant_a_agent_slug"))
-            or "unknown"
+            _normalize_optional_str(thread_summary.get("participant_a_agent_slug")) or "unknown"
         )
         participant_b = (
-            _normalize_optional_str(thread_summary.get("participant_b_agent_slug"))
-            or "unknown"
+            _normalize_optional_str(thread_summary.get("participant_b_agent_slug")) or "unknown"
         )
         status = str(thread_summary.get("status") or "open").strip() or "open"
         owner_agent_slug = (
@@ -837,10 +800,7 @@ class SGRMinimaxBackend(BaseAgentBackend):
         )
         folded = max(0, len(delivery.events) - 1)
         event_label = primary_event.event_kind
-        if (
-            primary_event.event_kind == "notification"
-            and primary_event.notification_status
-        ):
+        if primary_event.event_kind == "notification" and primary_event.notification_status:
             event_label = f"notification:{primary_event.notification_status}"
         ask_line = str(primary_event.message_text or "").strip()
         if primary_event.event_kind == "inactive":
@@ -856,9 +816,7 @@ class SGRMinimaxBackend(BaseAgentBackend):
         if thread_summary.get("last_event_message_preview"):
             lines.append(f"last: {thread_summary.get('last_event_message_preview')}")
         if folded > 0:
-            lines.append(
-                f"note: {folded} older event(s) were folded into this wake-up."
-            )
+            lines.append(f"note: {folded} older event(s) were folded into this wake-up.")
         return "\n".join(lines)
 
     def _active_context_payload(
@@ -871,10 +829,8 @@ class SGRMinimaxBackend(BaseAgentBackend):
         return {
             "agent_slug": self.agent_slug,
             "thread_id": event.thread_id,
-            "root_thread_id": event.root_thread_id
-            or thread_summary.get("root_thread_id"),
-            "parent_thread_id": event.parent_thread_id
-            or thread_summary.get("parent_thread_id"),
+            "root_thread_id": event.root_thread_id or thread_summary.get("root_thread_id"),
+            "parent_thread_id": event.parent_thread_id or thread_summary.get("parent_thread_id"),
             "source_agent_slug": peer_agent_slug,
             "target_agent_slug": self.agent_slug,
             "owner_agent_slug": thread_summary.get("owner_agent_slug"),
@@ -909,9 +865,7 @@ class SGRMinimaxBackend(BaseAgentBackend):
         headers = {
             "Content-Type": "application/json",
             LLM_PROXY_TRACE_AGENT_HEADER: self.agent_slug,
-            LLM_PROXY_TRACE_CONTEXT_HEADER: str(
-                payload.get("thread_id") or self.agent_slug
-            ),
+            LLM_PROXY_TRACE_CONTEXT_HEADER: str(payload.get("thread_id") or self.agent_slug),
         }
         api_key = resolve_llm_proxy_api_key()
         if api_key:
@@ -923,9 +877,7 @@ class SGRMinimaxBackend(BaseAgentBackend):
         async with session.post(url, json=payload, headers=headers) as response:
             raw = await response.text()
             if response.status >= 400:
-                raise RuntimeError(
-                    f"llm_proxy chat request failed: HTTP {response.status}: {raw}"
-                )
+                raise RuntimeError(f"llm_proxy chat request failed: HTTP {response.status}: {raw}")
             try:
                 parsed = json.loads(raw)
             except json.JSONDecodeError as exc:
@@ -950,9 +902,7 @@ class SGRMinimaxBackend(BaseAgentBackend):
             assistant_message["tool_calls"] = tool_calls
         return assistant_message, assistant_text, tool_calls or []
 
-    async def _execute_tool_call(
-        self, tool_call: dict[str, Any]
-    ) -> ToolExecutionOutcome:
+    async def _execute_tool_call(self, tool_call: dict[str, Any]) -> ToolExecutionOutcome:
         function = tool_call.get("function") if isinstance(tool_call, dict) else {}
         if not isinstance(function, dict):
             function = {}
@@ -969,9 +919,7 @@ class SGRMinimaxBackend(BaseAgentBackend):
             arguments = {}
         if not isinstance(arguments, dict):
             arguments = {}
-        result = await self._mcp_server().handle_tools_call(
-            name=tool_name, arguments=arguments
-        )
+        result = await self._mcp_server().handle_tools_call(name=tool_name, arguments=arguments)
         result_text = flatten_content(result.get("content"))
         if not result_text:
             result_text = json.dumps(result, ensure_ascii=False)
@@ -989,16 +937,12 @@ class SGRMinimaxBackend(BaseAgentBackend):
             return outcome
         if tool_name == "thread_send":
             outcome.emitted_message = True
-            outcome.message_preview = _message_preview(
-                str(arguments.get("message") or "")
-            )
+            outcome.message_preview = _message_preview(str(arguments.get("message") or ""))
             outcome.route = _normalize_optional_str(structured.get("route"))
             return outcome
         if tool_name == "thread_status":
             outcome.published_status = _normalize_optional_str(
                 structured.get("published_status")
             ) or _normalize_optional_str(arguments.get("status"))
-            outcome.message_preview = _message_preview(
-                str(arguments.get("message") or "")
-            )
+            outcome.message_preview = _message_preview(str(arguments.get("message") or ""))
         return outcome

@@ -1,7 +1,7 @@
 # End-to-End Test Results
 
-**Date:** 2026-04-03  
-**Test Environment:** Docker container `orchestra-agent-secretary`  
+**Date:** 2026-04-03
+**Test Environment:** Docker container `orchestra-agent-secretary`
 **Status:** ✅ **SUCCESSFUL**
 
 ## Test Summary

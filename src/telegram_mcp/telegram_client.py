@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
 
 from telethon import TelegramClient as TelethonClient  # type: ignore[import-not-found]
 from telethon.errors import (  # type: ignore[import-not-found]
@@ -16,9 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class TelegramClient:
-    def __init__(
-        self, api_id: int, api_hash: str, session_string: Optional[str] = None
-    ):
+    def __init__(self, api_id: int, api_hash: str, session_string: str | None = None):
         if not isinstance(api_id, int):
             raise ValueError("api_id must be an integer")
         if not isinstance(api_hash, str) or not api_hash.strip():
@@ -29,15 +26,11 @@ class TelegramClient:
         self.api_id = api_id
         self.api_hash = api_hash.strip()
         self.session_string = session_string.strip() if session_string else None
-        self._client: Optional[TelethonClient] = None
+        self._client: TelethonClient | None = None
         self._max_retries = 3
 
     def _create_client(self) -> TelethonClient:
-        session = (
-            StringSession(self.session_string)
-            if self.session_string
-            else StringSession()
-        )
+        session = StringSession(self.session_string) if self.session_string else StringSession()
         return TelethonClient(session, self.api_id, self.api_hash)
 
     async def start(self) -> None:
@@ -129,12 +122,10 @@ class TelegramClient:
 
             except ChatWriteForbiddenError:
                 last_error = "Chat write forbidden"
-                logger.error(
-                    "Telegram message failed: chat_id=%s error=%s", chat_id, last_error
-                )
+                logger.error("Telegram message failed: chat_id=%s error=%s", chat_id, last_error)
                 return self._error_result(last_error)
 
-            except (OSError, asyncio.TimeoutError, ConnectionError) as exc:
+            except (TimeoutError, OSError, ConnectionError) as exc:
                 last_error = str(exc) or exc.__class__.__name__
                 logger.warning(
                     "Network error sending Telegram message: chat_id=%s error=%s",

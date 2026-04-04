@@ -214,7 +214,9 @@ class AgentMuxTemplateTests(unittest.IsolatedAsyncioTestCase):
         await backend.on_start()
         return backend
 
-    def _delivery(self, *, event_id: str = "event-1", message_text: str = "Prepare the update.") -> EventDelivery:
+    def _delivery(
+        self, *, event_id: str = "event-1", message_text: str = "Prepare the update."
+    ) -> EventDelivery:
         return EventDelivery.from_dict(
             {
                 "delivery_id": f"delivery-{event_id}",
@@ -260,18 +262,24 @@ class AgentMuxTemplateTests(unittest.IsolatedAsyncioTestCase):
             capture = json.loads(self.capture_path.read_text(encoding="utf-8"))
             self.assertEqual(capture["stdin_payload"]["engine"], "codex")
             self.assertEqual(capture["stdin_payload"]["role"], "worker")
-            self.assertEqual(capture["stdin_payload"]["engine_opts"]["close_stdin_after_start"], True)
+            self.assertEqual(
+                capture["stdin_payload"]["engine_opts"]["close_stdin_after_start"], True
+            )
             self.assertEqual(capture["context_id_env"], backend.current_context_id)
             self.assertEqual(capture["event_id_env"], "event-1")
             self.assertEqual(capture["event_kind_env"], "telegram_message")
             self.assertEqual(capture["active_context"]["context_id"], backend.current_context_id)
             self.assertEqual(capture["active_context"]["event_id"], "event-1")
             self.assertNotIn("thread_id", capture["active_context"])
-            self.assertEqual(capture["active_context"]["metadata"]["source_context"]["channel"], "telegram")
-            self.assertEqual(capture["compat_active_context_path_env"], capture["active_context_path_env"])
+            self.assertEqual(
+                capture["active_context"]["metadata"]["source_context"]["channel"], "telegram"
+            )
+            self.assertEqual(
+                capture["compat_active_context_path_env"], capture["active_context_path_env"]
+            )
             self.assertIn('model_provider = "llm_proxy"', capture["codex_config"])
-            self.assertIn('[mcp_servers.orchestra_threads]', capture["codex_config"])
-            self.assertIn('ORCHESTRA_THREADS_ACTIVE_CONTEXT_PATH', capture["codex_config"])
+            self.assertIn("[mcp_servers.orchestra_threads]", capture["codex_config"])
+            self.assertIn("ORCHESTRA_THREADS_ACTIVE_CONTEXT_PATH", capture["codex_config"])
 
             status = await backend.last_status()
             self.assertEqual(status["context_id"], backend.current_context_id)
@@ -314,7 +322,10 @@ class AgentMuxTemplateTests(unittest.IsolatedAsyncioTestCase):
         try:
             await backend.handle_events(self._delivery())
             failed = await _wait_for(
-                lambda: (backend.last_dispatch_status == "failed" and backend.runtime_state.status_snapshot()["failed_queue_size"] == 1)
+                lambda: (
+                    backend.last_dispatch_status == "failed"
+                    and backend.runtime_state.status_snapshot()["failed_queue_size"] == 1
+                )
             )
             self.assertTrue(failed)
             self.assertIn("without any tool call", backend.last_dispatch_reason or "")
@@ -327,13 +338,19 @@ class AgentMuxTemplateTests(unittest.IsolatedAsyncioTestCase):
         backend = await self._start_backend()
         try:
             await backend.handle_events(self._delivery())
-            active = await _wait_for(lambda: backend._active_process is not None and backend._active_process.returncode is None)
+            active = await _wait_for(
+                lambda: backend._active_process is not None
+                and backend._active_process.returncode is None
+            )
             self.assertTrue(active)
             stop_payload = await backend.stop(
                 StopRequest(reason="stop requested", thread_id=None, parent_thread_id=None)
             )
             self.assertEqual(stop_payload["cleared_queue_events"], 0)
-            cleared = await _wait_for(lambda: backend._active_process is None or backend._active_process.returncode is not None)
+            cleared = await _wait_for(
+                lambda: backend._active_process is None
+                or backend._active_process.returncode is not None
+            )
             self.assertTrue(cleared)
         finally:
             os.environ.pop("FAKE_AGENT_MUX_SLEEP", None)
@@ -352,7 +369,9 @@ class AgentMuxTemplateTests(unittest.IsolatedAsyncioTestCase):
         backend = await self._start_backend()
         try:
             self.assertEqual(backend.current_context_id, context_id_before)
-            clear_payload = await backend.clear_context(self.backend_module.ClearContextRequest(requested_by="tester"))
+            clear_payload = await backend.clear_context(
+                self.backend_module.ClearContextRequest(requested_by="tester")
+            )
             context_id_after = backend.current_context_id
             self.assertEqual(clear_payload["previous_context_id"], context_id_before)
             self.assertEqual(clear_payload["context_id"], context_id_after)
@@ -367,7 +386,9 @@ class AgentMuxTemplateTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(backend.current_context_id, context_id_after)
             status_after = await backend.last_status()
             self.assertEqual(status_after["runtime_context"]["context_id"], context_id_after)
-            self.assertEqual(status_after["runtime_context"]["previous_context_id"], context_id_before)
+            self.assertEqual(
+                status_after["runtime_context"]["previous_context_id"], context_id_before
+            )
             self.assertEqual(status_after["runtime_context"]["recent_entries"], [])
         finally:
             await backend.on_shutdown()
@@ -378,16 +399,21 @@ class AgentMuxTemplateTests(unittest.IsolatedAsyncioTestCase):
             require_tool_call_for_response=True,
         )
         try:
-            await backend.handle_events(self._delivery(event_id="event-1", message_text="Prepare the update."))
+            await backend.handle_events(
+                self._delivery(event_id="event-1", message_text="Prepare the update.")
+            )
             done = await _wait_for(lambda: backend.last_dispatch_status == "completed")
             self.assertTrue(done)
 
-            await backend.handle_events(self._delivery(event_id="event-2", message_text="What did I ask before?"))
+            await backend.handle_events(
+                self._delivery(event_id="event-2", message_text="What did I ask before?")
+            )
             done = await _wait_for(
                 lambda: (
                     backend.last_dispatch_status == "completed"
                     and backend.last_processed_event_id == "event-2"
-                    and len((backend.runtime_state.context_snapshot().get("recent_entries") or [])) >= 3
+                    and len(backend.runtime_state.context_snapshot().get("recent_entries") or [])
+                    >= 3
                 )
             )
             self.assertTrue(done)

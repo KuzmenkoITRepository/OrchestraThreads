@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import unicodedata
-
+from datetime import UTC, datetime
 
 THREAD_NON_TERMINAL_STATUSES = {"open", "in_progress", "review"}
 THREAD_TERMINAL_STATUSES = {"done", "closed"}
@@ -25,7 +24,7 @@ class ServiceError(RuntimeError):
 
 def utc_now_iso() -> str:
     """Return the current UTC timestamp in ISO-8601 format."""
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def normalize_status(value: str) -> str:

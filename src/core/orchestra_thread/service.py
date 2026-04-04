@@ -8,7 +8,7 @@ import os
 import traceback
 import uuid
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import aiohttp
 from aiohttp import web
@@ -20,13 +20,12 @@ from .common import (
     THREAD_NOTIFICATION_STATUSES,
     THREAD_TERMINAL_STATUSES,
     ServiceError,
-    normalize_text_input,
     normalize_status,
+    normalize_text_input,
     utc_now_iso,
 )
 from .guide import build_instruction_payload
 from .store import ThreadStore
-
 
 logger = logging.getLogger(__name__)
 SERVICE_APP_KEY = web.AppKey("service", "OrchestraThreadsService")
@@ -50,30 +49,31 @@ class OrchestraThreadsService:
     def __init__(
         self,
         *,
-        database_url: Optional[str] = None,
-        database_schema: Optional[str] = None,
-        db_min_pool_size: Optional[int] = None,
-        db_max_pool_size: Optional[int] = None,
-        db_command_timeout_seconds: Optional[float] = None,
-        db_path: Optional[str] = None,
-        agent_lease_seconds: Optional[int] = None,
-        delivery_poll_interval_seconds: Optional[float] = None,
-        inactivity_timeout_seconds: Optional[int] = None,
-        retry_base_seconds: Optional[int] = None,
-        retry_max_seconds: Optional[int] = None,
+        database_url: str | None = None,
+        database_schema: str | None = None,
+        db_min_pool_size: int | None = None,
+        db_max_pool_size: int | None = None,
+        db_command_timeout_seconds: float | None = None,
+        db_path: str | None = None,
+        agent_lease_seconds: int | None = None,
+        delivery_poll_interval_seconds: float | None = None,
+        inactivity_timeout_seconds: int | None = None,
+        retry_base_seconds: int | None = None,
+        retry_max_seconds: int | None = None,
     ) -> None:
         if db_path is not None:
-            raise ValueError("SQLite support has been removed. Use database_url / ORCHESTRA_THREADS_DATABASE_URL.")
+            raise ValueError(
+                "SQLite support has been removed. Use database_url / ORCHESTRA_THREADS_DATABASE_URL."
+            )
         self.database_url = str(
             database_url
             or os.getenv("ORCHESTRA_THREADS_DATABASE_URL")
             or "postgresql://orchestra:orchestra@127.0.0.1:5432/orchestra_threads"
         ).strip()
-        self.database_schema = str(
-            database_schema
-            or os.getenv("ORCHESTRA_THREADS_DB_SCHEMA")
+        self.database_schema = (
+            str(database_schema or os.getenv("ORCHESTRA_THREADS_DB_SCHEMA") or "public").strip()
             or "public"
-        ).strip() or "public"
+        )
         self.db_min_pool_size = max(
             1,
             int(db_min_pool_size or os.getenv("ORCHESTRA_THREADS_DB_MIN_POOL_SIZE", "5")),
@@ -84,18 +84,31 @@ class OrchestraThreadsService:
         )
         self.db_command_timeout_seconds = max(
             1.0,
-            float(db_command_timeout_seconds or os.getenv("ORCHESTRA_THREADS_DB_COMMAND_TIMEOUT_SECONDS", "10")),
+            float(
+                db_command_timeout_seconds
+                or os.getenv("ORCHESTRA_THREADS_DB_COMMAND_TIMEOUT_SECONDS", "10")
+            ),
         )
-        self.agent_lease_seconds = max(5, int(agent_lease_seconds or os.getenv("ORCHESTRA_THREADS_AGENT_LEASE_SECONDS", "30")))
+        self.agent_lease_seconds = max(
+            5, int(agent_lease_seconds or os.getenv("ORCHESTRA_THREADS_AGENT_LEASE_SECONDS", "30"))
+        )
         self.delivery_poll_interval_seconds = max(
             0.2,
-            float(delivery_poll_interval_seconds or os.getenv("ORCHESTRA_THREADS_DELIVERY_POLL_INTERVAL_SECONDS", "1")),
+            float(
+                delivery_poll_interval_seconds
+                or os.getenv("ORCHESTRA_THREADS_DELIVERY_POLL_INTERVAL_SECONDS", "1")
+            ),
         )
         self.inactivity_timeout_seconds = max(
             10,
-            int(inactivity_timeout_seconds or os.getenv("ORCHESTRA_THREADS_INACTIVITY_TIMEOUT_SECONDS", "60")),
+            int(
+                inactivity_timeout_seconds
+                or os.getenv("ORCHESTRA_THREADS_INACTIVITY_TIMEOUT_SECONDS", "60")
+            ),
         )
-        self.retry_base_seconds = max(1, int(retry_base_seconds or os.getenv("ORCHESTRA_THREADS_RETRY_BASE_SECONDS", "2")))
+        self.retry_base_seconds = max(
+            1, int(retry_base_seconds or os.getenv("ORCHESTRA_THREADS_RETRY_BASE_SECONDS", "2"))
+        )
         self.retry_max_seconds = max(
             self.retry_base_seconds,
             int(retry_max_seconds or os.getenv("ORCHESTRA_THREADS_RETRY_MAX_SECONDS", "30")),
@@ -108,9 +121,9 @@ class OrchestraThreadsService:
             command_timeout_seconds=self.db_command_timeout_seconds,
         )
         self._lock = asyncio.Lock()
-        self._delivery_task: Optional[asyncio.Task[None]] = None
-        self._inactivity_task: Optional[asyncio.Task[None]] = None
-        self._http_session: Optional[aiohttp.ClientSession] = None
+        self._delivery_task: asyncio.Task[None] | None = None
+        self._inactivity_task: asyncio.Task[None] | None = None
+        self._http_session: aiohttp.ClientSession | None = None
         self.running = False
 
     async def start(self) -> None:
@@ -120,8 +133,12 @@ class OrchestraThreadsService:
         try:
             self._http_session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10))
             self.running = True
-            self._delivery_task = asyncio.create_task(self._delivery_loop(), name="orchestra-threads-delivery")
-            self._inactivity_task = asyncio.create_task(self._inactivity_loop(), name="orchestra-threads-inactivity")
+            self._delivery_task = asyncio.create_task(
+                self._delivery_loop(), name="orchestra-threads-delivery"
+            )
+            self._inactivity_task = asyncio.create_task(
+                self._inactivity_loop(), name="orchestra-threads-inactivity"
+            )
         except Exception:
             await self.store.close()
             raise
@@ -154,9 +171,13 @@ class OrchestraThreadsService:
             return participant_b
         if participant_b == agent_slug:
             return participant_a
-        raise ServiceError(400, f"{agent_slug} is not a participant of thread {thread.get('thread_id')}")
+        raise ServiceError(
+            400, f"{agent_slug} is not a participant of thread {thread.get('thread_id')}"
+        )
 
-    def _validate_routing(self, *, thread: dict[str, Any], from_agent_slug: str, to_agent_slug: str) -> None:
+    def _validate_routing(
+        self, *, thread: dict[str, Any], from_agent_slug: str, to_agent_slug: str
+    ) -> None:
         if normalize_status(str(thread.get("status") or "")) in THREAD_TERMINAL_STATUSES:
             raise ServiceError(409, f"Thread {thread.get('thread_id')} is already terminal")
         expected_peer = self._thread_peer_agent_slug(thread=thread, agent_slug=from_agent_slug)
@@ -166,7 +187,7 @@ class OrchestraThreadsService:
                 f"Thread {thread.get('thread_id')} expects peer {expected_peer}, got {to_agent_slug}",
             )
 
-    def _thread_summary(self, thread: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    def _thread_summary(self, thread: dict[str, Any] | None) -> dict[str, Any] | None:
         if thread is None:
             return None
         payload = dict(thread)
@@ -178,16 +199,24 @@ class OrchestraThreadsService:
             peer_agent_slug = participant_b_agent_slug
         elif owner_agent_slug and owner_agent_slug == participant_b_agent_slug:
             peer_agent_slug = participant_a_agent_slug
-        thread_scope = "root" if payload.get("thread_id") == payload.get("root_thread_id") else "child"
+        thread_scope = (
+            "root" if payload.get("thread_id") == payload.get("root_thread_id") else "child"
+        )
         agents = payload.get("agents")
         if not isinstance(agents, dict):
             agents = {
                 "owner": self._agent_card_from_record(None, agent_slug=owner_agent_slug),
-                "participant_a": self._agent_card_from_record(None, agent_slug=participant_a_agent_slug),
-                "participant_b": self._agent_card_from_record(None, agent_slug=participant_b_agent_slug),
+                "participant_a": self._agent_card_from_record(
+                    None, agent_slug=participant_a_agent_slug
+                ),
+                "participant_b": self._agent_card_from_record(
+                    None, agent_slug=participant_b_agent_slug
+                ),
                 "peer": self._agent_card_from_record(None, agent_slug=peer_agent_slug),
             }
-        payload["is_terminal"] = normalize_status(str(payload.get("status") or "")) in THREAD_TERMINAL_STATUSES
+        payload["is_terminal"] = (
+            normalize_status(str(payload.get("status") or "")) in THREAD_TERMINAL_STATUSES
+        )
         payload["scope"] = thread_scope
         payload["thread_scope"] = thread_scope
         payload["agents"] = agents
@@ -219,7 +248,7 @@ class OrchestraThreadsService:
         self,
         *,
         thread: dict[str, Any],
-        latest_event: Optional[dict[str, Any]],
+        latest_event: dict[str, Any] | None,
     ) -> dict[str, Any]:
         payload = self._thread_summary(thread) or {}
         latest = latest_event or {}
@@ -228,10 +257,14 @@ class OrchestraThreadsService:
         payload["last_event_from_agent_slug"] = latest.get("from_agent_slug")
         payload["last_event_to_agent_slug"] = latest.get("to_agent_slug")
         payload["last_event_created_at"] = latest.get("created_at")
-        payload["last_event_message_preview"] = _message_preview(str(latest.get("message_text") or ""))
+        payload["last_event_message_preview"] = _message_preview(
+            str(latest.get("message_text") or "")
+        )
         return payload
 
-    def _agent_card_from_record(self, agent: Optional[dict[str, Any]], *, agent_slug: str) -> dict[str, Any]:
+    def _agent_card_from_record(
+        self, agent: dict[str, Any] | None, *, agent_slug: str
+    ) -> dict[str, Any]:
         normalized_slug = str(agent_slug or "").strip()
         payload = dict(agent or {})
         metadata = payload.get("metadata_json")
@@ -248,7 +281,9 @@ class OrchestraThreadsService:
         if not agent_type:
             agent_type = "manual_cli" if kind == "manual-cli-agent" else "registered"
         backend_type = str(metadata.get("backend_type") or "").strip() or kind or "unknown"
-        display_name = str(payload.get("display_name") or normalized_slug).strip() or normalized_slug
+        display_name = (
+            str(payload.get("display_name") or normalized_slug).strip() or normalized_slug
+        )
         return {
             "slug": normalized_slug,
             "display_name": display_name,
@@ -260,7 +295,9 @@ class OrchestraThreadsService:
             "kind": kind or None,
         }
 
-    def _event_payload(self, event: dict[str, Any], *, agents_by_slug: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    def _event_payload(
+        self, event: dict[str, Any], *, agents_by_slug: dict[str, dict[str, Any]]
+    ) -> dict[str, Any]:
         message_text = str(event.get("message_text") or "")
         from_agent_slug = str(event.get("from_agent_slug") or "").strip()
         to_agent_slug = str(event.get("to_agent_slug") or "").strip()
@@ -271,9 +308,14 @@ class OrchestraThreadsService:
             "notification_status": event.get("notification_status"),
             "from_agent_slug": from_agent_slug,
             "to_agent_slug": to_agent_slug,
-            "from_agent": self._agent_card_from_record(agents_by_slug.get(from_agent_slug), agent_slug=from_agent_slug),
-            "to_agent": self._agent_card_from_record(agents_by_slug.get(to_agent_slug), agent_slug=to_agent_slug),
-            "requires_action": bool(event.get("interrupts_runtime")) or bool(event.get("requires_response")),
+            "from_agent": self._agent_card_from_record(
+                agents_by_slug.get(from_agent_slug), agent_slug=from_agent_slug
+            ),
+            "to_agent": self._agent_card_from_record(
+                agents_by_slug.get(to_agent_slug), agent_slug=to_agent_slug
+            ),
+            "requires_action": bool(event.get("interrupts_runtime"))
+            or bool(event.get("requires_response")),
             "interrupts_runtime": bool(event.get("interrupts_runtime")),
             "requires_response": bool(event.get("requires_response")),
             "pending_delivery": bool(event.get("pending_delivery")),
@@ -335,7 +377,9 @@ class OrchestraThreadsService:
                 display_name=str(payload.get("display_name") or agent_slug).strip() or agent_slug,
                 event_callback_url=event_callback_url,
                 stop_callback_url=stop_callback_url,
-                metadata=payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {},
+                metadata=payload.get("metadata")
+                if isinstance(payload.get("metadata"), dict)
+                else {},
             )
         return {
             "success": True,
@@ -372,8 +416,8 @@ class OrchestraThreadsService:
         from_agent_slug: str,
         to_agent_slug: str,
         message_text: str,
-        thread_id: Optional[str],
-        parent_thread_id: Optional[str],
+        thread_id: str | None,
+        parent_thread_id: str | None,
         client_request_id: str,
     ) -> dict[str, Any]:
         normalized_from = str(from_agent_slug or "").strip()
@@ -409,9 +453,16 @@ class OrchestraThreadsService:
             elif normalized_parent_thread_id:
                 parent_thread = await self.store.get_thread(normalized_parent_thread_id)
                 if parent_thread is None:
-                    raise ServiceError(404, f"Unknown parent_thread_id: {normalized_parent_thread_id}")
-                if normalize_status(str(parent_thread.get("status") or "")) in THREAD_TERMINAL_STATUSES:
-                    raise ServiceError(409, f"Parent thread {normalized_parent_thread_id} is already terminal")
+                    raise ServiceError(
+                        404, f"Unknown parent_thread_id: {normalized_parent_thread_id}"
+                    )
+                if (
+                    normalize_status(str(parent_thread.get("status") or ""))
+                    in THREAD_TERMINAL_STATUSES
+                ):
+                    raise ServiceError(
+                        409, f"Parent thread {normalized_parent_thread_id} is already terminal"
+                    )
                 self._thread_peer_agent_slug(thread=parent_thread, agent_slug=normalized_from)
                 thread, created_thread = await self.store.get_or_create_child_thread(
                     thread_id=str(uuid.uuid4()),
@@ -493,12 +544,21 @@ class OrchestraThreadsService:
             thread = await self.store.get_thread(normalized_thread_id)
             if thread is None:
                 raise ServiceError(404, f"Unknown thread_id: {normalized_thread_id}")
-            self._validate_routing(thread=thread, from_agent_slug=normalized_from, to_agent_slug=normalized_to)
+            self._validate_routing(
+                thread=thread, from_agent_slug=normalized_from, to_agent_slug=normalized_to
+            )
 
             owner_agent_slug = str(thread.get("owner_agent_slug") or "").strip()
-            allowed_statuses = OWNER_NOTIFICATION_STATUSES if normalized_from == owner_agent_slug else CALLEE_NOTIFICATION_STATUSES
+            allowed_statuses = (
+                OWNER_NOTIFICATION_STATUSES
+                if normalized_from == owner_agent_slug
+                else CALLEE_NOTIFICATION_STATUSES
+            )
             if normalized_status not in allowed_statuses:
-                raise ServiceError(409, f"{normalized_from} cannot publish {normalized_status} on thread {normalized_thread_id}")
+                raise ServiceError(
+                    409,
+                    f"{normalized_from} cannot publish {normalized_status} on thread {normalized_thread_id}",
+                )
 
             requires_delivery = normalized_status in DELIVERED_NOTIFICATION_STATUSES
             event, thread_payload = await self.store.append_thread_event(
@@ -573,7 +633,9 @@ class OrchestraThreadsService:
                         },
                     )
             async with self._lock:
-                await self.store.update_thread_terminal_status(thread_id=child_thread_id, status="closed")
+                await self.store.update_thread_terminal_status(
+                    thread_id=child_thread_id, status="closed"
+                )
                 await self.store.cancel_pending_events_for_thread(
                     thread_id=child_thread_id,
                     reason=f"thread {child_thread_id} closed because ancestor thread became terminal",
@@ -593,7 +655,9 @@ class OrchestraThreadsService:
                 self._thread_summary(
                     self._inject_agent_cards(thread=thread, agents_by_slug=agents_by_slug)
                 )
-                for thread in await self.store.list_threads(active_only=normalized_scope == "active", limit=max(1, limit))
+                for thread in await self.store.list_threads(
+                    active_only=normalized_scope == "active", limit=max(1, limit)
+                )
             ]
         return {
             "success": True,
@@ -610,18 +674,32 @@ class OrchestraThreadsService:
             thread = await self.store.get_thread(normalized_thread_id)
             if thread is None:
                 raise ServiceError(404, f"Unknown thread_id: {normalized_thread_id}")
-            raw_events = await self.store.list_thread_events(thread_id=normalized_thread_id, limit=max(1, limit))
-            root_group = await self.store.list_threads_by_root(root_thread_id=str(thread.get("root_thread_id")))
+            raw_events = await self.store.list_thread_events(
+                thread_id=normalized_thread_id, limit=max(1, limit)
+            )
+            root_group = await self.store.list_threads_by_root(
+                root_thread_id=str(thread.get("root_thread_id"))
+            )
         events = [self._event_payload(event, agents_by_slug=agents_by_slug) for event in raw_events]
-        thread_payload = next((item for item in root_group if item.get("thread_id") == normalized_thread_id), thread)
+        thread_payload = next(
+            (item for item in root_group if item.get("thread_id") == normalized_thread_id), thread
+        )
         parent_thread_id = str(thread.get("parent_thread_id") or "").strip()
         root_thread_id = str(thread.get("root_thread_id") or "").strip()
-        parent_thread = next((item for item in root_group if item.get("thread_id") == parent_thread_id), None)
-        root_thread = next((item for item in root_group if item.get("thread_id") == root_thread_id), None)
-        child_threads = [item for item in root_group if item.get("parent_thread_id") == normalized_thread_id]
+        parent_thread = next(
+            (item for item in root_group if item.get("thread_id") == parent_thread_id), None
+        )
+        root_thread = next(
+            (item for item in root_group if item.get("thread_id") == root_thread_id), None
+        )
+        child_threads = [
+            item for item in root_group if item.get("parent_thread_id") == normalized_thread_id
+        ]
         return {
             "success": True,
-            "thread": self._thread_summary(self._inject_agent_cards(thread=thread_payload, agents_by_slug=agents_by_slug)),
+            "thread": self._thread_summary(
+                self._inject_agent_cards(thread=thread_payload, agents_by_slug=agents_by_slug)
+            ),
             "events": events,
             "related": {
                 "parent_thread": self._thread_summary(
@@ -631,11 +709,15 @@ class OrchestraThreadsService:
                     self._inject_agent_cards(thread=root_thread, agents_by_slug=agents_by_slug)
                 ),
                 "child_threads": [
-                    self._thread_summary(self._inject_agent_cards(thread=item, agents_by_slug=agents_by_slug))
+                    self._thread_summary(
+                        self._inject_agent_cards(thread=item, agents_by_slug=agents_by_slug)
+                    )
                     for item in child_threads
                 ],
                 "root_group": [
-                    self._thread_summary(self._inject_agent_cards(thread=item, agents_by_slug=agents_by_slug))
+                    self._thread_summary(
+                        self._inject_agent_cards(thread=item, agents_by_slug=agents_by_slug)
+                    )
                     for item in root_group
                 ],
             },
@@ -644,9 +726,9 @@ class OrchestraThreadsService:
     def _inject_agent_cards(
         self,
         *,
-        thread: Optional[dict[str, Any]],
+        thread: dict[str, Any] | None,
         agents_by_slug: dict[str, dict[str, Any]],
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         if thread is None:
             return None
         payload = dict(thread)
@@ -659,7 +741,9 @@ class OrchestraThreadsService:
         elif owner_agent_slug and owner_agent_slug == participant_b_agent_slug:
             peer_agent_slug = participant_a_agent_slug
         payload["agents"] = {
-            "owner": self._agent_card_from_record(agents_by_slug.get(owner_agent_slug), agent_slug=owner_agent_slug),
+            "owner": self._agent_card_from_record(
+                agents_by_slug.get(owner_agent_slug), agent_slug=owner_agent_slug
+            ),
             "participant_a": self._agent_card_from_record(
                 agents_by_slug.get(participant_a_agent_slug),
                 agent_slug=participant_a_agent_slug,
@@ -668,7 +752,9 @@ class OrchestraThreadsService:
                 agents_by_slug.get(participant_b_agent_slug),
                 agent_slug=participant_b_agent_slug,
             ),
-            "peer": self._agent_card_from_record(agents_by_slug.get(peer_agent_slug), agent_slug=peer_agent_slug),
+            "peer": self._agent_card_from_record(
+                agents_by_slug.get(peer_agent_slug), agent_slug=peer_agent_slug
+            ),
         }
         payload["roles"] = {
             "owner_agent_slug": owner_agent_slug,
@@ -694,7 +780,7 @@ class OrchestraThreadsService:
             "thread": self._thread_compact_summary(thread=thread, latest_event=latest_event),
         }
 
-    async def get_instruction(self, *, view: str, section: Optional[str]) -> dict[str, Any]:
+    async def get_instruction(self, *, view: str, section: str | None) -> dict[str, Any]:
         try:
             instruction = build_instruction_payload(view=view, section=section)
         except ValueError as exc:
@@ -712,7 +798,9 @@ class OrchestraThreadsService:
             agent = await self.store.get_agent(agent_slug)
         if agent is None:
             return
-        if not self.store.timestamp_within_lease(agent.get("last_seen_at"), lease_seconds=self.agent_lease_seconds):
+        if not self.store.timestamp_within_lease(
+            agent.get("last_seen_at"), lease_seconds=self.agent_lease_seconds
+        ):
             return
         stop_callback_url = str(agent.get("stop_callback_url") or "").strip()
         if not stop_callback_url:
@@ -728,7 +816,9 @@ class OrchestraThreadsService:
         while self.running:
             try:
                 async with self._lock:
-                    pending_events = await self.store.list_due_pending_events(now_iso=utc_now_iso(), limit=16)
+                    pending_events = await self.store.list_due_pending_events(
+                        now_iso=utc_now_iso(), limit=16
+                    )
                 for item in pending_events:
                     event_id = str(item.get("event_id") or "").strip()
                     target_agent_slug = str(item.get("to_agent_slug") or "").strip()
@@ -888,7 +978,8 @@ def build_app(service: OrchestraThreadsService) -> web.Application:
                 message_text=str(payload.get("message_text") or ""),
                 thread_id=str(payload.get("thread_id") or "").strip() or None,
                 parent_thread_id=str(payload.get("parent_thread_id") or "").strip() or None,
-                client_request_id=str(payload.get("client_request_id") or "").strip() or uuid.uuid4().hex,
+                client_request_id=str(payload.get("client_request_id") or "").strip()
+                or uuid.uuid4().hex,
             )
             return web.json_response(result)
         except ServiceError as exc:
@@ -906,7 +997,8 @@ def build_app(service: OrchestraThreadsService) -> web.Application:
                 thread_id=str(payload.get("thread_id") or "").strip(),
                 status=str(payload.get("status") or "").strip(),
                 message_text=str(payload.get("message_text") or ""),
-                client_request_id=str(payload.get("client_request_id") or "").strip() or uuid.uuid4().hex,
+                client_request_id=str(payload.get("client_request_id") or "").strip()
+                or uuid.uuid4().hex,
             )
             return web.json_response(result)
         except ServiceError as exc:

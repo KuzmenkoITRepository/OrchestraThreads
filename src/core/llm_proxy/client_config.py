@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
-
+from typing import Any
 
 ROUTE_POLICY_MANAGED_AUTO = "managed_auto"
 ROUTE_POLICY_CODEX_ONLY = "codex_only"
@@ -97,7 +97,10 @@ def build_llm_proxy_openai_base_url(route_policy: str, *, proxy_url: str | None 
 
 
 def build_llm_proxy_codex_url(route_policy: str, *, proxy_url: str | None = None) -> str:
-    return build_llm_proxy_openai_base_url(route_policy, proxy_url=proxy_url).rstrip("/") + "/codex/responses"
+    return (
+        build_llm_proxy_openai_base_url(route_policy, proxy_url=proxy_url).rstrip("/")
+        + "/codex/responses"
+    )
 
 
 def _maybe_int(value: Any) -> int | None:
@@ -144,7 +147,9 @@ def resolve_llm_client_config(raw: Any = None) -> LLMClientConfig:
             or default_route_policy(),
         ),
         model=_maybe_text(data.get("model") or os.getenv("LLM_CLIENT_MODEL")),
-        timeout_seconds=_maybe_int(data.get("timeout_seconds") or os.getenv("LLM_CLIENT_TIMEOUT_SECONDS")),
+        timeout_seconds=_maybe_int(
+            data.get("timeout_seconds") or os.getenv("LLM_CLIENT_TIMEOUT_SECONDS")
+        ),
         temperature=_maybe_float(data.get("temperature") or os.getenv("LLM_CLIENT_TEMPERATURE")),
         max_tokens=_maybe_int(data.get("max_tokens") or os.getenv("LLM_CLIENT_MAX_TOKENS")),
         text_verbosity=_maybe_text(

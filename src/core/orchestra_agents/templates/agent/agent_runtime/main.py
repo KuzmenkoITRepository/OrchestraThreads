@@ -20,9 +20,12 @@ def configure_logging() -> None:
 
 async def _run() -> None:
     backend = TemplateBackend(
-        agent_slug=str(os.getenv("ORCHESTRA_AGENT_SLUG") or "__AGENT_SLUG__").strip() or "__AGENT_SLUG__",
-        backend_type=str(os.getenv("ORCHESTRA_AGENT_BACKEND_TYPE") or "__BACKEND_TYPE__").strip() or "__BACKEND_TYPE__",
-        working_dir=str(os.getenv("ORCHESTRA_AGENT_WORKING_DIR") or "/workspace").strip() or "/workspace",
+        agent_slug=str(os.getenv("ORCHESTRA_AGENT_SLUG") or "__AGENT_SLUG__").strip()
+        or "__AGENT_SLUG__",
+        backend_type=str(os.getenv("ORCHESTRA_AGENT_BACKEND_TYPE") or "__BACKEND_TYPE__").strip()
+        or "__BACKEND_TYPE__",
+        working_dir=str(os.getenv("ORCHESTRA_AGENT_WORKING_DIR") or "/workspace").strip()
+        or "/workspace",
     )
     app = StandardAgentApplication(
         backend=backend,

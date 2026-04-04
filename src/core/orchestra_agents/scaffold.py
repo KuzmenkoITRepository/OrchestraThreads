@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-
 PLACEHOLDERS = {
     "__AGENT_SLUG__": "",
     "__AGENT_DISPLAY_NAME__": "",
@@ -41,7 +40,9 @@ def scaffold_agent(
 
     replacements = dict(PLACEHOLDERS)
     replacements["__AGENT_SLUG__"] = normalized_slug
-    replacements["__AGENT_DISPLAY_NAME__"] = display_name or normalized_slug.replace("_", " ").title()
+    replacements["__AGENT_DISPLAY_NAME__"] = (
+        display_name or normalized_slug.replace("_", " ").title()
+    )
     replacements["__BACKEND_TYPE__"] = str(backend_type).strip() or "example"
 
     template_root = _template_root(template)
@@ -63,16 +64,22 @@ def scaffold_agent(
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Scaffold a new Orchestra agent directory.")
     parser.add_argument("--slug", required=True, help="Agent slug, for example coding_agent.")
-    parser.add_argument("--output-dir", required=True, help="Where to write the new agent directory.")
+    parser.add_argument(
+        "--output-dir", required=True, help="Where to write the new agent directory."
+    )
     parser.add_argument("--display-name", help="Optional human-friendly display name.")
-    parser.add_argument("--backend-type", default="example", help="Backend type written into manifest and runtime.")
+    parser.add_argument(
+        "--backend-type", default="example", help="Backend type written into manifest and runtime."
+    )
     parser.add_argument(
         "--template",
         default=DEFAULT_TEMPLATE_NAME,
         choices=["agent", "agent_mux"],
         help="Template root under src/core/orchestra_agents/templates.",
     )
-    parser.add_argument("--force", action="store_true", help="Overwrite an existing non-empty directory.")
+    parser.add_argument(
+        "--force", action="store_true", help="Overwrite an existing non-empty directory."
+    )
     return parser
 
 

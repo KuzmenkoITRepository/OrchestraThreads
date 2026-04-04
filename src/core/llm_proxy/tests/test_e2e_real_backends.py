@@ -20,9 +20,7 @@ class RealBackendE2ETests(unittest.IsolatedAsyncioTestCase):
         if not cls.enabled:
             return
 
-        cls.llm_proxy_base_url = os.getenv(
-            "LLM_PROXY_BASE_URL", "http://localhost:8791"
-        )
+        cls.llm_proxy_base_url = os.getenv("LLM_PROXY_BASE_URL", "http://localhost:8791")
         cls.langfuse_base_url = os.getenv("LANGFUSE_BASE_URL", "http://localhost:3000")
         cls.langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
         cls.langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
@@ -165,9 +163,7 @@ class RealBackendE2ETests(unittest.IsolatedAsyncioTestCase):
     def _serialize(self, payload: Any) -> str:
         return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
-    def _generation_observations(
-        self, trace_details: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    def _generation_observations(self, trace_details: dict[str, Any]) -> list[dict[str, Any]]:
         observations = trace_details.get("observations", [])
         self.assertIsInstance(observations, list)
         generations = [obs for obs in observations if obs.get("type") == "GENERATION"]
@@ -182,22 +178,16 @@ class RealBackendE2ETests(unittest.IsolatedAsyncioTestCase):
         usage = generation.get("usage") or generation.get("usageDetails") or {}
         self.assertTrue(usage, "Generation missing usage metrics")
         numeric_usage_fields = {
-            key: int(value)
-            for key, value in usage.items()
-            if isinstance(value, (int, float))
+            key: int(value) for key, value in usage.items() if isinstance(value, int | float)
         }
-        self.assertTrue(
-            numeric_usage_fields, "Generation usage has no numeric counters"
-        )
+        self.assertTrue(numeric_usage_fields, "Generation usage has no numeric counters")
         self.assertTrue(
             all(value >= 0 for value in numeric_usage_fields.values()),
             f"Generation usage contains negative counters: {numeric_usage_fields}",
         )
 
         model_parameters = (
-            generation.get("modelParameters")
-            or generation.get("model_parameters")
-            or {}
+            generation.get("modelParameters") or generation.get("model_parameters") or {}
         )
         self.assertIn("temperature", model_parameters)
         self.assertEqual(float(model_parameters.get("temperature")), 0.0)
@@ -289,9 +279,7 @@ class RealBackendE2ETests(unittest.IsolatedAsyncioTestCase):
         generation = generations[0]
         self.assertEqual(generation.get("name"), "llm_proxy.fallback_attempt")
         self.assertEqual(generation.get("model"), "MiniMax-M2.7")
-        self.assertEqual(
-            generation.get("metadata", {}).get("selected_transport"), "fallback"
-        )
+        self.assertEqual(generation.get("metadata", {}).get("selected_transport"), "fallback")
         self._assert_generation_metrics(generation)
 
         serialized_generation_input = self._serialize(generation.get("input"))
@@ -398,12 +386,8 @@ class RealBackendE2ETests(unittest.IsolatedAsyncioTestCase):
             assistant_text = self._extract_chat_completion_text(response)
             self.assertIn(marker, assistant_text)
 
-        traces_1 = await self._wait_for_langfuse_traces(
-            session_id=session_id_1, min_count=1
-        )
-        traces_2 = await self._wait_for_langfuse_traces(
-            session_id=session_id_2, min_count=1
-        )
+        traces_1 = await self._wait_for_langfuse_traces(session_id=session_id_1, min_count=1)
+        traces_2 = await self._wait_for_langfuse_traces(session_id=session_id_2, min_count=1)
 
         self.assertEqual(traces_1[0]["sessionId"], session_id_1)
         self.assertEqual(traces_2[0]["sessionId"], session_id_2)

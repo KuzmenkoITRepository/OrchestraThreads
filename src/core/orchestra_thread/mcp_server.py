@@ -13,18 +13,17 @@ import json
 import logging
 import os
 import sys
-from typing import Any, Optional
+from typing import Any
 
 from .active_context import read_active_context
 from .client import OrchestraThreadsClient
-
 
 logger = logging.getLogger(__name__)
 
 PROTOCOL_VERSION = "2024-11-05"
 
 
-def _normalize_optional_str(value: Any) -> Optional[str]:
+def _normalize_optional_str(value: Any) -> str | None:
     normalized = str(value or "").strip()
     return normalized or None
 
@@ -52,13 +51,11 @@ class OrchestraThreadsMCPServer:
     def __init__(
         self,
         *,
-        agent_slug: Optional[str] = None,
-        client: Optional[OrchestraThreadsClient] = None,
+        agent_slug: str | None = None,
+        client: OrchestraThreadsClient | None = None,
     ) -> None:
         self.agent_slug = _normalize_optional_str(
-            agent_slug
-            or os.getenv("ORCHESTRA_THREADS_AGENT_SLUG")
-            or os.getenv("AGENT_SLUG")
+            agent_slug or os.getenv("ORCHESTRA_THREADS_AGENT_SLUG") or os.getenv("AGENT_SLUG")
         )
         if not self.agent_slug:
             raise RuntimeError("ORCHESTRA_THREADS_AGENT_SLUG or AGENT_SLUG is required")
@@ -67,7 +64,7 @@ class OrchestraThreadsMCPServer:
     async def close(self) -> None:
         await self.client.close()
 
-    def _result(self, payload: dict[str, Any], *, text: Optional[str] = None) -> dict[str, Any]:
+    def _result(self, payload: dict[str, Any], *, text: str | None = None) -> dict[str, Any]:
         return {
             "structuredContent": payload,
             "content": [
@@ -92,10 +89,10 @@ class OrchestraThreadsMCPServer:
     def _resolve_send_routing(
         self,
         *,
-        target_agent_slug: Optional[str],
+        target_agent_slug: str | None,
         mode: str,
-        explicit_thread_id: Optional[str],
-    ) -> tuple[Optional[str], Optional[str], str, str]:
+        explicit_thread_id: str | None,
+    ) -> tuple[str | None, str | None, str, str]:
         context = self._active_context()
         current_thread_id = _normalize_optional_str(context.get("thread_id"))
         source_agent_slug = _normalize_optional_str(context.get("source_agent_slug"))
@@ -133,7 +130,9 @@ class OrchestraThreadsMCPServer:
                 return current_thread_id, None, normalized_target, "reply_current"
             if normalized_target:
                 return None, current_thread_id, normalized_target, "child"
-            raise RuntimeError("target_agent_slug is required when auto routing has no known source peer")
+            raise RuntimeError(
+                "target_agent_slug is required when auto routing has no known source peer"
+            )
 
         if not normalized_target:
             raise RuntimeError("target_agent_slug is required outside an active thread")
@@ -179,12 +178,14 @@ class OrchestraThreadsMCPServer:
 
     async def _thread_status(self, arguments: dict[str, Any]) -> dict[str, Any]:
         context = self._active_context()
-        thread_id = _normalize_optional_str(arguments.get("thread_id")) or _normalize_optional_str(context.get("thread_id"))
+        thread_id = _normalize_optional_str(arguments.get("thread_id")) or _normalize_optional_str(
+            context.get("thread_id")
+        )
         if not thread_id:
             raise RuntimeError("thread_id is required outside an active thread")
-        target_agent_slug = _normalize_optional_str(arguments.get("target_agent_slug")) or _normalize_optional_str(
-            context.get("source_agent_slug")
-        )
+        target_agent_slug = _normalize_optional_str(
+            arguments.get("target_agent_slug")
+        ) or _normalize_optional_str(context.get("source_agent_slug"))
         status = _ensure_text(arguments.get("status"), field_name="status")
         message = _ensure_text(arguments.get("message"), field_name="message")
         if not target_agent_slug:
@@ -214,7 +215,9 @@ class OrchestraThreadsMCPServer:
 
     async def _thread_current(self, arguments: dict[str, Any]) -> dict[str, Any]:
         context = self._active_context()
-        thread_id = _normalize_optional_str(arguments.get("thread_id")) or _normalize_optional_str(context.get("thread_id"))
+        thread_id = _normalize_optional_str(arguments.get("thread_id")) or _normalize_optional_str(
+            context.get("thread_id")
+        )
         if not thread_id:
             return self._result(
                 {
@@ -230,17 +233,24 @@ class OrchestraThreadsMCPServer:
         last_event_kind = _normalize_optional_str(thread.get("last_event_kind")) or "none"
         last_event_from = _normalize_optional_str(thread.get("last_event_from_agent_slug"))
         last_event_to = _normalize_optional_str(thread.get("last_event_to_agent_slug"))
-        waiting_on: Optional[str] = None
+        waiting_on: str | None = None
         if last_event_kind in {"message", "inactive"}:
             waiting_on = last_event_to
         elif last_event_kind == "notification":
-            notification_status = _normalize_optional_str(thread.get("last_event_notification_status"))
+            notification_status = _normalize_optional_str(
+                thread.get("last_event_notification_status")
+            )
             if notification_status == "review":
                 waiting_on = _normalize_optional_str(thread.get("owner_agent_slug"))
         if str(thread.get("status") or "").strip().lower() in {"done", "closed"}:
             allowed_actions: list[str] = []
         elif self.agent_slug == str(thread.get("owner_agent_slug") or "").strip():
-            allowed_actions = ["thread_send", "thread_status:in_progress", "thread_status:done", "thread_status:closed"]
+            allowed_actions = [
+                "thread_send",
+                "thread_status:in_progress",
+                "thread_status:done",
+                "thread_status:closed",
+            ]
         else:
             allowed_actions = ["thread_send", "thread_status:in_progress", "thread_status:review"]
 
@@ -249,7 +259,10 @@ class OrchestraThreadsMCPServer:
         if last_event_kind == "message":
             summary = f"{last_event_from} asked: {preview}"
         elif last_event_kind == "notification":
-            notification_status = _normalize_optional_str(thread.get("last_event_notification_status")) or "notification"
+            notification_status = (
+                _normalize_optional_str(thread.get("last_event_notification_status"))
+                or "notification"
+            )
             summary = f"{last_event_from} sent {notification_status}: {preview}"
         elif last_event_kind == "inactive":
             summary = f"Inactivity wake-up for {last_event_to}: {preview}"
@@ -275,7 +288,9 @@ class OrchestraThreadsMCPServer:
 
     async def _thread_expand(self, arguments: dict[str, Any]) -> dict[str, Any]:
         context = self._active_context()
-        thread_id = _normalize_optional_str(arguments.get("thread_id")) or _normalize_optional_str(context.get("thread_id"))
+        thread_id = _normalize_optional_str(arguments.get("thread_id")) or _normalize_optional_str(
+            context.get("thread_id")
+        )
         if not thread_id:
             raise RuntimeError("thread_id is required outside an active thread")
         view = str(arguments.get("view") or "latest").strip().lower() or "latest"
@@ -292,7 +307,7 @@ class OrchestraThreadsMCPServer:
             result = {
                 "ok": True,
                 "thread": payload.get("thread"),
-                "events": events[-max(1, min(limit, len(events) or 1)):],
+                "events": events[-max(1, min(limit, len(events) or 1)) :],
             }
         elif view == "related":
             result = {
@@ -312,7 +327,9 @@ class OrchestraThreadsMCPServer:
             section=_normalize_optional_str(arguments.get("section")),
         )
         instruction = payload.get("instruction") or {}
-        text = str(instruction.get("text") or "").strip() or json.dumps(instruction, ensure_ascii=False)
+        text = str(instruction.get("text") or "").strip() or json.dumps(
+            instruction, ensure_ascii=False
+        )
         structured = {
             "ok": True,
             "operation": "thread_guide",
@@ -415,7 +432,15 @@ class OrchestraThreadsMCPServer:
                             },
                             "section": {
                                 "type": "string",
-                                "enum": ["overview", "workflow", "routing", "statuses", "delivery", "mcp", "mcp_tools"],
+                                "enum": [
+                                    "overview",
+                                    "workflow",
+                                    "routing",
+                                    "statuses",
+                                    "delivery",
+                                    "mcp",
+                                    "mcp_tools",
+                                ],
                             },
                         },
                     },
@@ -436,7 +461,7 @@ class OrchestraThreadsMCPServer:
             return await self._thread_guide(arguments)
         raise RuntimeError(f"Unknown tool: {name}")
 
-    async def handle_request(self, request: dict[str, Any]) -> Optional[dict[str, Any]]:
+    async def handle_request(self, request: dict[str, Any]) -> dict[str, Any] | None:
         method = request.get("method")
         request_id = request.get("id")
         params = request.get("params", {})
@@ -447,14 +472,20 @@ class OrchestraThreadsMCPServer:
         if method == "resources/list":
             return {"jsonrpc": "2.0", "id": request_id, "result": self.handle_resources_list()}
         if method == "resources/templates/list":
-            return {"jsonrpc": "2.0", "id": request_id, "result": self.handle_resource_templates_list()}
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": self.handle_resource_templates_list(),
+            }
         if method == "tools/list":
             return {"jsonrpc": "2.0", "id": request_id, "result": self.handle_tools_list()}
         if method == "tools/call":
             try:
                 result = await self.handle_tools_call(
                     name=str(params.get("name") or ""),
-                    arguments=params.get("arguments") if isinstance(params.get("arguments"), dict) else {},
+                    arguments=params.get("arguments")
+                    if isinstance(params.get("arguments"), dict)
+                    else {},
                 )
                 return {"jsonrpc": "2.0", "id": request_id, "result": result}
             except Exception as exc:
@@ -479,7 +510,9 @@ def _encode_message(payload: dict[str, Any], *, framing: str) -> bytes:
     return body + b"\n"
 
 
-async def _read_message(reader, *, framing_hint: Optional[str] = None) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+async def _read_message(
+    reader, *, framing_hint: str | None = None
+) -> tuple[dict[str, Any] | None, str | None]:
     if framing_hint == "content_length":
         return await _read_content_length_message(reader), "content_length"
     if framing_hint == "newline":
@@ -493,14 +526,16 @@ async def _read_message(reader, *, framing_hint: Optional[str] = None) -> tuple[
     return await _read_content_length_message(reader, first_chunk=first_byte), "content_length"
 
 
-async def _read_newline_message(reader, *, first_chunk: bytes = b"") -> Optional[dict[str, Any]]:
+async def _read_newline_message(reader, *, first_chunk: bytes = b"") -> dict[str, Any] | None:
     line = first_chunk + await asyncio.to_thread(reader.readline)
     if not line:
         return None
     return json.loads(line.decode("utf-8").strip())
 
 
-async def _read_content_length_message(reader, *, first_chunk: bytes = b"") -> Optional[dict[str, Any]]:
+async def _read_content_length_message(
+    reader, *, first_chunk: bytes = b""
+) -> dict[str, Any] | None:
     header_bytes = bytes(first_chunk)
     while True:
         chunk = await asyncio.to_thread(reader.read, 1)
@@ -524,7 +559,7 @@ async def _read_content_length_message(reader, *, first_chunk: bytes = b"") -> O
 
 async def main_async() -> None:
     server = OrchestraThreadsMCPServer()
-    framing: Optional[str] = None
+    framing: str | None = None
     try:
         while True:
             request, framing = await _read_message(sys.stdin.buffer, framing_hint=framing)

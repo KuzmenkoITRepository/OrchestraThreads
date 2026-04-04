@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
-
+from typing import Any
 
 GUIDE_ID = "orchestra_threads_mvp"
 GUIDE_VERSION = "mvp-1"
@@ -79,13 +78,15 @@ def _normalize_view(view: str) -> str:
     return normalized
 
 
-def _normalize_section(section: Optional[str]) -> Optional[str]:
+def _normalize_section(section: str | None) -> str | None:
     normalized = str(section or "").strip().lower()
     if not normalized:
         return None
     resolved = _SECTION_ALIASES.get(normalized)
     if resolved is None:
-        raise ValueError("section must be one of overview, workflow, routing, statuses, delivery, mcp, mcp_tools")
+        raise ValueError(
+            "section must be one of overview, workflow, routing, statuses, delivery, mcp, mcp_tools"
+        )
     return resolved
 
 
@@ -107,13 +108,17 @@ def _render_text(payload: dict[str, Any]) -> str:
     if payload.get("delivery_rules"):
         lines.extend(_lines_for("Delivery rules:", list(payload["delivery_rules"])))
     if payload.get("recommended_mcp_tool_flow"):
-        lines.extend(_lines_for("Recommended MCP flow:", list(payload["recommended_mcp_tool_flow"])))
+        lines.extend(
+            _lines_for("Recommended MCP flow:", list(payload["recommended_mcp_tool_flow"]))
+        )
     if payload.get("mcp_tools"):
         lines.extend(_lines_for("MCP tools:", list(payload["mcp_tools"])))
     return "\n".join(line for line in lines if line)
 
 
-def build_instruction_payload(*, view: str = "compact", section: Optional[str] = None) -> dict[str, Any]:
+def build_instruction_payload(
+    *, view: str = "compact", section: str | None = None
+) -> dict[str, Any]:
     normalized_view = _normalize_view(view)
     normalized_section = _normalize_section(section)
     payload: dict[str, Any] = {

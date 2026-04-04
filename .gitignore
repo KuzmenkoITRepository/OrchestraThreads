@@ -16,7 +16,10 @@ build/
 *.log
 .DS_Store
 agents/orchestra/runtime_state/
+agents/secretary/runtime_state/
 sessions/
 .opencode/
 .sisyphus/
 .shared_codex/
+.codex
+.venv/

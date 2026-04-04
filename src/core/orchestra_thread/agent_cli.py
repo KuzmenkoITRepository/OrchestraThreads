@@ -9,13 +9,12 @@ import logging
 import shlex
 import sys
 from collections import deque
-from typing import Any, Optional
+from typing import Any
 
 from aiohttp import web
 
-from .common import normalize_text_input
 from .client import OrchestraThreadsClient
-
+from .common import normalize_text_input
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +32,7 @@ class ManualAgentCLI:
         advertise_host: str,
         scheme: str,
         heartbeat_interval_seconds: float,
-        default_target_agent_slug: Optional[str] = None,
+        default_target_agent_slug: str | None = None,
     ) -> None:
         self.agent_slug = agent_slug
         self.service_url = service_url.rstrip("/")
@@ -42,14 +41,14 @@ class ManualAgentCLI:
         self.advertise_host = advertise_host
         self.scheme = scheme
         self.heartbeat_interval_seconds = max(2.0, heartbeat_interval_seconds)
-        self.current_thread_id: Optional[str] = None
+        self.current_thread_id: str | None = None
         self.default_target_agent_slug = str(default_target_agent_slug or "").strip() or None
         self.thread_peers: dict[str, str] = {}
         self.inbox: deque[dict[str, Any]] = deque(maxlen=200)
         self.stop_signals: deque[dict[str, Any]] = deque(maxlen=50)
-        self.http_runner: Optional[web.AppRunner] = None
-        self.thread_client: Optional[OrchestraThreadsClient] = None
-        self.heartbeat_task: Optional[asyncio.Task[None]] = None
+        self.http_runner: web.AppRunner | None = None
+        self.thread_client: OrchestraThreadsClient | None = None
+        self.heartbeat_task: asyncio.Task[None] | None = None
         self.shutdown_event = asyncio.Event()
 
     @property
@@ -58,10 +57,14 @@ class ManualAgentCLI:
 
     async def start(self) -> None:
         if self.thread_client is None:
-            self.thread_client = OrchestraThreadsClient(base_url=self.service_url, timeout_seconds=10)
+            self.thread_client = OrchestraThreadsClient(
+                base_url=self.service_url, timeout_seconds=10
+            )
         await self._start_callback_server()
         await self.register()
-        self.heartbeat_task = asyncio.create_task(self._heartbeat_loop(), name=f"{self.agent_slug}-heartbeat")
+        self.heartbeat_task = asyncio.create_task(
+            self._heartbeat_loop(), name=f"{self.agent_slug}-heartbeat"
+        )
 
     async def stop(self) -> None:
         self.shutdown_event.set()
@@ -198,18 +201,26 @@ class ManualAgentCLI:
             return f"[{self.agent_slug} -> {self.default_target_agent_slug}]"
         return f"[{self.agent_slug}]"
 
-    def _known_peer_for_current_thread(self) -> Optional[str]:
+    def _known_peer_for_current_thread(self) -> str | None:
         if not self.current_thread_id:
             return None
         return self.thread_peers.get(self.current_thread_id)
 
-    def _peer_from_event(self, event: dict[str, Any]) -> Optional[str]:
+    def _peer_from_event(self, event: dict[str, Any]) -> str | None:
         thread_id = str(event.get("thread_id") or "").strip()
         from_agent_slug = str(event.get("from_agent_slug") or "").strip()
         to_agent_slug = str(event.get("to_agent_slug") or "").strip()
-        if from_agent_slug and from_agent_slug != self.agent_slug and from_agent_slug != "orchestra_threads":
+        if (
+            from_agent_slug
+            and from_agent_slug != self.agent_slug
+            and from_agent_slug != "orchestra_threads"
+        ):
             return from_agent_slug
-        if to_agent_slug and to_agent_slug != self.agent_slug and to_agent_slug != "orchestra_threads":
+        if (
+            to_agent_slug
+            and to_agent_slug != self.agent_slug
+            and to_agent_slug != "orchestra_threads"
+        ):
             return to_agent_slug
         if thread_id:
             return self.thread_peers.get(thread_id)
@@ -289,7 +300,9 @@ class ManualAgentCLI:
         created = bool(payload.get("created_thread"))
         scope = str(thread.get("scope") or "").strip() or "root"
         created_text = "new" if created else "reused"
-        print(f"[sent] to={target} thread={thread_id} scope={scope} status={status} route={created_text}")
+        print(
+            f"[sent] to={target} thread={thread_id} scope={scope} status={status} route={created_text}"
+        )
 
     def _print_notification_ack(self, payload: dict[str, Any], *, target: str) -> None:
         thread = payload.get("thread") or {}
@@ -386,7 +399,9 @@ class ManualAgentCLI:
             if len(parts) > 1:
                 thread_id = parts[1]
             if not thread_id:
-                raise RuntimeError("No current thread. Use `thread <thread_id>` or `use <thread_id>`.")
+                raise RuntimeError(
+                    "No current thread. Use `thread <thread_id>` or `use <thread_id>`."
+                )
             if self.thread_client is None:
                 raise RuntimeError("HTTP client is not started")
             payload = await self.thread_client.get_thread(thread_id=thread_id)
@@ -396,8 +411,8 @@ class ManualAgentCLI:
             if len(parts) != 2:
                 raise RuntimeError("Usage: use <thread_id>")
             self.current_thread_id = parts[1]
-            peer = self.thread_peers.get(self.current_thread_id, '?')
-            if peer and peer != '?':
+            peer = self.thread_peers.get(self.current_thread_id, "?")
+            if peer and peer != "?":
                 self.default_target_agent_slug = peer
             print(f"[current] thread={self.current_thread_id} peer={peer}")
             return False
@@ -409,7 +424,9 @@ class ManualAgentCLI:
             current_peer = self._known_peer_for_current_thread()
             if current_peer and current_peer != target:
                 self.current_thread_id = None
-            print(f"[chat] target={target} thread={self.current_thread_id or 'new-root-on-first-message'}")
+            print(
+                f"[chat] target={target} thread={self.current_thread_id or 'new-root-on-first-message'}"
+            )
             return False
         if command in {"leave", "clear"}:
             self.current_thread_id = None
@@ -490,17 +507,30 @@ Commands:
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Manual CLI agent for OrchestraThreads")
     parser.add_argument("--slug", required=True, help="Agent slug used in threads")
-    parser.add_argument("--service-url", default="http://127.0.0.1:8788", help="Base URL of OrchestraThreads")
-    parser.add_argument("--listen-host", default="127.0.0.1", help="Host for the local callback server")
-    parser.add_argument("--listen-port", type=int, default=0, help="Port for the local callback server. Use 0 to auto-pick a free port.")
+    parser.add_argument(
+        "--service-url", default="http://127.0.0.1:8788", help="Base URL of OrchestraThreads"
+    )
+    parser.add_argument(
+        "--listen-host", default="127.0.0.1", help="Host for the local callback server"
+    )
+    parser.add_argument(
+        "--listen-port",
+        type=int,
+        default=0,
+        help="Port for the local callback server. Use 0 to auto-pick a free port.",
+    )
     parser.add_argument(
         "--advertise-host",
         default=None,
         help="Host advertised back to OrchestraThreads. Use host.docker.internal or a LAN IP when the service runs in Docker.",
     )
     parser.add_argument("--scheme", default="http", help="Scheme for advertised callback URLs")
-    parser.add_argument("--heartbeat-interval", type=float, default=10.0, help="Heartbeat interval in seconds")
-    parser.add_argument("--target", help="Optional default chat target for human-friendly bare-message mode.")
+    parser.add_argument(
+        "--heartbeat-interval", type=float, default=10.0, help="Heartbeat interval in seconds"
+    )
+    parser.add_argument(
+        "--target", help="Optional default chat target for human-friendly bare-message mode."
+    )
     return parser
 
 

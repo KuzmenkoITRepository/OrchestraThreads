@@ -1,16 +1,15 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import platform
 import time
-import base64
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
-
 
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 TOKEN_URL = "https://auth.openai.com/oauth/token"
@@ -61,7 +60,9 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def pick_openclaw_profile(auth_profiles_path: Path, profile_id: str | None) -> tuple[str, dict[str, Any], dict[str, Any]]:
+def pick_openclaw_profile(
+    auth_profiles_path: Path, profile_id: str | None
+) -> tuple[str, dict[str, Any], dict[str, Any]]:
     data = load_json(auth_profiles_path)
     profiles = data.get("profiles")
     if not isinstance(profiles, dict):
@@ -104,7 +105,7 @@ def pick_openclaw_profile(auth_profiles_path: Path, profile_id: str | None) -> t
         raise RuntimeError(f"Profile {chosen_profile_id!r} is missing access token")
     if not isinstance(refresh, str) or not refresh:
         raise RuntimeError(f"Profile {chosen_profile_id!r} is missing refresh token")
-    if not isinstance(expires, (int, float)):
+    if not isinstance(expires, int | float):
         raise RuntimeError(f"Profile {chosen_profile_id!r} is missing expires timestamp")
     creds = {
         "access": access,
@@ -154,7 +155,7 @@ def refresh_access_token(refresh_token: str) -> dict[str, Any]:
         raise RuntimeError("Token refresh response missing access_token")
     if not isinstance(refresh, str) or not refresh:
         raise RuntimeError("Token refresh response missing refresh_token")
-    if not isinstance(expires_in, (int, float)):
+    if not isinstance(expires_in, int | float):
         raise RuntimeError("Token refresh response missing expires_in")
     return {
         "access": access,

@@ -20,9 +20,7 @@ async def main():
     configure_logging()
     logger = logging.getLogger(__name__)
 
-    orchestra_agents_url = os.getenv(
-        "ORCHESTRA_AGENTS_URL", "http://orchestra-agents:8790"
-    )
+    orchestra_agents_url = os.getenv("ORCHESTRA_AGENTS_URL", "http://orchestra-agents:8790")
 
     engine = EventsEngine(orchestra_agents_url=orchestra_agents_url)
 

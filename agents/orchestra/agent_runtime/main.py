@@ -34,13 +34,22 @@ async def _run() -> None:
     manifest = load_manifest()
     manifest_backend_config = manifest.backend.config if manifest is not None else {}
     working_dir = (
-        str(os.getenv("ORCHESTRA_AGENT_WORKING_DIR") or (manifest.agent.working_dir if manifest else "/workspace/agents/__AGENT_SLUG__")).strip()
+        str(
+            os.getenv("ORCHESTRA_AGENT_WORKING_DIR")
+            or (manifest.agent.working_dir if manifest else "/workspace/agents/__AGENT_SLUG__")
+        ).strip()
         or "/workspace/agents/__AGENT_SLUG__"
     )
     backend = AgentMuxBackend(
-        agent_slug=str(os.getenv("ORCHESTRA_AGENT_SLUG") or (manifest.slug if manifest else "__AGENT_SLUG__")).strip() or "__AGENT_SLUG__",
+        agent_slug=str(
+            os.getenv("ORCHESTRA_AGENT_SLUG") or (manifest.slug if manifest else "__AGENT_SLUG__")
+        ).strip()
+        or "__AGENT_SLUG__",
         backend_type=(
-            str(os.getenv("ORCHESTRA_AGENT_BACKEND_TYPE") or (manifest.backend.type if manifest else "__BACKEND_TYPE__")).strip()
+            str(
+                os.getenv("ORCHESTRA_AGENT_BACKEND_TYPE")
+                or (manifest.backend.type if manifest else "__BACKEND_TYPE__")
+            ).strip()
             or "__BACKEND_TYPE__"
         ),
         working_dir=working_dir,

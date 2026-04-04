@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any
 
 from core.llm_proxy.client_config import build_llm_proxy_openai_base_url
 
@@ -50,15 +51,15 @@ class AgentMuxDispatchSpec:
     cwd: str
     artifact_dir: str
     system_prompt: str = ""
-    role: Optional[str] = None
-    variant: Optional[str] = None
+    role: str | None = None
+    variant: str | None = None
     engine: str = "codex"
-    model: Optional[str] = None
+    model: str | None = None
     effort: str = "high"
-    timeout_sec: Optional[int] = None
-    context_file: Optional[str] = None
+    timeout_sec: int | None = None
+    context_file: str | None = None
     full_access: bool = True
-    engine_opts: Optional[dict[str, Any]] = None
+    engine_opts: dict[str, Any] | None = None
 
     def to_stdin_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -113,16 +114,18 @@ def write_runtime_codex_config(
     base_url = build_llm_proxy_openai_base_url(route_policy, proxy_url=llm_proxy_url)
     lines = [
         f"model = {_toml_quote(model)}",
-        "model_provider = \"llm_proxy\"",
+        'model_provider = "llm_proxy"',
         "",
         "[model_providers.llm_proxy]",
-        "name = \"LLM Proxy\"",
+        'name = "LLM Proxy"',
         f"base_url = {_toml_quote(base_url)}",
-        "env_key = \"LLM_PROXY_API_KEY\"",
-        "wire_api = \"responses\"",
-        "env_http_headers = { \"X-Orchestra-Agent-Slug\" = \"ORCHESTRA_AGENT_SLUG\", \"X-Orchestra-Context-Id\" = \"ORCHESTRA_CONTEXT_ID\", \"X-Orchestra-Langfuse-Session-Id\" = \"ORCHESTRA_CONTEXT_ID\" }",
+        'env_key = "LLM_PROXY_API_KEY"',
+        'wire_api = "responses"',
+        'env_http_headers = { "X-Orchestra-Agent-Slug" = "ORCHESTRA_AGENT_SLUG", "X-Orchestra-Context-Id" = "ORCHESTRA_CONTEXT_ID", "X-Orchestra-Langfuse-Session-Id" = "ORCHESTRA_CONTEXT_ID" }',
         "",
     ]
+
+    import os
 
     variables = {
         "agent_slug": str(agent_slug),
@@ -131,6 +134,10 @@ def write_runtime_codex_config(
         "agent_working_dir": str(agent_working_dir),
         "working_dir": str(agent_working_dir),
     }
+
+    # Add env.* variables for manifest interpolation
+    for key, value in os.environ.items():
+        variables[f"env.{key}"] = str(value)
     for item in mcp_servers or []:
         if not isinstance(item, Mapping):
             continue
@@ -140,7 +147,11 @@ def write_runtime_codex_config(
             continue
         args = _render_list(item.get("args"), variables)
         env = _render_dict(item.get("env"), variables)
-        cwd = _render_scalar(item.get("cwd"), variables).strip() if item.get("cwd") is not None else ""
+        cwd = (
+            _render_scalar(item.get("cwd"), variables).strip()
+            if item.get("cwd") is not None
+            else ""
+        )
         enabled_tools = _render_list(item.get("enabled_tools"), variables)
         lines.extend(
             [

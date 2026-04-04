@@ -241,7 +241,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--langfuse-environment",
-        default=os.getenv("LLM_PROXY_LANGFUSE_ENVIRONMENT") or os.getenv("LANGFUSE_TRACING_ENVIRONMENT") or "",
+        default=os.getenv("LLM_PROXY_LANGFUSE_ENVIRONMENT")
+        or os.getenv("LANGFUSE_TRACING_ENVIRONMENT")
+        or "",
         help="Optional Langfuse environment label.",
     )
     parser.add_argument(

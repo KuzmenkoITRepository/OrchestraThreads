@@ -234,9 +234,13 @@ class FakeLLMProxy:
             }
         )
         if not self.responses:
-            return web.json_response({"error": {"message": "No queued fake LLM response"}}, status=500)
+            return web.json_response(
+                {"error": {"message": "No queued fake LLM response"}}, status=500
+            )
         response_payload = dict(self.responses.pop(0))
-        response_payload["model"] = payload.get("model") or response_payload.get("model") or "MiniMax-M2.7"
+        response_payload["model"] = (
+            payload.get("model") or response_payload.get("model") or "MiniMax-M2.7"
+        )
         return web.json_response(response_payload)
 
 
@@ -248,7 +252,9 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
             "LLM_PROXY_ENABLED": os.environ.get("LLM_PROXY_ENABLED"),
             "LLM_PROXY_API_KEY": os.environ.get("LLM_PROXY_API_KEY"),
         }
-        self.context_path = Path(tempfile.mkdtemp(prefix="sgr_runtime_ctx_")) / "active_context.json"
+        self.context_path = (
+            Path(tempfile.mkdtemp(prefix="sgr_runtime_ctx_")) / "active_context.json"
+        )
         self.original_context_path = active_context_module.ACTIVE_CONTEXT_PATH
         active_context_module.ACTIVE_CONTEXT_PATH = self.context_path
 
@@ -329,7 +335,9 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_message_event_uses_mcp_tools_and_posts_back_to_thread(self) -> None:
-        self.llm_proxy.enqueue(_tool_response(tool_name="thread_current", arguments={}, call_id="call-current"))
+        self.llm_proxy.enqueue(
+            _tool_response(tool_name="thread_current", arguments={}, call_id="call-current")
+        )
         self.llm_proxy.enqueue(
             _tool_response(
                 tool_name="thread_send",
@@ -353,7 +361,9 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.thread_service.message_calls[0]["to_agent_slug"], "secretary")
         self.assertEqual(self.thread_service.message_calls[0]["thread_id"], "thread-1")
         self.assertEqual(self.thread_service.message_calls[0]["client_request_id"], "tool-reply-1")
-        self.assertEqual(self.thread_service.message_calls[0]["message_text"], "Draft ready for handoff.")
+        self.assertEqual(
+            self.thread_service.message_calls[0]["message_text"], "Draft ready for handoff."
+        )
         self.assertEqual(result.details["messages_sent"], 1)
         self.assertEqual(result.details["tool_calls"], 2)
         self.assertIn("thread_send", result.details["used_tools"])
@@ -388,7 +398,9 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
             for message in self.llm_proxy.chat_requests[1]["payload"]["messages"]
             if isinstance(message, dict) and message.get("role") == "system"
         ]
-        self.assertTrue(any("Direct assistant text is never delivered" in item for item in reminder_messages))
+        self.assertTrue(
+            any("Direct assistant text is never delivered" in item for item in reminder_messages)
+        )
         self.assertTrue(result.details["direct_text_ignored"])
 
         status = await self.backend.last_status()
@@ -446,7 +458,9 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status["last_status_preview"], "Still working on the requested summary.")
 
     async def test_duplicate_delivery_does_not_repeat_tool_turn(self) -> None:
-        self.llm_proxy.enqueue(_tool_response(tool_name="thread_current", arguments={}, call_id="call-current"))
+        self.llm_proxy.enqueue(
+            _tool_response(tool_name="thread_current", arguments={}, call_id="call-current")
+        )
         self.llm_proxy.enqueue(
             _tool_response(
                 tool_name="thread_send",

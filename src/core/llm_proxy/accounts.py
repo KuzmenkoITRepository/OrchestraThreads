@@ -4,10 +4,10 @@ import fcntl
 import json
 import os
 import time
-from datetime import datetime, timezone
+from collections.abc import Callable, Iterable, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sequence
-
+from typing import Any
 
 CODEX_PROVIDER = "openai-codex"
 RUNTIME_STATE_VERSION = 1
@@ -16,13 +16,13 @@ RUNTIME_STATE_LOCK_MODE = 0o666
 
 
 def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def format_expires_at(expires_ms: int | None) -> str | None:
     if not isinstance(expires_ms, int):
         return None
-    return datetime.fromtimestamp(expires_ms / 1000, tz=timezone.utc).isoformat()
+    return datetime.fromtimestamp(expires_ms / 1000, tz=UTC).isoformat()
 
 
 def mask_account_id(account_id: str | None) -> str:
@@ -138,7 +138,7 @@ def list_codex_profiles(path: Path) -> list[dict[str, Any]]:
         if not isinstance(profile, dict):
             continue
         expires = profile.get("expires")
-        expires_ms = int(expires) if isinstance(expires, (int, float)) else None
+        expires_ms = int(expires) if isinstance(expires, int | float) else None
         account_id = profile.get("accountId")
         if not isinstance(account_id, str) or not account_id.strip():
             account_id = None
@@ -207,7 +207,9 @@ def resolve_profile_ids(
     if primary_profile_id:
         normalized_primary = primary_profile_id.strip()
         if normalized_primary in available:
-            return [normalized_primary] + [value for value in available if value != normalized_primary]
+            return [normalized_primary] + [
+                value for value in available if value != normalized_primary
+            ]
     return available
 
 
@@ -292,9 +294,11 @@ def mutate_runtime_state(
     return payload
 
 
-def prune_runtime_state(runtime_state: dict[str, Any], active_profile_ids: Iterable[str]) -> dict[str, Any]:
+def prune_runtime_state(
+    runtime_state: dict[str, Any], active_profile_ids: Iterable[str]
+) -> dict[str, Any]:
     payload = json.loads(json.dumps(runtime_state))
-    active = {profile_id for profile_id in active_profile_ids}
+    active = set(active_profile_ids)
     profiles = payload.get("profiles")
     if not isinstance(profiles, dict):
         payload["profiles"] = {}
@@ -327,7 +331,9 @@ def build_account_status_rows(
     if not profile_order:
         profile_order = [row["profile_id"] for row in profile_rows]
     profile_by_id = {row["profile_id"]: row for row in profile_rows}
-    ordered_rows = [profile_by_id[profile_id] for profile_id in profile_order if profile_id in profile_by_id]
+    ordered_rows = [
+        profile_by_id[profile_id] for profile_id in profile_order if profile_id in profile_by_id
+    ]
     for row in profile_rows:
         if row["profile_id"] not in profile_order:
             ordered_rows.append(row)
@@ -342,7 +348,9 @@ def build_account_status_rows(
         if not isinstance(state, dict):
             state = {}
         disabled_until = state.get("disabled_until")
-        disabled_until_ts = float(disabled_until) if isinstance(disabled_until, (int, float)) else None
+        disabled_until_ts = (
+            float(disabled_until) if isinstance(disabled_until, int | float) else None
+        )
         cooldown_active = bool(disabled_until_ts and disabled_until_ts > now_ts)
         results.append(
             {
@@ -351,7 +359,7 @@ def build_account_status_rows(
                 "cooldown_active": cooldown_active,
                 "disabled_until": disabled_until_ts,
                 "disabled_until_at": (
-                    datetime.fromtimestamp(disabled_until_ts, tz=timezone.utc).isoformat()
+                    datetime.fromtimestamp(disabled_until_ts, tz=UTC).isoformat()
                     if disabled_until_ts
                     else None
                 ),
