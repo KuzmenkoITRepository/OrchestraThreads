@@ -120,6 +120,10 @@ services:
       ORCHESTRA_AGENTS_PORT: 8790
       ORCHESTRA_AGENTS_MANIFESTS_DIR: ${PWD}/agents
       ORCHESTRA_AGENTS_DOCKER_NETWORK: orchestrathreads_default
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING}
+      TELEGRAM_CHAT_ID_IVAN: ${TELEGRAM_CHAT_ID_IVAN}
     volumes:
       - .:${PWD}
       - /var/run/docker.sock:/var/run/docker.sock
