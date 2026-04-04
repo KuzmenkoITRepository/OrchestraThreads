@@ -19,13 +19,24 @@ def _toml_bool(value: bool) -> str:
     return "true" if bool(value) else "false"
 
 
+class _EnvNamespace:
+    def __init__(self, env_dict: dict[str, str]) -> None:
+        self._env = env_dict
+
+    def __getattr__(self, name: str) -> str:
+        return self._env.get(name, f"{{env.{name}}}")
+
+
 class _FormatDict(dict[str, str]):
     def __missing__(self, key: str) -> str:
         return "{" + key + "}"
 
 
 def _render_scalar(value: Any, variables: Mapping[str, str]) -> str:
-    return str(value if value is not None else "").format_map(_FormatDict(**variables))
+    env_vars = {k.replace("env.", "", 1): v for k, v in variables.items() if k.startswith("env.")}
+    format_vars = dict(variables)
+    format_vars["env"] = _EnvNamespace(env_vars)
+    return str(value if value is not None else "").format_map(_FormatDict(**format_vars))
 
 
 def _render_list(values: Sequence[Any] | None, variables: Mapping[str, str]) -> list[str]:

@@ -339,8 +339,10 @@ class AgentMuxTemplateTests(unittest.IsolatedAsyncioTestCase):
         try:
             await backend.handle_events(self._delivery())
             active = await _wait_for(
-                lambda: backend._active_process is not None
-                and backend._active_process.returncode is None
+                lambda: (
+                    backend._active_process is not None
+                    and backend._active_process.returncode is None
+                )
             )
             self.assertTrue(active)
             stop_payload = await backend.stop(
@@ -348,8 +350,10 @@ class AgentMuxTemplateTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(stop_payload["cleared_queue_events"], 0)
             cleared = await _wait_for(
-                lambda: backend._active_process is None
-                or backend._active_process.returncode is not None
+                lambda: (
+                    backend._active_process is None
+                    or backend._active_process.returncode is not None
+                )
             )
             self.assertTrue(cleared)
         finally:

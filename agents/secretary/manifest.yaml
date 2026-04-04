@@ -48,7 +48,6 @@ runtime:
 backend:
   type: agent_mux
   config:
-    role: worker
     artifact_root: /workspace/agents/secretary/runtime_state/artifacts
     llm_route_policy: minimax_only
     model: MiniMax-M2.7
