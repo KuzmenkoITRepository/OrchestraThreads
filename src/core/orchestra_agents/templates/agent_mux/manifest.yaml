@@ -1,0 +1,47 @@
+slug: __AGENT_SLUG__
+display_name: __AGENT_DISPLAY_NAME__
+status: active
+
+agent:
+  working_dir: /workspace/agents/__AGENT_SLUG__
+  http_endpoint: http://{container_name}:8787
+  system_prompt_file: system_prompt.md
+
+runtime:
+  driver: docker
+  image: orchestra-agent-mux-runtime:latest
+  command:
+    - python
+    - -m
+    - agent_runtime.main
+  mounts:
+    - type: bind
+      source: ../../
+      target: /workspace
+      mode: rw
+  env:
+    AGENT_HTTP_HOST: 0.0.0.0
+    AGENT_HTTP_PORT: "8787"
+    PYTHONPATH: /workspace/src:/workspace/agents/__AGENT_SLUG__
+    LLM_PROXY_URL: http://llm-proxy:8787
+    LLM_PROXY_ENABLED: "true"
+    AGENT_MUX_BINARY: agent-mux
+    AGENT_MUX_STATE_ROOT: /workspace/agents/__AGENT_SLUG__/runtime_state
+    LOG_LEVEL: INFO
+  env_passthrough:
+    - LLM_PROXY_URL
+    - LLM_PROXY_ENABLED
+    - LLM_PROXY_API_KEY
+    - LLM_CLIENT_ROUTE_POLICY
+    - LLM_CLIENT_MODEL
+    - AGENT_MUX_BINARY
+    - AGENT_MUX_STATE_ROOT
+    - LOG_LEVEL
+
+backend:
+  type: __BACKEND_TYPE__
+  config:
+    role: worker
+    artifact_root: /workspace/agents/__AGENT_SLUG__/runtime_state/artifacts
+    llm_route_policy: managed_auto
+    require_tool_call_for_response: false

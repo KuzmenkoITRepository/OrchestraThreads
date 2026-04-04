@@ -1,0 +1,71 @@
+slug: sgr
+display_name: SGR Minimax Example
+status: inactive
+
+agent:
+  working_dir: /workspace/agents/sgr
+  http_endpoint: http://{container_name}:8787
+  system_prompt_file: system_prompt.md
+
+runtime:
+  driver: docker
+  image: orchestra-threads:local
+  command:
+    - python
+    - -m
+    - agent_runtime.main
+  mounts:
+    - type: bind
+      source: ../../
+      target: /workspace
+      mode: rw
+  env:
+    AGENT_HTTP_HOST: 0.0.0.0
+    AGENT_HTTP_PORT: "8787"
+    PYTHONPATH: /workspace/src:/workspace/agents/sgr
+    ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
+    LLM_PROXY_URL: http://llm-proxy:8787
+    LLM_PROXY_ENABLED: "true"
+    LLM_CLIENT_ROUTE_POLICY: minimax_only
+    LLM_CLIENT_MODEL: MiniMax-M2.7
+    LOG_LEVEL: INFO
+  env_passthrough:
+    - ORCHESTRA_THREADS_URL
+    - LLM_PROXY_URL
+    - LLM_PROXY_ENABLED
+    - LLM_CLIENT_MODEL
+    - LLM_CLIENT_ROUTE_POLICY
+    - LLM_CLIENT_TIMEOUT_SECONDS
+    - LLM_CLIENT_TEMPERATURE
+    - LLM_CLIENT_MAX_TOKENS
+    - LLM_CLIENT_REASONING_EFFORT
+    - LLM_CLIENT_REASONING_SUMMARY
+    - SGR_HEARTBEAT_INTERVAL_SECONDS
+    - SGR_MAX_REASONING_STEPS
+    - SGR_MAX_DIRECT_TEXT_RETRIES
+    - LOG_LEVEL
+
+backend:
+  type: sgr_minimax
+  config:
+    route_policy: minimax_only
+    model: MiniMax-M2.7
+    temperature: 0.2
+    max_tokens: 600
+    timeout_seconds: 120
+    heartbeat_interval_seconds: 10
+    guide_view: compact
+    react_to_inactive: true
+    max_reasoning_steps: 8
+    max_direct_text_retries: 2
+    mcp_servers:
+      - name: orchestra_threads
+        command: python
+        args:
+          - "-m"
+          - "core.orchestra_thread.mcp_server"
+        env:
+          ORCHESTRA_THREADS_URL: "{ORCHESTRA_THREADS_URL}"
+          PYTHONPATH: "{pythonpath}"
+        cwd: "{working_dir}"
+        enabled: true

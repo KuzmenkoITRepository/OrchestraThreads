@@ -1,0 +1,93 @@
+{
+  "context_generation": 0,
+  "context_id": "3ffa40dd3cdd",
+  "last_dispatch_id": null,
+  "last_event_id": "test-e2e-1775286115",
+  "last_event_kind": "telegram_message",
+  "last_session_id": null,
+  "previous_context_id": null,
+  "recent_entries": [
+    {
+      "event_id": "test-direct",
+      "event_kind": "message",
+      "metadata_summary": null,
+      "recorded_at": "2026-04-03T21:11:46.511620+00:00",
+      "role": "source",
+      "source_agent_slug": "user",
+      "text_preview": "Send a Telegram message to Ivan saying: Direct test message!"
+    },
+    {
+      "event_id": "e2e-test-1775251335",
+      "event_kind": "message",
+      "metadata_summary": null,
+      "recorded_at": "2026-04-03T21:22:15.996532+00:00",
+      "role": "source",
+      "source_agent_slug": "user",
+      "text_preview": "Please use the send_telegram_message tool to send this message to Ivan: Secretary end-to-end test successful!"
+    },
+    {
+      "event_id": null,
+      "event_kind": "telegram_message",
+      "metadata_summary": "{\"metadata\": {\"chat_id\": \"748976004\", \"message_id\": 5517, \"sender_name\": \"\u0412\u0430\u0441\u0438\u043b\u0438\u0439\", \"source\": \"telegram\", \"user_id\": \"7282819104\", \"username\": \"just_pdev\"}}",
+      "recorded_at": "2026-04-03T21:26:09.010167+00:00",
+      "role": "source",
+      "source_agent_slug": "telegram_events",
+      "text_preview": "New Telegram message received: From: \u0412\u0430\u0441\u0438\u043b\u0438\u0439 Username: @just_pdev Chat: \u0418\u0432\u0430\u043d Time: 2026-04-03T21:15:52+00:00 Message: Test message"
+    },
+    {
+      "event_id": null,
+      "event_kind": "telegram_message",
+      "metadata_summary": "{\"metadata\": {\"chat_id\": \"748976004\", \"message_id\": 5516, \"sender_name\": \"\u0412\u0430\u0441\u0438\u043b\u0438\u0439\", \"source\": \"telegram\", \"user_id\": \"7282819104\", \"username\": \"just_pdev\"}}",
+      "recorded_at": "2026-04-03T21:26:09.013136+00:00",
+      "role": "source",
+      "source_agent_slug": "telegram_events",
+      "text_preview": "New Telegram message received: From: \u0412\u0430\u0441\u0438\u043b\u0438\u0439 Username: @just_pdev Chat: \u0418\u0432\u0430\u043d Time: 2026-04-03T21:14:43+00:00 Message: \u2705 End-to-end test SUCCESSFUL! Telegram MCP is working!"
+    },
+    {
+      "event_id": null,
+      "event_kind": "telegram_message",
+      "metadata_summary": "{\"metadata\": {\"chat_id\": \"748976004\", \"message_id\": 5519, \"sender_name\": \"\u0412\u0430\u0441\u0438\u043b\u0438\u0439\", \"source\": \"telegram\", \"user_id\": \"7282819104\", \"username\": \"just_pdev\"}}",
+      "recorded_at": "2026-04-03T21:41:09.109318+00:00",
+      "role": "source",
+      "source_agent_slug": "telegram_events",
+      "text_preview": "New Telegram message received: From: \u0412\u0430\u0441\u0438\u043b\u0438\u0439 Username: @just_pdev Chat: \u0418\u0432\u0430\u043d Time: 2026-04-03T21:27:50+00:00 Message: \u2705 Standalone container verified!"
+    },
+    {
+      "event_id": null,
+      "event_kind": "telegram_message",
+      "metadata_summary": "{\"metadata\": {\"chat_id\": \"748976004\", \"message_id\": 5520, \"sender_name\": \"\u0412\u0430\u0441\u0438\u043b\u0438\u0439\", \"source\": \"telegram\", \"user_id\": \"7282819104\", \"username\": \"just_pdev\"}}",
+      "recorded_at": "2026-04-03T21:41:09.112347+00:00",
+      "role": "source",
+      "source_agent_slug": "telegram_events",
+      "text_preview": "New Telegram message received: From: \u0412\u0430\u0441\u0438\u043b\u0438\u0439 Username: @just_pdev Chat: \u0418\u0432\u0430\u043d Time: 2026-04-03T21:29:59+00:00 Message: [verification] standalone telegram-mcp container live review check"
+    },
+    {
+      "event_id": null,
+      "event_kind": "telegram_message",
+      "metadata_summary": "{\"metadata\": {\"chat_id\": \"748976004\", \"message_id\": 5518, \"sender_name\": \"\u0412\u0430\u0441\u0438\u043b\u0438\u0439\", \"source\": \"telegram\", \"user_id\": \"7282819104\", \"username\": \"just_pdev\"}}",
+      "recorded_at": "2026-04-03T21:41:09.115222+00:00",
+      "role": "source",
+      "source_agent_slug": "telegram_events",
+      "text_preview": "New Telegram message received: From: \u0412\u0430\u0441\u0438\u043b\u0438\u0439 Username: @just_pdev Chat: \u0418\u0432\u0430\u043d Time: 2026-04-03T21:27:40+00:00 Message: \u2705 Standalone telegram-mcp container test successful!"
+    },
+    {
+      "event_id": null,
+      "event_kind": "telegram_message",
+      "metadata_summary": "{\"metadata\": {\"chat_id\": \"748976004\", \"message_id\": 5521, \"sender_name\": \"\u0418\u0432\u0430\u043d\", \"source\": \"telegram\", \"user_id\": \"748976004\", \"username\": \"Odinykt\"}}",
+      "recorded_at": "2026-04-04T06:28:19.980671+00:00",
+      "role": "source",
+      "source_agent_slug": "telegram_events",
+      "text_preview": "New Telegram message received: From: \u0418\u0432\u0430\u043d Username: @Odinykt Chat: \u0418\u0432\u0430\u043d Time: 2026-04-04T06:28:20+00:00 Message: \u0422\u0435\u0441\u0442, \u043f\u0440\u0438\u0432\u0435\u0442"
+    },
+    {
+      "event_id": "test-e2e-1775286115",
+      "event_kind": "telegram_message",
+      "metadata_summary": "{\"metadata\": {\"chat_id\": 748976004, \"message_id\": 12345, \"sender_name\": \"\u0418\u0432\u0430\u043d\", \"source\": \"telegram\", \"user_id\": 748976004}}",
+      "recorded_at": "2026-04-04T07:01:55.448660+00:00",
+      "role": "source",
+      "source_agent_slug": "telegram_events",
+      "text_preview": "New Telegram message received: From: \u0418\u0432\u0430\u043d Username: @ivan Chat: \u0418\u0432\u0430\u043d Time: 2026-04-04T07:01:40Z Message: \u041f\u0440\u0438\u0432\u0435\u0442! \u041f\u043e\u0436\u0430\u043b\u0443\u0439\u0441\u0442\u0430, \u043e\u0442\u0432\u0435\u0442\u044c \u043c\u043d\u0435 \u0447\u0435\u0440\u0435\u0437 Telegram \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u044f send_telegram_message tool. \u0421\u043a\u0430\u0436\u0438 \u0447\u0442\u043e \u0442\u044b \u043f\u043e\u043b\u0443\u0447\u0438\u043b \u043c\u043e\u0451 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435."
+    }
+  ],
+  "updated_at": "2026-04-04T07:01:55.448671+00:00"
+}

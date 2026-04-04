@@ -1,0 +1,60 @@
+diff --git a/internal/engine/loop.go b/internal/engine/loop.go
+index e6343be..6f4ac9a 100644
+--- a/internal/engine/loop.go
++++ b/internal/engine/loop.go
+@@ -279,6 +279,15 @@ func (e *LoopEngine) Dispatch(ctx context.Context, spec *types.DispatchSpec) (*t
+ 	var currentStderr *strings.Builder
+ 	var stdinBridge *softStdinBridge
+ 	stdinPipeReady := false
++	closeCodexStdinAfterStart := false
++	if spec != nil && strings.EqualFold(spec.Engine, "codex") && spec.EngineOpts != nil {
++		switch v := spec.EngineOpts["close_stdin_after_start"].(type) {
++		case bool:
++			closeCodexStdinAfterStart = v
++		case string:
++			closeCodexStdinAfterStart = strings.EqualFold(strings.TrimSpace(v), "true")
++		}
++	}
+ 
+ 	handleHarnessEvent := func(evt *types.HarnessEvent) {
+ 		var observedSessionID string
+@@ -706,16 +715,18 @@ func (e *LoopEngine) Dispatch(ctx context.Context, spec *types.DispatchSpec) (*t
+ 		stdinPipeReady = false
+ 	}
+ 
+-	if bridge, err := startSoftStdinBridge(spec.ArtifactDir, signals); err == nil {
+-		stdinBridge = bridge
+-		stdinPipeReady = true
+-	} else if !errors.Is(err, fifo.ErrUnsupported) {
+-		return buildFailureResult(
+-			spec, e.annotations, metadata, startTime, emitter,
+-			"startup_failed",
+-			fmt.Sprintf("start stdin fifo bridge: %v", err),
+-			"Check that the artifact directory is writable and supports FIFOs.",
+-		), nil
++	if !closeCodexStdinAfterStart {
++		if bridge, err := startSoftStdinBridge(spec.ArtifactDir, signals); err == nil {
++			stdinBridge = bridge
++			stdinPipeReady = true
++		} else if !errors.Is(err, fifo.ErrUnsupported) {
++			return buildFailureResult(
++				spec, e.annotations, metadata, startTime, emitter,
++				"startup_failed",
++				fmt.Sprintf("start stdin fifo bridge: %v", err),
++				"Check that the artifact directory is writable and supports FIFOs.",
++			), nil
++		}
+ 	}
+ 
+ 	currentRun, currentStderr, err = startRun(currentGen, args)
+@@ -728,6 +739,10 @@ func (e *LoopEngine) Dispatch(ctx context.Context, spec *types.DispatchSpec) (*t
+ 			"Check that the binary is installed and accessible.",
+ 		), nil
+ 	}
++	if closeCodexStdinAfterStart && currentRun != nil && currentRun.stdinPipe != nil {
++		_ = currentRun.stdinPipe.Close()
++		currentRun.stdinPipe = nil
++	}
+ 
+ 	watchdogTicker := time.NewTicker(5 * time.Second)
+ 	defer watchdogTicker.Stop()

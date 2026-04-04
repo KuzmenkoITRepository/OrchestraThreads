@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Thread Service Console</title>
+  <link rel="stylesheet" href="/static/thread-service-ui.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">OrchestraThreads</p>
+        <h1>Thread Service Console</h1>
+        <p class="subhead">Observe active and archived threads, timeline events, and root/child relationships in one place.</p>
+      </div>
+      <div class="toolbar">
+        <label class="toggle">
+          <input id="autoRefreshToggle" type="checkbox" checked>
+          <span>Auto refresh</span>
+        </label>
+        <button id="refreshButton" class="button button-primary" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar panel">
+        <div class="sidebar-header">
+          <div class="tabs" role="tablist" aria-label="Thread scopes">
+            <button class="tab is-active" data-scope="active" type="button">Active</button>
+            <button class="tab" data-scope="all" type="button">All</button>
+          </div>
+          <div class="sidebar-tools">
+            <input id="searchInput" class="search-input" type="search" placeholder="Filter by agent, status, thread id">
+            <div id="scopeSummary" class="scope-summary">Loading threads...</div>
+          </div>
+        </div>
+        <div id="threadList" class="thread-list" aria-live="polite"></div>
+      </aside>
+
+      <section class="content">
+        <div id="globalStatus" class="global-status"></div>
+
+        <div id="emptyState" class="empty-state panel">
+          <p class="eyebrow">Thread Detail</p>
+          <h2>Select a thread</h2>
+          <p>Choose any active or archived thread from the list to inspect participants, roles, relationships, and message history.</p>
+        </div>
+
+        <div id="detailView" class="detail-view" hidden>
+          <section class="hero panel">
+            <div class="hero-main">
+              <div id="heroBadges" class="badge-row"></div>
+              <h2 id="threadTitle">Thread</h2>
+              <p id="threadSubtitle" class="thread-subtitle"></p>
+            </div>
+            <dl class="hero-meta">
+              <div>
+                <dt>Owner</dt>
+                <dd id="ownerValue"></dd>
+              </div>
+              <div>
+                <dt>Peer</dt>
+                <dd id="peerValue"></dd>
+              </div>
+              <div>
+                <dt>Updated</dt>
+                <dd id="updatedValue"></dd>
+              </div>
+              <div>
+                <dt>Thread ID</dt>
+                <dd id="threadIdValue" class="mono"></dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="detail-grid">
+            <article class="panel">
+              <div class="panel-heading">
+                <p class="eyebrow">Roles</p>
+                <h3>Agents In Thread</h3>
+              </div>
+              <div id="participantsGrid" class="participants-grid"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <p class="eyebrow">Context</p>
+                <h3>Thread State</h3>
+              </div>
+              <dl id="contextGrid" class="context-grid"></dl>
+            </article>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <p class="eyebrow">Relationships</p>
+              <h3>Root / Parent / Child Threads</h3>
+            </div>
+            <div id="relationshipSummary" class="relationship-summary"></div>
+            <div id="threadTree" class="thread-tree"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <p class="eyebrow">Timeline</p>
+              <h3>Messages And Notifications</h3>
+            </div>
+            <div id="eventsList" class="events-list"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/thread-service-ui.js" defer></script>
+</body>
+</html>

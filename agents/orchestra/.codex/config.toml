@@ -1,0 +1,12 @@
+# Placeholder Codex configuration for llm_proxy-backed routing.
+# Validate the exact provider shape against the current Codex CLI reference
+# before enabling this in production.
+
+model = "gpt-5.4"
+model_provider = "llm_proxy"
+
+[model_providers.llm_proxy]
+name = "LLM Proxy"
+base_url = "http://llm-proxy:8787/v1"
+env_key = "LLM_PROXY_API_KEY"
+wire_api = "responses"

@@ -1,0 +1,18 @@
+FROM python:3.11-slim
+
+WORKDIR /workspace
+
+COPY requirements.txt /tmp/requirements.txt
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bash ca-certificates git \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir -r /tmp/requirements.txt \
+    && useradd --create-home --uid 10001 appuser
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+USER appuser
+
+CMD ["python", "-m", "agent_runtime.main"]

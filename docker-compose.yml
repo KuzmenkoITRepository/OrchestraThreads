@@ -1,0 +1,346 @@
+x-agent-common: &agent-common
+  build: .
+  image: orchestra-threads:local
+  depends_on:
+    orchestra-threads:
+      condition: service_healthy
+  environment:
+    PYTHONPATH: /app/src
+  tty: true
+  stdin_open: true
+  init: true
+  restart: "no"
+  profiles:
+    - agents
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: orchestra-threads-postgres
+    environment:
+      POSTGRES_DB: orchestra_threads
+      POSTGRES_USER: orchestra
+      POSTGRES_PASSWORD: orchestra
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  langfuse-postgres:
+    image: postgres:16-alpine
+    container_name: langfuse-postgres
+    environment:
+      POSTGRES_DB: ${LANGFUSE_DB_NAME:-langfuse}
+      POSTGRES_USER: ${LANGFUSE_DB_USER:-langfuse}
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-langfuse}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    volumes:
+      - langfuse-postgres-data:/var/lib/postgresql/data
+
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: langfuse
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+    ports:
+      - "${LANGFUSE_PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-langfuse}@langfuse-postgres:5432/${LANGFUSE_DB_NAME:-langfuse}
+      NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-changeme-generate-a-secure-secret}
+      SALT: ${LANGFUSE_SALT:-changeme-generate-a-secure-salt}
+      TELEMETRY_ENABLED: ${LANGFUSE_TELEMETRY_ENABLED:-false}
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --spider
+        - --quiet
+        - http://localhost:3000/api/public/health
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  orchestra-threads:
+    build: .
+    image: orchestra-threads:local
+    container_name: orchestra-threads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8788:8788"
+    environment:
+      ORCHESTRA_THREADS_HOST: 0.0.0.0
+      ORCHESTRA_THREADS_PORT: 8788
+      ORCHESTRA_THREADS_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
+      ORCHESTRA_THREADS_DB_SCHEMA: public
+      ORCHESTRA_THREADS_DB_MIN_POOL_SIZE: 5
+      ORCHESTRA_THREADS_DB_MAX_POOL_SIZE: 20
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8788/healthz').status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  orchestra-agents:
+    build: .
+    image: orchestra-threads:local
+    container_name: orchestra-agents
+    user: root
+    ports:
+      - "8790:8790"
+    environment:
+      PYTHONPATH: /app/src
+      ORCHESTRA_AGENTS_HOST: 0.0.0.0
+      ORCHESTRA_AGENTS_PORT: 8790
+      ORCHESTRA_AGENTS_MANIFESTS_DIR: ${PWD}/agents
+      ORCHESTRA_AGENTS_DOCKER_NETWORK: orchestrathreads_default
+    volumes:
+      - .:${PWD}
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8790/healthz').status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command:
+      - python
+      - -m
+      - core.orchestra_agents.service_main
+    restart: unless-stopped
+
+  llm-proxy:
+    build: .
+    image: orchestra-threads:local
+    container_name: llm-proxy
+    ports:
+      - "8791:8787"
+    environment:
+      PYTHONPATH: /app/src
+      LLM_PROXY_AUTH_PROFILES_PATH: ${LLM_PROXY_AUTH_PROFILES_PATH:-/app/.shared_codex/openclaw/auth-profiles.json}
+      LLM_PROXY_CODEX_UPSTREAM_BASE_URL: ${LLM_PROXY_CODEX_UPSTREAM_BASE_URL:-https://chatgpt.com/backend-api}
+      LLM_PROXY_CODEX_PRIMARY_PROFILE_ID: ${LLM_PROXY_CODEX_PRIMARY_PROFILE_ID:-}
+      LLM_PROXY_CODEX_PROFILE_IDS: ${LLM_PROXY_CODEX_PROFILE_IDS:-}
+      LLM_PROXY_ACCOUNT_FAILURE_COOLDOWN_SECONDS: ${LLM_PROXY_ACCOUNT_FAILURE_COOLDOWN_SECONDS:-120}
+      LLM_PROXY_STATE_PATH: ${LLM_PROXY_STATE_PATH:-/app/.llm_proxy/proxy-state.json}
+      OPENAI_API_BASE_URL: ${OPENAI_API_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-MiniMax-M2.7}
+      LLM_PROXY_FALLBACK_OPENAI_API_BASE_URL: ${LLM_PROXY_FALLBACK_OPENAI_API_BASE_URL:-}
+      LLM_PROXY_FALLBACK_OPENAI_API_KEY: ${LLM_PROXY_FALLBACK_OPENAI_API_KEY:-}
+      LLM_PROXY_FALLBACK_OPENAI_MODEL: ${LLM_PROXY_FALLBACK_OPENAI_MODEL:-MiniMax-M2.7}
+      LLM_PROXY_LANGFUSE_ENABLED: ${LLM_PROXY_LANGFUSE_ENABLED:-0}
+      LLM_PROXY_LANGFUSE_ENVIRONMENT: ${LLM_PROXY_LANGFUSE_ENVIRONMENT:-}
+      LLM_PROXY_LANGFUSE_RELEASE: ${LLM_PROXY_LANGFUSE_RELEASE:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-http://langfuse:3000}
+      NO_PROXY: 127.0.0.1,localhost,llm-proxy,orchestra-threads,orchestra-agents,postgres,langfuse,langfuse-postgres
+      no_proxy: 127.0.0.1,localhost,llm-proxy,orchestra-threads,orchestra-agents,postgres,langfuse,langfuse-postgres
+    volumes:
+      - ./.shared_codex:/app/.shared_codex
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8787/healthz').status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command:
+      - python
+      - -m
+      - core.llm_proxy.service_main
+    restart: unless-stopped
+
+  events-engine:
+    build: .
+    image: orchestra-threads:local
+    container_name: events-engine
+    depends_on:
+      orchestra-agents:
+        condition: service_healthy
+    ports:
+      - "8789:8789"
+    networks:
+      - default
+    environment:
+      PYTHONPATH: /app/src
+      EVENTS_ENGINE_HOST: 0.0.0.0
+      EVENTS_ENGINE_PORT: 8789
+      ORCHESTRA_AGENTS_URL: http://orchestra-agents:8790
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,postgres,langfuse-postgres,langfuse,llm-proxy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8789/healthz').status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command:
+      - python
+      - -m
+      - core.events_engine.service_main
+    restart: unless-stopped
+
+  telegram-events:
+    build: .
+    image: orchestra-threads:local
+    container_name: telegram-events
+    depends_on:
+      events-engine:
+        condition: service_healthy
+    networks:
+      - default
+    environment:
+      PYTHONPATH: /app/src
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING:-}
+      TELEGRAM_SESSION_FILE: ${TELEGRAM_SESSION_FILE:-sessions/telegram.session}
+      EVENTS_ENGINE_URL: http://events-engine:8789
+      TARGET_AGENT_SLUG: ${TARGET_AGENT_SLUG:-secretary}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,postgres,langfuse-postgres,langfuse,llm-proxy
+    volumes:
+      - ./sessions:/app/sessions
+    command:
+      - python
+      - -m
+      - core.telegram_events.service_main
+    restart: unless-stopped
+
+  telegram-mcp:
+    build: .
+    image: orchestra-threads:local
+    container_name: telegram-mcp
+    networks:
+      - default
+    environment:
+      PYTHONPATH: /app/src
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING:-}
+      TELEGRAM_CHAT_ID_IVAN: ${TELEGRAM_CHAT_ID_IVAN:-748976004}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command:
+      - python
+      - -m
+      - telegram_mcp
+    restart: unless-stopped
+    stdin_open: true
+    tty: false
+
+  odinykt:
+    <<: *agent-common
+    hostname: odinykt
+    command:
+      - python
+      - -m
+      - core.orchestra_thread.agent_cli
+      - --slug
+      - odinykt
+      - --service-url
+      - http://orchestra-threads:8788
+      - --listen-host
+      - 0.0.0.0
+      - --listen-port
+      - "8787"
+      - --advertise-host
+      - odinykt
+
+  specialist:
+    <<: *agent-common
+    hostname: specialist
+    command:
+      - python
+      - -m
+      - core.orchestra_thread.agent_cli
+      - --slug
+      - specialist
+      - --service-url
+      - http://orchestra-threads:8788
+      - --listen-host
+      - 0.0.0.0
+      - --listen-port
+      - "8787"
+      - --advertise-host
+      - specialist
+
+  test:
+    build: .
+    image: orchestra-threads:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      langfuse:
+        condition: service_healthy
+      llm-proxy:
+        condition: service_healthy
+    environment:
+      PYTHONPATH: /app/src
+      ORCHESTRA_THREADS_TEST_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_BASE_URL: http://langfuse:3000
+      LLM_PROXY_BASE_URL: http://llm-proxy:8787
+    command:
+      - python
+      - -m
+      - unittest
+      - -v
+      - core.orchestra_thread.tests.test_e2e_mvp
+      - core.orchestra_thread.tests.test_mcp_server
+      - core.orchestra_thread.tests.test_agent_cli
+      - core.orchestra_agents.tests.test_manifest_registry
+      - core.orchestra_agents.tests.test_docker_driver
+      - core.orchestra_agents.tests.test_runtime_contract
+      - core.orchestra_agents.tests.test_scaffold
+      - core.orchestra_agents.tests.test_agent_mux_template
+      - core.orchestra_agents.tests.test_sgr_example
+      - core.orchestra_agents.tests.test_service
+      - core.llm_proxy.tests.test_service
+    init: true
+    restart: "no"
+    profiles:
+      - test
+
+volumes:
+  postgres-data:
+  langfuse-postgres-data:

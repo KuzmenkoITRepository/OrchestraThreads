@@ -1,0 +1,47 @@
+FROM golang:1.24-bookworm AS agent_mux_builder
+
+ARG AGENT_MUX_GIT_REF=main
+
+WORKDIR /build
+
+COPY docker/patches/agent-mux-codex-stdin.patch /tmp/agent-mux-codex-stdin.patch
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git patch \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch "${AGENT_MUX_GIT_REF}" https://github.com/buildoak/agent-mux.git /src/agent-mux
+
+WORKDIR /src/agent-mux
+
+# agent-mux main currently references syscall.Prctl, which is gone in newer Go toolchains.
+RUN sed -i 's|"syscall"|"golang.org/x/sys/unix"|' /src/agent-mux/internal/supervisor/reaper_linux.go \
+    && sed -i 's|syscall.Prctl(syscall.PR_SET_PDEATHSIG, uintptr(syscall.SIGKILL), 0, 0, 0)|unix.Prctl(unix.PR_SET_PDEATHSIG, uintptr(unix.SIGKILL), 0, 0, 0)|' /src/agent-mux/internal/supervisor/reaper_linux.go \
+    && patch -p1 < /tmp/agent-mux-codex-stdin.patch
+
+RUN go build -o /out/agent-mux ./cmd/agent-mux
+
+
+FROM python:3.11-slim
+
+ARG CODEX_NPM_SPEC=@openai/codex
+
+WORKDIR /workspace
+
+COPY requirements.txt /tmp/requirements.txt
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bash ca-certificates curl git nodejs npm ripgrep \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir -r /tmp/requirements.txt \
+    && npm i -g "${CODEX_NPM_SPEC}" \
+    && useradd --create-home --uid 10001 appuser
+
+COPY --from=agent_mux_builder /out/agent-mux /usr/local/bin/agent-mux
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+USER appuser
+
+CMD ["python", "-m", "agent_runtime.main"]

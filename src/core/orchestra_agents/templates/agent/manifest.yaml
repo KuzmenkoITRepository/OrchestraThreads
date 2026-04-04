@@ -1,0 +1,29 @@
+slug: __AGENT_SLUG__
+display_name: __AGENT_DISPLAY_NAME__
+status: active
+
+agent:
+  working_dir: /workspace
+  http_endpoint: http://orchestra-agent-__AGENT_SLUG__:8787
+  system_prompt_file: system_prompt.md
+
+runtime:
+  driver: docker
+  image: orchestra-agent-runtime:latest
+  command:
+    - python
+    - -m
+    - agent_runtime.main
+  mounts:
+    - type: bind
+      source: ../../
+      target: /workspace
+      mode: rw
+  env:
+    AGENT_HTTP_HOST: 0.0.0.0
+    AGENT_HTTP_PORT: "8787"
+  env_passthrough: []
+
+backend:
+  type: __BACKEND_TYPE__
+  config: {}
