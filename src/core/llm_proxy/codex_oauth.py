@@ -5,11 +5,9 @@ import json
 import os
 import platform
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
 from typing import Any
+from urllib import error, parse, request
 
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 TOKEN_URL = "https://auth.openai.com/oauth/token"
@@ -119,17 +117,17 @@ def pick_openclaw_profile(
 
 
 def http_form_post(url: str, fields: dict[str, str]) -> dict[str, Any]:
-    data = urllib.parse.urlencode(fields).encode("utf-8")
-    request = urllib.request.Request(
+    payload = parse.urlencode(fields).encode("utf-8")
+    req = request.Request(
         url,
-        data=data,
+        data=payload,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request) as response:
+        with request.urlopen(req) as response:
             raw = response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
+    except error.HTTPError as exc:
         body = exc.read().decode("utf-8", "replace")
         raise RuntimeError(f"HTTP {exc.code} from {url}: {body}") from exc
     parsed = json.loads(raw)
@@ -190,8 +188,8 @@ def resolve_codex_url(base_url: str) -> str:
     if normalized.endswith("/codex/responses"):
         return normalized
     if normalized.endswith("/codex"):
-        return normalized + "/responses"
-    return normalized + "/codex/responses"
+        return f"{normalized}/responses"
+    return f"{normalized}/codex/responses"
 
 
 def build_headers(access_token: str, account_id: str, session_id: str | None) -> dict[str, str]:
@@ -227,13 +225,44 @@ def parse_error_payload(status_code: int, raw: str) -> str:
         detail_message = detail.get("message")
         if isinstance(detail_message, str) and detail_message:
             return detail_message
-    error = parsed.get("error")
-    if not isinstance(error, dict):
+    error_info = parsed.get("error")
+    if not isinstance(error_info, dict):
         return message
-    code = str(error.get("code") or error.get("type") or "")
-    if status_code == 429 or any(
-        marker in code.lower()
-        for marker in ("usage_limit_reached", "usage_not_included", "rate_limit_exceeded")
-    ):
-        return error.get("message") or "You have hit your ChatGPT usage limit."
-    return str(error.get("message") or message)
+    error_code = str(error_info.get("code") or error_info.get("type") or "")
+    limit_markers = (
+        "usage_limit_reached",
+        "usage_not_included",
+        "rate_limit_exceeded",
+    )
+    if status_code == 429 or any(marker in error_code.lower() for marker in limit_markers):
+        return str(error_info.get("message") or "You have hit your ChatGPT usage limit.")
+    return str(error_info.get("message") or message)
+
+
+def is_retryable_codex_error_message(message: str) -> bool:
+    normalized = message.lower()
+    retryable_markers = (
+        "timeout",
+        "timed out",
+        "connection",
+        "network",
+        "temporary",
+        "try again",
+        "unavailable",
+        "overloaded",
+    )
+    return any(marker in normalized for marker in retryable_markers)
+
+
+def is_account_unavailable_message(message: str) -> bool:
+    normalized = message.lower()
+    unavailable_markers = (
+        "usage limit",
+        "rate limit",
+        "quota",
+        "suspended",
+        "disabled",
+        "unauthorized",
+        "forbidden",
+    )
+    return any(marker in normalized for marker in unavailable_markers)
