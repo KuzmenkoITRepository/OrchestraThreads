@@ -7,7 +7,7 @@ import os
 import socket
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Any, Self
+from typing import Any, Self, cast
 
 from aiohttp import ClientSession, ClientTimeout, web
 
@@ -90,7 +90,7 @@ class HarnessRequestHelpers:
                 raise AssertionError(
                     f"{method} {path} returned {response.status}, expected {expected_status}: {data}"
                 )
-            return data
+            return cast(dict[str, Any], data)
 
     async def request_text(
         self,

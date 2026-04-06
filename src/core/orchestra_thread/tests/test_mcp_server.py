@@ -13,7 +13,7 @@ from core.orchestra_thread import active_context as active_context_module
 from core.orchestra_thread.active_context import clear_active_context, write_active_context
 from core.orchestra_thread.client import OrchestraThreadsClient
 from core.orchestra_thread.mcp_server import OrchestraThreadsMCPServer
-from core.orchestra_thread.tests.test_e2e_mvp import E2EHarness
+from core.orchestra_thread.tests.fixtures.e2e_harness import E2EHarness
 
 
 def _structured(result: dict[str, Any]) -> dict[str, Any]:
@@ -41,9 +41,11 @@ async def _create_root_context(
     orchestra: Any,
 ) -> str:
     root = await harness.send_message(
-        from_agent_slug="secretary",
-        to_agent_slug="orchestra",
-        message_text="Prepare a short update.",
+        {
+            "from_agent_slug": "secretary",
+            "to_agent_slug": "orchestra",
+            "message_text": "Prepare a short update.",
+        },
     )
     thread_id = str(root["thread"]["thread_id"])
     await harness.wait_for(
@@ -208,6 +210,9 @@ class MCPStatusAndProtocolTests(MCPServerSetupMixin):
             templates = await server.handle_request(
                 {"jsonrpc": "2.0", "id": 3, "method": "resources/templates/list", "params": {}},
             )
+        assert init_resp is not None
+        assert resources is not None
+        assert templates is not None
         self.assertEqual(init_resp["result"]["capabilities"], {"tools": {}, "resources": {}})
         self.assertEqual(resources["result"], {"resources": []})
         self.assertEqual(templates["result"], {"resourceTemplates": []})
