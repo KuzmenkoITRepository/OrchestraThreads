@@ -157,4 +157,4 @@ backend:
             data = json.loads(raw) if raw else {}
             if response.status != expected_status:
                 raise AssertionError(f"{method} {path} -> {response.status}: {data}")
-            return data
+            return cast(dict[str, Any], data)

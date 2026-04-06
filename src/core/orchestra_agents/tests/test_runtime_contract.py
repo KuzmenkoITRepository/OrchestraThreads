@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import socket
 import unittest
-from typing import Any
+from typing import Any, cast
 
 from aiohttp import ClientSession, ClientTimeout
 
@@ -106,4 +106,4 @@ class RuntimeContractTests(unittest.IsolatedAsyncioTestCase):
             data = json.loads(raw) if raw else {}
             if response.status >= 400:
                 raise AssertionError(f"{method} {path} -> {response.status}: {data}")
-            return data
+            return cast(dict[str, Any], data)
