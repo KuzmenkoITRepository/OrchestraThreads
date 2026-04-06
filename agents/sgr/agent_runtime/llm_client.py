@@ -3,26 +3,67 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 import aiohttp
 
-from core.llm_proxy.client_config import (
-    LLM_PROXY_TRACE_AGENT_HEADER,
-    LLM_PROXY_TRACE_CONTEXT_HEADER,
-    build_llm_proxy_openai_base_url,
-    resolve_llm_proxy_api_key,
-)
-from core.llm_proxy.protocol import (
-    openai_chat_payload_to_codex_response,
-    tool_calls_to_openai,
-)
 from core.orchestra_agents.agent_mux_runtime import sanitize_reply_text
+
+_LLM_PROXY_TRACE_AGENT_HEADER = "X-LLM-Proxy-Trace-Agent"
+_LLM_PROXY_TRACE_CONTEXT_HEADER = "X-LLM-Proxy-Trace-Context"
 
 
 def _chat_completions_url(route_policy: str) -> str:
-    base = build_llm_proxy_openai_base_url(route_policy).rstrip("/")
+    base = _build_llm_proxy_openai_base_url(route_policy).rstrip("/")
     return f"{base}/chat/completions"
+
+
+def _build_llm_proxy_openai_base_url(route_policy: str) -> str:
+    _ = route_policy
+    return f"{os.getenv('LLM_PROXY_URL', 'http://orchestra-wet:8100').rstrip('/')}/v1"
+
+
+def _resolve_llm_proxy_api_key() -> str | None:
+    api_key = os.getenv("LLM_PROXY_API_KEY")
+    if api_key is None:
+        return None
+    text = api_key.strip()
+    return text or None
+
+
+def _openai_chat_payload_to_codex_response(
+    payload: dict[str, Any],
+) -> tuple[str | None, str, list[dict[str, Any]]]:
+    model = payload.get("model")
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return _optional_str(model), "", []
+    choice = choices[0]
+    if not isinstance(choice, dict):
+        return _optional_str(model), "", []
+    message = choice.get("message")
+    if not isinstance(message, dict):
+        return _optional_str(model), "", []
+    text = message.get("content")
+    tool_calls = message.get("tool_calls")
+    parsed_calls = tool_calls if isinstance(tool_calls, list) else []
+    return (
+        _optional_str(model),
+        _optional_str(text) or "",
+        [call for call in parsed_calls if isinstance(call, dict)],
+    )
+
+
+def _tool_calls_to_openai(tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return list(tool_calls)
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 class SGRLLMClient:
@@ -64,14 +105,14 @@ class SGRLLMClient:
         default_model: str,
     ) -> tuple[dict[str, Any], str, list[Any]]:
         """Extract assistant message, text, and tool calls from response."""
-        response = openai_chat_payload_to_codex_response(payload)
-        self.last_model = response.model or default_model
-        text = sanitize_reply_text(response.text)
+        model, text, tool_calls = _openai_chat_payload_to_codex_response(payload)
+        self.last_model = model or default_model
+        text = sanitize_reply_text(text)
         msg: dict[str, Any] = {"role": "assistant", "content": text or None}
-        tool_calls = tool_calls_to_openai(response.tool_calls)
-        if tool_calls:
-            msg["tool_calls"] = tool_calls
-        return msg, text, tool_calls or []
+        openai_tool_calls = _tool_calls_to_openai(tool_calls)
+        if openai_tool_calls:
+            msg["tool_calls"] = openai_tool_calls
+        return msg, text, openai_tool_calls or []
 
     async def _ensure_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -82,10 +123,10 @@ class SGRLLMClient:
     def _build_headers(self, payload: dict[str, Any]) -> dict[str, str]:
         headers = {
             "Content-Type": "application/json",
-            LLM_PROXY_TRACE_AGENT_HEADER: self._agent_slug,
-            LLM_PROXY_TRACE_CONTEXT_HEADER: str(payload.get("thread_id") or self._agent_slug),
+            _LLM_PROXY_TRACE_AGENT_HEADER: self._agent_slug,
+            _LLM_PROXY_TRACE_CONTEXT_HEADER: str(payload.get("thread_id") or self._agent_slug),
         }
-        api_key = resolve_llm_proxy_api_key()
+        api_key = _resolve_llm_proxy_api_key()
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         return headers

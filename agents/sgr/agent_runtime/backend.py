@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any
 
 from agents.sgr.agent_runtime import config_builder as _cfg
@@ -11,7 +12,6 @@ from agents.sgr.agent_runtime import llm_client as _llm_mod
 from agents.sgr.agent_runtime import status_tracking as _status_mod
 from agents.sgr.agent_runtime import thread_ops as _thread_mod
 from agents.sgr.agent_runtime import tool_definitions as _tool_defs
-from core.llm_proxy import client_config as _llm_cfg
 from core.orchestra_agents import runtime as _rt
 from core.orchestra_thread import active_context as _active_ctx
 
@@ -36,7 +36,7 @@ class SGRMinimaxBackend(_rt.BaseAgentBackend):
         )
         self.system_prompt = str(system_prompt or "").strip()
         raw = dict(config or {})
-        self.llm_config = _llm_cfg.resolve_llm_client_config(_cfg.build_llm_raw_config(raw))
+        self.llm_config = _cfg.build_llm_config(raw)
         self.settings = _cfg.build_settings(raw)
         self._llm = _llm_mod.SGRLLMClient(
             agent_slug=agent_slug,
@@ -50,7 +50,7 @@ class SGRMinimaxBackend(_rt.BaseAgentBackend):
             metadata=_thread_mod._AgentMetadata(
                 backend_type=backend_type,
                 route_policy=self.llm_config.route_policy,
-                model=self.llm_config.model or _llm_cfg.DEFAULT_LLM_PROXY_MODEL,
+                model=self.llm_config.model or "gpt-5.4",
             ),
         )
         self._openai_tools = _tool_defs.build_sgr_openai_tools()
@@ -60,7 +60,7 @@ class SGRMinimaxBackend(_rt.BaseAgentBackend):
         self.handled_event_order: list[str] = []
 
     async def on_start(self) -> None:
-        if not _llm_cfg.llm_proxy_enabled():
+        if not _llm_proxy_enabled():
             raise RuntimeError("LLM_PROXY_ENABLED=false, but the sgr example requires llm_proxy")
         _active_ctx.clear_active_context()
 
@@ -69,8 +69,14 @@ class SGRMinimaxBackend(_rt.BaseAgentBackend):
         await self._llm.close()
         _active_ctx.clear_active_context()
 
-    async def handle_events(self, delivery: _rt.EventDelivery) -> _rt.EventDeliveryResult:
+    async def handle_events(
+        self,
+        delivery: _rt.EventDelivery,
+        *,
+        is_interrupt: bool = False,
+    ) -> _rt.EventDeliveryResult:
         async with self._turn_lock:
+            _ = is_interrupt
             return await _routing.handle_events(self, delivery)
 
     async def last_status(self) -> dict[str, Any]:
@@ -90,3 +96,10 @@ class SGRMinimaxBackend(_rt.BaseAgentBackend):
         self.handled_event_order.clear()
         _active_ctx.clear_active_context()
         return payload
+
+
+def _llm_proxy_enabled() -> bool:
+    value = os.getenv("LLM_PROXY_ENABLED")
+    if value is None:
+        return True
+    return value.strip().lower() not in {"0", "false", "no", "off", ""}

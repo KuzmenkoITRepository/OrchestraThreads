@@ -3,16 +3,28 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from typing import Any
 
 from agents.sgr.agent_runtime import support as _support
-from core.llm_proxy import client_config as _llm_cfg
 from core.orchestra_agents import agent_mux_runtime as _mux_rt
+
+
+@dataclass(frozen=True)
+class SGRLLMConfig:
+    route_policy: str
+    model: str | None
+    timeout_seconds: float | None
+    temperature: float | None
+    max_tokens: int | None
+    text_verbosity: str | None
+    reasoning_effort: str | None
+    reasoning_summary: str | None
 
 
 def build_llm_raw_config(raw: dict[str, Any]) -> dict[str, Any]:
     return {
-        "route_policy": raw.get("route_policy") or _llm_cfg.ROUTE_POLICY_MINIMAX_ONLY,
+        "route_policy": raw.get("route_policy") or "minimax_only",
         "model": raw.get("model"),
         "timeout_seconds": raw.get("timeout_seconds"),
         "temperature": raw.get("temperature"),
@@ -21,6 +33,48 @@ def build_llm_raw_config(raw: dict[str, Any]) -> dict[str, Any]:
         "reasoning_effort": raw.get("reasoning_effort"),
         "reasoning_summary": raw.get("reasoning_summary"),
     }
+
+
+def build_llm_config(raw: dict[str, Any]) -> SGRLLMConfig:
+    llm_raw = build_llm_raw_config(raw)
+    return SGRLLMConfig(
+        route_policy=str(llm_raw.get("route_policy") or "minimax_only").strip() or "minimax_only",
+        model=_support.normalize_optional_str(
+            llm_raw.get("model") or os.getenv("LLM_CLIENT_MODEL")
+        ),
+        timeout_seconds=_normalize_optional_float(
+            llm_raw.get("timeout_seconds") or os.getenv("LLM_CLIENT_TIMEOUT_SECONDS")
+        ),
+        temperature=_normalize_optional_float(llm_raw.get("temperature")),
+        max_tokens=_normalize_optional_int(llm_raw.get("max_tokens")),
+        text_verbosity=_support.normalize_optional_str(
+            llm_raw.get("text_verbosity") or os.getenv("LLM_CLIENT_TEXT_VERBOSITY")
+        ),
+        reasoning_effort=_support.normalize_optional_str(
+            llm_raw.get("reasoning_effort") or os.getenv("LLM_CLIENT_REASONING_EFFORT")
+        ),
+        reasoning_summary=_support.normalize_optional_str(
+            llm_raw.get("reasoning_summary") or os.getenv("LLM_CLIENT_REASONING_SUMMARY")
+        ),
+    )
+
+
+def _normalize_optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def build_settings(raw: dict[str, Any]) -> _support.SGRRuntimeSettings:

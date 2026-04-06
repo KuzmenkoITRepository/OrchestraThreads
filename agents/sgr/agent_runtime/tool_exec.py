@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from agents.sgr.agent_runtime import support as _support
-from core.llm_proxy import protocol as _llm_proto
 from core.orchestra_agents import agent_mux_runtime as _mux_rt
 
 if TYPE_CHECKING:
@@ -46,7 +45,7 @@ async def execute_single(
         name=parsed.tool_name,
         arguments=parsed.arguments,
     )
-    result_text = _llm_proto.flatten_content(mcp_result.get("content"))
+    result_text = _flatten_content(mcp_result.get("content"))
     if not result_text:
         import json
 
@@ -82,6 +81,28 @@ def _build_tool_outcome(
             limit=160,
         )
     return outcome
+
+
+def _flatten_content(content: Any) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text")
+                if text is not None:
+                    parts.append(str(text))
+                    continue
+            parts.append(str(item))
+        return "".join(parts)
+    if isinstance(content, dict):
+        text = content.get("text")
+        if text is not None:
+            return str(text)
+    return str(content)
 
 
 def _apply_execution(

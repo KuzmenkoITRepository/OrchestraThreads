@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
-from core.llm_proxy.client_config import default_route_policy, resolve_llm_client_config
 from core.orchestra_agents.agent_mux_runtime import backend_settings, normalization
 from core.orchestra_agents.runtime import (
     BaseAgentBackend,
@@ -22,6 +22,16 @@ from core.orchestra_agents.templates.agent_mux.agent_runtime.process_control imp
 )
 from core.orchestra_agents.templates.agent_mux.agent_runtime.state import AgentMuxRuntimeState
 from core.orchestra_agents.templates.agent_mux.agent_runtime.status_tracking import StatusTracker
+
+
+@dataclass(frozen=True)
+class _LLMClientConfig:
+    route_policy: str
+    model: str | None
+    timeout_seconds: float | None
+    reasoning_effort: str | None
+    reasoning_summary: str | None
+    text_verbosity: str | None
 
 
 class _StatusField:
@@ -51,21 +61,40 @@ def _resolve_http_endpoint(kwargs: dict[str, Any]) -> str | None:
     return str(raw_endpoint)
 
 
-def _resolve_llm_config(raw_config: dict[str, Any]) -> Any:
-    return resolve_llm_client_config(
-        {
-            "route_policy": raw_config.get("llm_route_policy") or default_route_policy(),
-            "model": raw_config.get("model") or os.getenv("LLM_CLIENT_MODEL"),
-            "timeout_seconds": raw_config.get("timeout_seconds")
-            or os.getenv("LLM_CLIENT_TIMEOUT_SECONDS"),
-            "reasoning_effort": raw_config.get("reasoning_effort")
-            or os.getenv("LLM_CLIENT_REASONING_EFFORT"),
-            "reasoning_summary": raw_config.get("reasoning_summary")
-            or os.getenv("LLM_CLIENT_REASONING_SUMMARY"),
-            "text_verbosity": raw_config.get("text_verbosity")
-            or os.getenv("LLM_CLIENT_TEXT_VERBOSITY"),
-        }
+def _resolve_llm_config(raw_config: dict[str, Any]) -> _LLMClientConfig:
+    return _LLMClientConfig(
+        route_policy=str(raw_config.get("llm_route_policy") or "codex_only").strip()
+        or "codex_only",
+        model=_optional_str(raw_config.get("model") or os.getenv("LLM_CLIENT_MODEL")),
+        timeout_seconds=_optional_float(
+            raw_config.get("timeout_seconds") or os.getenv("LLM_CLIENT_TIMEOUT_SECONDS")
+        ),
+        reasoning_effort=_optional_str(
+            raw_config.get("reasoning_effort") or os.getenv("LLM_CLIENT_REASONING_EFFORT")
+        ),
+        reasoning_summary=_optional_str(
+            raw_config.get("reasoning_summary") or os.getenv("LLM_CLIENT_REASONING_SUMMARY")
+        ),
+        text_verbosity=_optional_str(
+            raw_config.get("text_verbosity") or os.getenv("LLM_CLIENT_TEXT_VERBOSITY")
+        ),
     )
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _restore_context_state(owner: AgentMuxBackend) -> None:
@@ -183,7 +212,13 @@ class AgentMuxBackend(BaseAgentBackend):
         await self._process_controller.cancel_runtime()
         self._context_manager.clear_active_context()
 
-    async def handle_events(self, delivery: EventDelivery) -> EventDeliveryResult:
+    async def handle_events(
+        self,
+        delivery: EventDelivery,
+        *,
+        is_interrupt: bool = False,
+    ) -> EventDeliveryResult:
+        _ = is_interrupt
         self.remember_delivery(delivery)
         queue_result = self.runtime_state.queue_delivery(delivery)
         self._status.mark_queued(

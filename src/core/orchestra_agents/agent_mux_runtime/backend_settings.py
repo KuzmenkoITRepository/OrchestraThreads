@@ -1,10 +1,47 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
-from core.llm_proxy.client_config import default_route_policy, resolve_llm_client_config
 from core.orchestra_agents.agent_mux_runtime.models import AgentMuxRuntimeSettings
 from core.orchestra_agents.agent_mux_runtime.normalization import normalize_bool, normalize_int
+
+
+@dataclass(frozen=True)
+class _LLMClientConfig:
+    route_policy: str
+    model: str | None
+    timeout_seconds: float | None
+    reasoning_effort: str | None
+    reasoning_summary: str | None
+    text_verbosity: str | None
+
+
+def _resolve_llm_client_config(raw_config: dict[str, Any]) -> _LLMClientConfig:
+    return _LLMClientConfig(
+        route_policy=str(raw_config.get("route_policy") or "codex_only").strip() or "codex_only",
+        model=_optional_str(raw_config.get("model")),
+        timeout_seconds=_optional_float(raw_config.get("timeout_seconds")),
+        reasoning_effort=_optional_str(raw_config.get("reasoning_effort")),
+        reasoning_summary=_optional_str(raw_config.get("reasoning_summary")),
+        text_verbosity=_optional_str(raw_config.get("text_verbosity")),
+    )
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def build_runtime_settings(
@@ -15,9 +52,9 @@ def build_runtime_settings(
     llm_route_policy: str | None,
     llm_model: str | None,
 ) -> AgentMuxRuntimeSettings:
-    llm_config = resolve_llm_client_config(
+    llm_config = _resolve_llm_client_config(
         {
-            "route_policy": raw_config.get("llm_route_policy") or default_route_policy(),
+            "route_policy": raw_config.get("llm_route_policy"),
             "model": raw_config.get("model") or llm_model,
             "timeout_seconds": raw_config.get("timeout_seconds"),
             "reasoning_effort": raw_config.get("reasoning_effort"),

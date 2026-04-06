@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 
 from agents.sgr.agent_runtime import support as _support
 from agents.sgr.agent_runtime import tool_exec as _tools
-from core.llm_proxy.client_config import DEFAULT_LLM_PROXY_MODEL
 from core.orchestra_agents import runtime as _rt
 from core.orchestra_thread import active_context as _active_ctx
 
@@ -49,7 +48,7 @@ async def _run_step(
     outcome.llm_turns += 1
     msg, text, calls = backend._llm.extract_completion(
         await backend._llm.chat_completion(_chat_payload(backend, messages, event)),
-        backend.llm_config.model or DEFAULT_LLM_PROXY_MODEL,
+        backend.llm_config.model or "gpt-5.4",
     )
     messages.append(msg)
     if calls:
