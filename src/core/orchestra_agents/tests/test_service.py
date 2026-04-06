@@ -5,10 +5,9 @@ import socket
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-import aiohttp
-from aiohttp import web
+from aiohttp import ClientSession, ClientTimeout, web
 
 from core.orchestra_agents.registry import AgentManifestRegistry
 from core.orchestra_agents.service import OrchestraAgentsService, build_app
@@ -30,7 +29,7 @@ class FakeDriver:
     def container_name(self, slug: str) -> str:
         return f"orchestra-agent-{slug}"
 
-    def status(self, manifest) -> dict[str, Any]:
+    def status(self, manifest: Any) -> dict[str, Any]:
         return {
             "slug": manifest.slug,
             "container_name": self.container_name(manifest.slug),
@@ -47,7 +46,7 @@ class FakeDriver:
             "last_error": None,
         }
 
-    def start(self, manifest) -> dict[str, Any]:
+    def start(self, manifest: Any) -> dict[str, Any]:
         self.started.append(manifest.slug)
         return self.status(manifest)
 
@@ -61,7 +60,7 @@ class FakeDriver:
             "removed": remove,
         }
 
-    def restart(self, manifest) -> dict[str, Any]:
+    def restart(self, manifest: Any) -> dict[str, Any]:
         self.restarted.append(manifest.slug)
         return self.status(manifest)
 
@@ -90,37 +89,22 @@ backend:
             encoding="utf-8",
         )
         self.driver = FakeDriver()
-        self.service = OrchestraAgentsService(
+        self.service = OrchestraAgentsService.create(
+            manifests_root=str(root),
             registry=AgentManifestRegistry(manifests_root=root),
-            driver=self.driver,
+            driver=cast(Any, self.driver),
         )
         app = build_app(self.service)
         self.runner = web.AppRunner(app)
         await self.runner.setup()
         self.port = _free_port()
         await web.TCPSite(self.runner, host="127.0.0.1", port=self.port).start()
-        self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10))
+        self.session = ClientSession(timeout=ClientTimeout(total=10))
 
     async def asyncTearDown(self) -> None:
         await self.session.close()
         await self.runner.cleanup()
         self.tmpdir.cleanup()
-
-    async def _request(
-        self,
-        method: str,
-        path: str,
-        payload: dict[str, Any] | None = None,
-        expected_status: int = 200,
-    ) -> dict[str, Any]:
-        async with self.session.request(
-            method, f"http://127.0.0.1:{self.port}{path}", json=payload
-        ) as response:
-            raw = await response.text()
-            data = json.loads(raw) if raw else {}
-            if response.status != expected_status:
-                raise AssertionError(f"{method} {path} -> {response.status}: {data}")
-            return data
 
     async def test_lists_and_starts_agents(self) -> None:
         agents = await self._request("GET", "/api/v1/agents")
@@ -135,11 +119,7 @@ backend:
         self.assertTrue(status["status"]["running"])
 
     async def test_validates_manifest_payload(self) -> None:
-        result = await self._request(
-            "POST",
-            "/api/v1/manifests/validate",
-            {
-                "yaml": """
+        manifest_yaml_raw = """
 slug: research_agent
 display_name: Research Agent
 status: active
@@ -151,8 +131,30 @@ runtime:
   image: agent-image:latest
 backend:
   type: sgr
-                """.strip()
-            },
+        """
+        manifest_yaml = manifest_yaml_raw.strip()
+        result = await self._request(
+            "POST",
+            "/api/v1/manifests/validate",
+            {"yaml": manifest_yaml},
         )
         self.assertTrue(result["success"])
         self.assertEqual(result["manifest"]["backend"]["type"], "sgr")
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None = None,
+        expected_status: int = 200,
+    ) -> dict[str, Any]:
+        async with self.session.request(
+            method,
+            f"http://127.0.0.1:{self.port}{path}",
+            json=payload,
+        ) as response:
+            raw = await response.text()
+            data = json.loads(raw) if raw else {}
+            if response.status != expected_status:
+                raise AssertionError(f"{method} {path} -> {response.status}: {data}")
+            return data

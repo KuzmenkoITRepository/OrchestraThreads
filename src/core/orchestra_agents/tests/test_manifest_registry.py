@@ -4,7 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.orchestra_agents.manifest import AgentManifest, ManifestValidationError
+from core.orchestra_agents.errors import ManifestValidationError
+from core.orchestra_agents.manifest import AgentManifest
 from core.orchestra_agents.registry import AgentManifestRegistry
 
 
@@ -84,11 +85,16 @@ class AgentManifestRegistryTests(unittest.TestCase):
     def test_reports_duplicate_slugs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            first_dir = root / "first"
-            second_dir = root / "second"
-            first_dir.mkdir()
-            second_dir.mkdir()
-            payload = """
+            self._write_duplicate_manifests(root)
+
+            registry = AgentManifestRegistry(manifests_root=root)
+
+            self.assertEqual(len(registry.manifests()), 1)
+            self.assertEqual(len(registry.issues()), 1)
+            self.assertIn("duplicate slug", registry.issues()[0].error)
+
+    def _write_duplicate_manifests(self, root: Path) -> None:
+        payload = """
 slug: duplicate_agent
 display_name: Duplicate Agent
 status: active
@@ -101,11 +107,7 @@ runtime:
 backend:
   type: example
 """
-            (first_dir / "manifest.yaml").write_text(payload, encoding="utf-8")
-            (second_dir / "manifest.yaml").write_text(payload, encoding="utf-8")
-
-            registry = AgentManifestRegistry(manifests_root=root)
-
-            self.assertEqual(len(registry.manifests()), 1)
-            self.assertEqual(len(registry.issues()), 1)
-            self.assertIn("duplicate slug", registry.issues()[0].error)
+        for dir_name in ("first", "second"):
+            manifest_dir = root / dir_name
+            manifest_dir.mkdir()
+            (manifest_dir / "manifest.yaml").write_text(payload, encoding="utf-8")
