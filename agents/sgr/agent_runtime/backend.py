@@ -51,7 +51,7 @@ class SGRMinimaxBackend(_rt.BaseAgentBackend):
             metadata=_thread_mod._AgentMetadata(
                 backend_type=backend_type,
                 route_policy=self.llm_config.route_policy,
-                model=self.llm_config.model,
+                model=self.llm_config.model or _llm_cfg.DEFAULT_LLM_PROXY_MODEL,
             ),
         )
         self._openai_tools = _tool_defs.build_sgr_openai_tools()

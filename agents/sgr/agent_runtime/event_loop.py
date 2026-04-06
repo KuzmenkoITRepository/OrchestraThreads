@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
+from core.llm_proxy.client_config import DEFAULT_LLM_PROXY_MODEL
 from core.orchestra_agents import runtime as _rt
 from core.orchestra_thread import active_context as _active_ctx
 
@@ -49,7 +50,7 @@ async def _run_step(
     outcome.llm_turns += 1
     msg, text, calls = backend._llm.extract_completion(
         await backend._llm.chat_completion(_chat_payload(backend, messages, event)),
-        backend.llm_config.model,
+        backend.llm_config.model or DEFAULT_LLM_PROXY_MODEL,
     )
     messages.append(msg)
     if calls:
