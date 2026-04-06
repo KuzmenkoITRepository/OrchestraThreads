@@ -75,9 +75,38 @@ def _text_response(text: str, *, model: str = "MiniMax-M2.7") -> dict[str, Any]:
     }
 
 
+def _assert_message_event_result(
+    test_case: unittest.IsolatedAsyncioTestCase,
+    *,
+    result: Any,
+    status: dict[str, Any],
+    observed: dict[str, Any],
+) -> None:
+    test_case.assertEqual(
+        observed,
+        {
+            "accepted": True,
+            "register_calls": 1,
+            "chat_requests": 3,
+            "model": "MiniMax-M2.7",
+            "to_agent": "secretary",
+            "thread": "thread-1",
+            "request_id": "tool-reply-1",
+            "message": "Draft ready for handoff.",
+            "sent": 1,
+            "tool_calls": 2,
+            "last_thread": "thread-1",
+            "last_peer": "secretary",
+            "last_reply": "Draft ready for handoff.",
+            "last_action": True,
+        },
+    )
+    test_case.assertIn("thread_send", result.details["used_tools"])
+
+
 class FakeThreadService:
     def __init__(self) -> None:
-        self.port = _free_port()
+        self._port = _free_port()
         self.runner: web.AppRunner | None = None
         self.register_calls: list[dict[str, Any]] = []
         self.heartbeat_calls: list[dict[str, Any]] = []
@@ -87,67 +116,61 @@ class FakeThreadService:
 
     @property
     def base_url(self) -> str:
-        return f"http://127.0.0.1:{self.port}"
+        return f"http://127.0.0.1:{self._port}"
 
     async def start(self) -> None:
         app = web.Application()
-        app.router.add_post("/agents/register", self._handle_register)
-        app.router.add_post("/agents/heartbeat", self._handle_heartbeat)
-        app.router.add_post("/api/v1/messages", self._handle_messages)
-        app.router.add_post("/api/v1/notifications", self._handle_notifications)
+        app.router.add_post("/agents/register", self._handle_post)
+        app.router.add_post("/agents/heartbeat", self._handle_post)
+        app.router.add_post("/api/v1/messages", self._handle_post)
+        app.router.add_post("/api/v1/notifications", self._handle_post)
         app.router.add_get("/api/v1/instructions", self._handle_instructions)
-        app.router.add_get("/api/v1/threads/{thread_id}/compact", self._handle_thread_compact)
-        app.router.add_get("/api/v1/threads/{thread_id}", self._handle_thread_detail)
+        app.router.add_get("/api/v1/threads/{thread_id}/compact", self._handle_threads)
+        app.router.add_get("/api/v1/threads/{thread_id}", self._handle_threads)
         self.runner = web.AppRunner(app)
         await self.runner.setup()
-        await web.TCPSite(self.runner, host="127.0.0.1", port=self.port).start()
+        await web.TCPSite(self.runner, host="127.0.0.1", port=self._port).start()
 
     async def stop(self) -> None:
         if self.runner is not None:
             await self.runner.cleanup()
             self.runner = None
 
-    async def _handle_register(self, request: web.Request) -> web.Response:
+    async def _handle_post(self, request: web.Request) -> web.Response:
         payload = await request.json()
-        self.register_calls.append(payload)
-        return web.json_response(
-            {
-                "success": True,
-                "agent": {
-                    "agent_slug": payload.get("agent_slug"),
-                    "base_url": payload.get("base_url"),
-                },
-                "agent_lease_seconds": 30,
-            }
-        )
-
-    async def _handle_heartbeat(self, request: web.Request) -> web.Response:
-        payload = await request.json()
-        self.heartbeat_calls.append(payload)
-        return web.json_response(
-            {
-                "success": True,
-                "agent": {
-                    "agent_slug": payload.get("agent_slug"),
-                },
-            }
-        )
-
-    async def _handle_messages(self, request: web.Request) -> web.Response:
-        payload = await request.json()
-        self.message_calls.append(payload)
-        return web.json_response(
-            {
-                "success": True,
-                "operation": "message",
-                "created_thread": False,
-                "thread": {"thread_id": payload.get("thread_id"), "status": "open"},
-                "event": {"event_id": "reply-event-1"},
-            }
-        )
-
-    async def _handle_notifications(self, request: web.Request) -> web.Response:
-        payload = await request.json()
+        if request.path == "/agents/register":
+            self.register_calls.append(payload)
+            return web.json_response(
+                {
+                    "success": True,
+                    "agent": {
+                        "agent_slug": payload.get("agent_slug"),
+                        "base_url": payload.get("base_url"),
+                    },
+                    "agent_lease_seconds": 30,
+                }
+            )
+        if request.path == "/agents/heartbeat":
+            self.heartbeat_calls.append(payload)
+            return web.json_response(
+                {
+                    "success": True,
+                    "agent": {
+                        "agent_slug": payload.get("agent_slug"),
+                    },
+                }
+            )
+        if request.path == "/api/v1/messages":
+            self.message_calls.append(payload)
+            return web.json_response(
+                {
+                    "success": True,
+                    "operation": "message",
+                    "created_thread": False,
+                    "thread": {"thread_id": payload.get("thread_id"), "status": "open"},
+                    "event": {"event_id": "reply-event-1"},
+                }
+            )
         self.notification_calls.append(payload)
         return web.json_response(
             {
@@ -177,17 +200,15 @@ class FakeThreadService:
             }
         )
 
-    async def _handle_thread_compact(self, request: web.Request) -> web.Response:
+    async def _handle_threads(self, request: web.Request) -> web.Response:
         thread_id = request.match_info["thread_id"]
-        return web.json_response(
-            {
-                "success": True,
-                "thread": self.compact_threads[thread_id],
-            }
-        )
-
-    async def _handle_thread_detail(self, request: web.Request) -> web.Response:
-        thread_id = request.match_info["thread_id"]
+        if request.path.endswith("/compact"):
+            return web.json_response(
+                {
+                    "success": True,
+                    "thread": self.compact_threads[thread_id],
+                }
+            )
         return web.json_response(
             {
                 "success": True,
@@ -292,9 +313,9 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
                 "react_to_inactive": True,
                 "max_reasoning_steps": 6,
                 "max_direct_text_retries": 1,
+                "http_endpoint": "http://orchestra-agent-sgr:8787",
             },
             system_prompt="Use thread_send or thread_status via OrchestraThreads MCP tools.",
-            http_endpoint="http://orchestra-agent-sgr:8787",
         )
         await self.backend.on_start()
 
@@ -309,8 +330,23 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
             else:
                 os.environ[key] = value
 
-    def _message_delivery(self) -> EventDelivery:
-        return EventDelivery.from_dict(
+    async def test_message_event_triggers_mcp_tools(self) -> None:
+        self.llm_proxy.enqueue(
+            _tool_response(tool_name="thread_current", arguments={}, call_id="call-current")
+        )
+        self.llm_proxy.enqueue(
+            _tool_response(
+                tool_name="thread_send",
+                arguments={
+                    "message": "Draft ready for handoff.",
+                    "client_request_id": "tool-reply-1",
+                },
+                call_id="call-send",
+            )
+        )
+        self.llm_proxy.enqueue(_text_response("Turn complete."))
+
+        delivery = EventDelivery.from_dict(
             {
                 "delivery_id": "delivery-1",
                 "events": [
@@ -333,48 +369,36 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
                 ],
             }
         )
-
-    async def test_message_event_uses_mcp_tools_and_posts_back_to_thread(self) -> None:
-        self.llm_proxy.enqueue(
-            _tool_response(tool_name="thread_current", arguments={}, call_id="call-current")
-        )
-        self.llm_proxy.enqueue(
-            _tool_response(
-                tool_name="thread_send",
-                arguments={
-                    "message": "Draft ready for handoff.",
-                    "client_request_id": "tool-reply-1",
-                },
-                call_id="call-send",
-            )
-        )
-        self.llm_proxy.enqueue(_text_response("Turn complete."))
-
-        result = await self.backend.handle_events(self._message_delivery())
-
-        self.assertTrue(result.accepted)
-        self.assertEqual(len(self.thread_service.register_calls), 1)
-        self.assertEqual(len(self.llm_proxy.chat_requests), 3)
+        result = await self.backend.handle_events(delivery)
+        first_payload = self.llm_proxy.chat_requests[0]["payload"]
         self.assertEqual(self.llm_proxy.chat_requests[0]["path"], "/minimax/v1/chat/completions")
-        self.assertEqual(self.llm_proxy.chat_requests[0]["payload"]["model"], "MiniMax-M2.7")
-        self.assertTrue(self.llm_proxy.chat_requests[0]["payload"]["tools"])
-        self.assertEqual(self.thread_service.message_calls[0]["to_agent_slug"], "secretary")
-        self.assertEqual(self.thread_service.message_calls[0]["thread_id"], "thread-1")
-        self.assertEqual(self.thread_service.message_calls[0]["client_request_id"], "tool-reply-1")
-        self.assertEqual(
-            self.thread_service.message_calls[0]["message_text"], "Draft ready for handoff."
+        status = await self.backend.last_status()
+        observed = {
+            "accepted": result.accepted,
+            "register_calls": len(self.thread_service.register_calls),
+            "chat_requests": len(self.llm_proxy.chat_requests),
+            "model": first_payload["model"],
+            "to_agent": self.thread_service.message_calls[0]["to_agent_slug"],
+            "thread": self.thread_service.message_calls[0]["thread_id"],
+            "request_id": self.thread_service.message_calls[0]["client_request_id"],
+            "message": self.thread_service.message_calls[0]["message_text"],
+            "sent": result.details["messages_sent"],
+            "tool_calls": result.details["tool_calls"],
+            "last_thread": status["last_thread_id"],
+            "last_peer": status["last_peer_agent_slug"],
+            "last_reply": status["last_reply_preview"],
+            "last_action": status["last_action_emitted"],
+        }
+        _assert_message_event_result(
+            self,
+            result=result,
+            status=status,
+            observed=observed,
         )
-        self.assertEqual(result.details["messages_sent"], 1)
-        self.assertEqual(result.details["tool_calls"], 2)
+        self.assertTrue(first_payload["tools"])
         self.assertIn("thread_send", result.details["used_tools"])
 
-        status = await self.backend.last_status()
-        self.assertEqual(status["last_thread_id"], "thread-1")
-        self.assertEqual(status["last_peer_agent_slug"], "secretary")
-        self.assertEqual(status["last_reply_preview"], "Draft ready for handoff.")
-        self.assertTrue(status["last_action_emitted"])
-
-    async def test_direct_text_is_ignored_until_tool_action_is_emitted(self) -> None:
+    async def test_direct_text_ignored_before_tool(self) -> None:
         self.llm_proxy.enqueue(_text_response("I would answer with a short summary."))
         self.llm_proxy.enqueue(
             _tool_response(
@@ -388,14 +412,43 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
         )
         self.llm_proxy.enqueue(_text_response("Done."))
 
-        result = await self.backend.handle_events(self._message_delivery())
+        delivery = EventDelivery.from_dict(
+            {
+                "delivery_id": "delivery-1",
+                "events": [
+                    {
+                        "event_id": "event-1",
+                        "thread_id": "thread-1",
+                        "root_thread_id": "thread-1",
+                        "parent_thread_id": None,
+                        "owner_agent_slug": "secretary",
+                        "sequence_no": 3,
+                        "event_kind": "message",
+                        "notification_status": None,
+                        "from_agent_slug": "secretary",
+                        "to_agent_slug": "sgr",
+                        "message_text": "Please prepare the summary.",
+                        "interrupts_runtime": True,
+                        "requires_response": True,
+                        "created_at": "2026-04-03T07:00:00Z",
+                    }
+                ],
+            }
+        )
+        result = await self.backend.handle_events(delivery)
 
-        self.assertTrue(result.accepted)
-        self.assertEqual(len(self.thread_service.message_calls), 1)
-        self.assertEqual(len(self.llm_proxy.chat_requests), 3)
+        self.assertEqual(
+            (
+                result.accepted,
+                len(self.thread_service.message_calls),
+                len(self.llm_proxy.chat_requests),
+            ),
+            (True, 1, 3),
+        )
+        second_payload = self.llm_proxy.chat_requests[1]["payload"]
         reminder_messages = [
             str(message.get("content") or "")
-            for message in self.llm_proxy.chat_requests[1]["payload"]["messages"]
+            for message in second_payload["messages"]
             if isinstance(message, dict) and message.get("role") == "system"
         ]
         self.assertTrue(
@@ -404,10 +457,12 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.details["direct_text_ignored"])
 
         status = await self.backend.last_status()
-        self.assertEqual(status["last_reply_preview"], "Here is the requested short summary.")
-        self.assertEqual(status["last_ignored_output_preview"], "Done.")
+        self.assertEqual(
+            (status["last_reply_preview"], status["last_ignored_output_preview"]),
+            ("Here is the requested short summary.", "Done."),
+        )
 
-    async def test_inactive_event_can_publish_status_proactively(self) -> None:
+    async def test_inactive_event_publishes_status(self) -> None:
         self.llm_proxy.enqueue(
             _tool_response(
                 tool_name="thread_status",
@@ -457,7 +512,7 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status["last_published_status"], "in_progress")
         self.assertEqual(status["last_status_preview"], "Still working on the requested summary.")
 
-    async def test_duplicate_delivery_does_not_repeat_tool_turn(self) -> None:
+    async def test_duplicate_delivery_skips_tool(self) -> None:
         self.llm_proxy.enqueue(
             _tool_response(tool_name="thread_current", arguments={}, call_id="call-current")
         )
@@ -473,7 +528,29 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
         )
         self.llm_proxy.enqueue(_text_response("Turn complete."))
 
-        delivery = self._message_delivery()
+        delivery = EventDelivery.from_dict(
+            {
+                "delivery_id": "delivery-1",
+                "events": [
+                    {
+                        "event_id": "event-1",
+                        "thread_id": "thread-1",
+                        "root_thread_id": "thread-1",
+                        "parent_thread_id": None,
+                        "owner_agent_slug": "secretary",
+                        "sequence_no": 3,
+                        "event_kind": "message",
+                        "notification_status": None,
+                        "from_agent_slug": "secretary",
+                        "to_agent_slug": "sgr",
+                        "message_text": "Please prepare the summary.",
+                        "interrupts_runtime": True,
+                        "requires_response": True,
+                        "created_at": "2026-04-03T07:00:00Z",
+                    }
+                ],
+            }
+        )
         first = await self.backend.handle_events(delivery)
         second = await self.backend.handle_events(delivery)
 
@@ -483,7 +560,7 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.thread_service.message_calls), 1)
         self.assertEqual(len(self.llm_proxy.chat_requests), 3)
 
-    async def test_notification_event_is_skipped_without_llm_call(self) -> None:
+    async def test_notification_event_skipped(self) -> None:
         delivery = EventDelivery.from_dict(
             {
                 "delivery_id": "delivery-3",
