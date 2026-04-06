@@ -49,8 +49,8 @@ backend:
   type: agent_mux
   config:
     artifact_root: /workspace/agents/secretary/runtime_state/artifacts
-    llm_route_policy: minimax_only
-    model: MiniMax-M2.7
+    llm_route_policy: managed_auto
+    model: gpt-5.4-mini
     timeout_seconds: 180
     require_tool_call_for_response: true
     mcp_servers:
@@ -62,7 +62,7 @@ backend:
         cwd: "{working_dir}"
         startup_timeout_sec: 15
         required: false
-        enabled: true
+        enabled: false
         enabled_tools:
           - thread_send
           - thread_status
