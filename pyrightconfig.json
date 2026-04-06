@@ -1,0 +1,14 @@
+{
+  "include": [
+    "src",
+    "agents"
+  ],
+  "extraPaths": [
+    "src",
+    "agents"
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "reportMissingImports": true,
+  "reportMissingModuleSource": true
+}

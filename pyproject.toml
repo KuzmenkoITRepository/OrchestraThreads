@@ -34,6 +34,35 @@ warn_no_return = true
 check_untyped_defs = true
 strict_equality = true
 show_error_codes = true
+explicit_package_bases = true
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = [
+    "asyncpg",
+    "telethon",
+    "telethon.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "asyncpg",
+    "telegram_mcp.telegram_client",
+    "telegram_mcp.mcp_server",
+    "core.orchestra_thread.store",
+    "core.orchestra_thread.store_base",
+    "core.orchestra_thread.store_agents",
+    "core.orchestra_thread.store_idempotency",
+    "core.orchestra_thread.store_thread_query",
+    "core.orchestra_thread.store_thread_creation",
+    "core.orchestra_thread.store_thread_events",
+    "core.orchestra_thread.store_delivery",
+    "core.orchestra_thread.store_notifications",
+    "core.telegram_events.listener",
+    "core.telegram_events.service",
+]
+disallow_any_unimported = false
 
 [tool.flake8]
 max-line-length = 100
