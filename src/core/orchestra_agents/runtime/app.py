@@ -3,15 +3,48 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 
 from aiohttp import web
 
-from .backend import BaseAgentBackend
-from .contracts import ClearContextRequest, EventDelivery, StopRequest
+from core.orchestra_agents.runtime.backend import BaseAgentBackend
+from core.orchestra_agents.runtime.contracts import (
+    ClearContextRequest,
+    EventDelivery,
+    StopRequest,
+)
 
 
 def _json_error(message: str, *, status: int) -> web.Response:
     return web.json_response({"success": False, "error": message}, status=status)
+
+
+@dataclass(frozen=True)
+class _RequestHandlers:
+    backend: BaseAgentBackend
+
+    async def healthz(self, _: web.Request) -> web.Response:
+        return web.json_response(await self.backend.health())
+
+    async def event(self, request: web.Request) -> web.Response:
+        payload = await request.json()
+        try:
+            delivery = EventDelivery.from_dict(payload)
+        except Exception as exc:
+            return _json_error(str(exc), status=400)
+        return web.json_response((await self.backend.handle_events(delivery)).to_dict())
+
+    async def stop(self, request: web.Request) -> web.Response:
+        payload = await request.json()
+        return web.json_response(await self.backend.stop(StopRequest.from_dict(payload)))
+
+    async def last_status(self, _: web.Request) -> web.Response:
+        return web.json_response(await self.backend.last_status())
+
+    async def clear_context(self, request: web.Request) -> web.Response:
+        payload = await request.json()
+        cleared = await self.backend.clear_context(ClearContextRequest.from_dict(payload))
+        return web.json_response(cleared)
 
 
 class StandardAgentApplication:
@@ -31,11 +64,12 @@ class StandardAgentApplication:
 
     def build_app(self) -> web.Application:
         app = web.Application()
-        app.router.add_get("/healthz", self._handle_healthz)
-        app.router.add_post("/event", self._handle_event)
-        app.router.add_post("/stop", self._handle_stop)
-        app.router.add_get("/last_status", self._handle_last_status)
-        app.router.add_post("/clear_context", self._handle_clear_context)
+        handlers = _RequestHandlers(self.backend)
+        app.router.add_get("/healthz", handlers.healthz)
+        app.router.add_post("/event", handlers.event)
+        app.router.add_post("/stop", handlers.stop)
+        app.router.add_get("/last_status", handlers.last_status)
+        app.router.add_post("/clear_context", handlers.clear_context)
         return app
 
     async def start(self) -> None:
@@ -48,42 +82,18 @@ class StandardAgentApplication:
         await site.start()
 
     async def stop(self) -> None:
-        if self.runner is None:
+        runner = self.runner
+        if runner is None:
             return
-        await self.runner.cleanup()
         self.runner = None
+        await runner.cleanup()
         await self.backend.on_shutdown()
 
     async def serve_forever(self) -> None:
         await self.start()
         try:
             await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            raise
         finally:
             await self.stop()
-
-    async def _handle_healthz(self, request: web.Request) -> web.Response:
-        del request
-        return web.json_response(await self.backend.health())
-
-    async def _handle_event(self, request: web.Request) -> web.Response:
-        payload = await request.json()
-        try:
-            delivery = EventDelivery.from_dict(payload)
-        except Exception as exc:
-            return _json_error(str(exc), status=400)
-        result = await self.backend.handle_events(delivery)
-        return web.json_response(result.to_dict())
-
-    async def _handle_stop(self, request: web.Request) -> web.Response:
-        payload = await request.json()
-        result = await self.backend.stop(StopRequest.from_dict(payload))
-        return web.json_response(result)
-
-    async def _handle_last_status(self, request: web.Request) -> web.Response:
-        del request
-        return web.json_response(await self.backend.last_status())
-
-    async def _handle_clear_context(self, request: web.Request) -> web.Response:
-        payload = await request.json()
-        result = await self.backend.clear_context(ClearContextRequest.from_dict(payload))
-        return web.json_response(result)
