@@ -8,6 +8,10 @@ from typing import Any
 
 from aiohttp import web
 
+from core.llm_proxy._router_runtime_impl import UnifiedLLMRouter
+from core.llm_proxy.codex_oauth import is_retryable_codex_error_message
+
+from ._langfuse_runtime import LangfuseTelemetry, TelemetrySettings
 from .client_config import (
     LLM_PROXY_TRACE_AGENT_HEADER,
     LLM_PROXY_TRACE_CONTEXT_HEADER,
@@ -17,7 +21,6 @@ from .client_config import (
     ROUTE_POLICY_MANAGED_AUTO,
     ROUTE_POLICY_MINIMAX_ONLY,
 )
-from .langfuse import LangfuseTelemetry, TelemetrySettings
 from .protocol import (
     AllCodexAccountsUnavailable,
     codex_response_stream_events,
@@ -25,8 +28,6 @@ from .protocol import (
     completion_stream_chunks,
     normalize_responses_input_items,
 )
-from .router import UnifiedLLMRouter
-from .transports import is_retryable_codex_error_message
 
 DEFAULT_MODEL = "gpt-5.4"
 DEFAULT_BASE_URL = "https://chatgpt.com/backend-api"
@@ -118,7 +119,12 @@ def resolve_route_policy(path: str, *, endpoint: str) -> str | None:
 
 
 class LLMProxyService:
-    def __init__(self, config: ProxyConfig, *, telemetry: LangfuseTelemetry | None = None) -> None:
+    def __init__(
+        self,
+        config: ProxyConfig,
+        *,
+        telemetry: LangfuseTelemetry | None = None,
+    ) -> None:
         self.config = config
         self.telemetry = telemetry or LangfuseTelemetry(
             TelemetrySettings(
@@ -299,17 +305,17 @@ def build_app(service: LLMProxyService) -> web.Application:
                     status=classify_proxy_exception_status(exc),
                 )
             if bool(payload.get("stream", False)):
-                response = web.StreamResponse(status=200)
-                response.headers["Content-Type"] = "text/event-stream; charset=utf-8"
-                response.headers["Cache-Control"] = "no-cache"
-                response.headers["Connection"] = "keep-alive"
-                await response.prepare(request)
+                chat_stream = web.StreamResponse(status=200)
+                chat_stream.headers["Content-Type"] = "text/event-stream; charset=utf-8"
+                chat_stream.headers["Cache-Control"] = "no-cache"
+                chat_stream.headers["Connection"] = "keep-alive"
+                await chat_stream.prepare(request)
                 for chunk in completion_stream_chunks(response_payload):
-                    event = f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode()
-                    await response.write(event)
-                await response.write(b"data: [DONE]\n\n")
-                await response.write_eof()
-                return response
+                    chat_event_bytes = f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode()
+                    await chat_stream.write(chat_event_bytes)
+                await chat_stream.write(b"data: [DONE]\n\n")
+                await chat_stream.write_eof()
+                return chat_stream
             return web.json_response(response_payload)
         instructions = str(payload.get("instructions") or "").strip()
         input_items = normalize_responses_input_items(payload)
@@ -329,8 +335,12 @@ def build_app(service: LLMProxyService) -> web.Application:
                 "stream": bool(payload.get("stream", False)),
             }
         )
+        temperature_raw = payload.get("temperature")
+        temperature: float | None = None
+        if temperature_raw is not None:
+            temperature = float(str(temperature_raw))
         try:
-            response = await asyncio.to_thread(
+            codex_response = await asyncio.to_thread(
                 service.router.complete,
                 instructions=instructions,
                 input_items=input_items,
@@ -341,11 +351,7 @@ def build_app(service: LLMProxyService) -> web.Application:
                 text_verbosity=str(payload.get("text_verbosity") or "").strip() or None,
                 reasoning_effort=str(payload.get("reasoning_effort") or "").strip() or None,
                 reasoning_summary=str(payload.get("reasoning_summary") or "").strip() or None,
-                temperature=(
-                    float(payload.get("temperature"))
-                    if payload.get("temperature") is not None
-                    else None
-                ),
+                temperature=temperature,
                 route_policy=codex_route_policy or ROUTE_POLICY_MANAGED_AUTO,
                 agent_slug=trace_metadata.get("agent_slug"),
                 context_id=trace_metadata.get("context_id"),
@@ -367,12 +373,14 @@ def build_app(service: LLMProxyService) -> web.Application:
             stream.headers["Cache-Control"] = "no-cache"
             stream.headers["Connection"] = "keep-alive"
             await stream.prepare(request)
-            for event in codex_response_stream_events(response):
-                await stream.write(f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode())
+            for codex_event in codex_response_stream_events(codex_response):
+                await stream.write(
+                    f"data: {json.dumps(codex_event, ensure_ascii=False)}\n\n".encode()
+                )
             await stream.write(b"data: [DONE]\n\n")
             await stream.write_eof()
             return stream
-        return web.json_response(codex_response_to_dict(response))
+        return web.json_response(codex_response_to_dict(codex_response))
 
     async def handle_cleanup(_: web.Application) -> None:
         service.shutdown()

@@ -6,7 +6,7 @@ import os
 import time
 import unittest
 import uuid
-from typing import Any
+from typing import Any, ClassVar, cast
 
 import aiohttp
 
@@ -14,6 +14,12 @@ from core.llm_proxy.langfuse import build_group_key
 
 
 class RealBackendE2ETests(unittest.IsolatedAsyncioTestCase):
+    enabled: ClassVar[bool] = False
+    llm_proxy_base_url: ClassVar[str] = ""
+    langfuse_base_url: ClassVar[str] = ""
+    langfuse_public_key: ClassVar[str] = ""
+    langfuse_secret_key: ClassVar[str] = ""
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.enabled = os.getenv("E2E_REAL_BACKENDS_ENABLED") == "1"
@@ -22,8 +28,8 @@ class RealBackendE2ETests(unittest.IsolatedAsyncioTestCase):
 
         cls.llm_proxy_base_url = os.getenv("LLM_PROXY_BASE_URL", "http://localhost:8791")
         cls.langfuse_base_url = os.getenv("LANGFUSE_BASE_URL", "http://localhost:3000")
-        cls.langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-        cls.langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+        cls.langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY") or ""
+        cls.langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY") or ""
 
         if not cls.langfuse_public_key or not cls.langfuse_secret_key:
             raise ValueError(
@@ -82,7 +88,7 @@ class RealBackendE2ETests(unittest.IsolatedAsyncioTestCase):
                 text = await response.text()
                 raise RuntimeError(f"Langfuse API error {response.status}: {text}")
             data = await response.json()
-            return data.get("data", [])
+            return cast(list[dict[str, Any]], data.get("data", []))
 
     async def _wait_for_langfuse_traces(
         self,
@@ -114,7 +120,7 @@ class RealBackendE2ETests(unittest.IsolatedAsyncioTestCase):
                 text = await response.text()
                 raise RuntimeError(f"Langfuse API error {response.status}: {text}")
             data = await response.json()
-            return data
+            return cast(dict[str, Any], data)
 
     async def _get_langfuse_generations(self, trace_id: str) -> list[dict[str, Any]]:
         """Fetch generations for a trace from Langfuse API."""
@@ -126,17 +132,17 @@ class RealBackendE2ETests(unittest.IsolatedAsyncioTestCase):
                 text = await response.text()
                 raise RuntimeError(f"Langfuse API error {response.status}: {text}")
             data = await response.json()
-            return data.get("data", [])
+            return cast(list[dict[str, Any]], data.get("data", []))
 
     def _extract_chat_completion_text(self, payload: dict[str, Any]) -> str:
-        choices = payload.get("choices")
+        choices = cast(list[dict[str, Any]], payload.get("choices") or [])
         self.assertIsInstance(choices, list)
         self.assertGreater(len(choices), 0)
         first_choice = choices[0]
         self.assertIsInstance(first_choice, dict)
-        message = first_choice.get("message")
+        message = cast(dict[str, Any], first_choice.get("message") or {})
         self.assertIsInstance(message, dict)
-        content = message.get("content")
+        content = cast(str, message.get("content") or "")
         self.assertIsInstance(content, str)
         self.assertTrue(content.strip())
         return content.strip()
@@ -158,7 +164,7 @@ class RealBackendE2ETests(unittest.IsolatedAsyncioTestCase):
                 raise
             parsed, _ = json.JSONDecoder().raw_decode(normalized[start:])
         self.assertIsInstance(parsed, dict)
-        return parsed
+        return cast(dict[str, Any], parsed)
 
     def _serialize(self, payload: Any) -> str:
         return json.dumps(payload, ensure_ascii=False, sort_keys=True)
@@ -190,7 +196,7 @@ class RealBackendE2ETests(unittest.IsolatedAsyncioTestCase):
             generation.get("modelParameters") or generation.get("model_parameters") or {}
         )
         self.assertIn("temperature", model_parameters)
-        self.assertEqual(float(model_parameters.get("temperature")), 0.0)
+        self.assertEqual(float(model_parameters.get("temperature") or 0.0), 0.0)
 
     async def test_minimax_dialogue_trace_contains_real_conversation(self) -> None:
         agent_slug = "e2e-minimax-dialogue"
@@ -251,7 +257,7 @@ class RealBackendE2ETests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("lisbon", str(parsed_response.get("final_answer", "")).lower())
 
         traces = await self._wait_for_langfuse_traces(
-            session_id=expected_session_id,
+            session_id=str(expected_session_id),
             min_count=1,
         )
         trace = traces[0]
@@ -330,7 +336,7 @@ class RealBackendE2ETests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(turn_marker, assistant_text)
 
         traces = await self._wait_for_langfuse_traces(
-            session_id=expected_session_id,
+            session_id=str(expected_session_id),
             min_count=2,
         )
         self.assertGreaterEqual(len(traces), 2)
@@ -386,8 +392,8 @@ class RealBackendE2ETests(unittest.IsolatedAsyncioTestCase):
             assistant_text = self._extract_chat_completion_text(response)
             self.assertIn(marker, assistant_text)
 
-        traces_1 = await self._wait_for_langfuse_traces(session_id=session_id_1, min_count=1)
-        traces_2 = await self._wait_for_langfuse_traces(session_id=session_id_2, min_count=1)
+        traces_1 = await self._wait_for_langfuse_traces(session_id=str(session_id_1), min_count=1)
+        traces_2 = await self._wait_for_langfuse_traces(session_id=str(session_id_2), min_count=1)
 
         self.assertEqual(traces_1[0]["sessionId"], session_id_1)
         self.assertEqual(traces_2[0]["sessionId"], session_id_2)

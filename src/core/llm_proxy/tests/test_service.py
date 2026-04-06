@@ -5,12 +5,12 @@ import socket
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 import aiohttp
 from aiohttp import web
 
-from core.llm_proxy.langfuse import build_group_key
+from core.llm_proxy.langfuse import LangfuseTelemetry, build_group_key
 from core.llm_proxy.service import LLMProxyService, ProxyConfig, build_app
 
 
@@ -164,7 +164,7 @@ class FakeGenerationContext:
     def __enter__(self) -> FakeGenerationContext:
         return self
 
-    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> Literal[False]:
         return False
 
     def update(self, **kwargs: Any) -> None:
@@ -178,7 +178,7 @@ class FakeRequestTrace:
     def __enter__(self) -> FakeRequestTrace:
         return self
 
-    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> Literal[False]:
         return False
 
     def generation(
@@ -309,7 +309,7 @@ class LLMProxyServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 fallback_timeout_seconds=10,
                 langfuse_enabled=True,
             ),
-            telemetry=self.telemetry,
+            telemetry=cast(LangfuseTelemetry, self.telemetry),  # type: ignore[no-any-unimported]
         )
         self.runner = web.AppRunner(build_app(self.service))
         await self.runner.setup()
@@ -427,6 +427,29 @@ class LLMProxyServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.upstream.fallback_requests), 1)
         health = await self._request("GET", "/healthz")
         self.assertEqual(health["status"], "ok")
+
+    async def test_managed_auto_responses_fallback_uses_configured_fallback_model(self) -> None:
+        self.upstream.set_codex_behavior(
+            "acct-primary", status=503, error="temporarily unavailable"
+        )
+        self.upstream.set_codex_behavior(
+            "acct-secondary", status=503, error="temporarily unavailable"
+        )
+        self.upstream.set_fallback_behavior(content="fallback codex reply")
+        result = await self._request(
+            "POST",
+            "/v1/responses",
+            {
+                "model": "gpt-5.4-mini",
+                "instructions": "You are a helper.",
+                "input": [{"role": "user", "content": [{"type": "input_text", "text": "ping"}]}],
+                "tools": None,
+            },
+        )
+        self.assertEqual(result["items"][0]["text"], "fallback codex reply")
+        self.assertEqual(len(self.upstream.codex_requests), 2)
+        self.assertEqual(len(self.upstream.fallback_requests), 1)
+        self.assertEqual(self.upstream.fallback_requests[0]["model"], "minimax-text-01")
 
     async def test_minimax_only_codex_route_skips_codex_accounts(self) -> None:
         self.upstream.set_codex_behavior("acct-primary", status=500, error="should not be called")
