@@ -23,7 +23,13 @@ class DispatchCompletionHook(Protocol):
 
 
 class RunAgentMuxHook(Protocol):
-    async def __call__(self, **kwargs: Any) -> Mapping[str, Any]: ...
+    async def __call__(
+        self,
+        *,
+        event: Any,
+        dispatch_id: str,
+        artifact_dir: Any,
+    ) -> dict[str, Any]: ...
 
 
 @dataclass(frozen=True)

@@ -83,7 +83,7 @@ def remember_incoming_context(context: AgentTurnContext) -> None:
 def remember_agent_output(context: AgentOutputContext, result: Mapping[str, Any]) -> None:
     preview = dispatch_preview(result) or "dispatch completed"
     tool_calls = extract_tool_calls(result)
-    tool_summary = f"tool_calls={', '.join(tool_calls[:6])}"
+    tool_summary: str | None = f"tool_calls={', '.join(tool_calls[:6])}"
     if not tool_calls:
         tool_summary = None
     context.runtime_state.append_context_entry(
