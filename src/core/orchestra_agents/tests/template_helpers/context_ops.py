@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 from functools import partial
-from typing import Any
+from typing import Any, cast
 
 from core.orchestra_agents.tests.template_helpers.assertions import _dispatch_and_assert_completed
 from core.orchestra_agents.tests.template_helpers.backend_ops import (
@@ -32,16 +32,19 @@ async def _collect_clear(
 
 
 async def _initial_context_snapshot(fixture: TemplateFixture) -> ContextSnapshot:
-    return await _run_backend_once(fixture, _collect_initial)
+    return cast(ContextSnapshot, await _run_backend_once(fixture, _collect_initial))
 
 
 async def _clear_context_snapshot(
     fixture: TemplateFixture,
     requested_by: str,
 ) -> ContextSnapshot:
-    return await _run_backend_once(
-        fixture,
-        partial(_collect_clear, fixture, requested_by=requested_by),
+    return cast(
+        ContextSnapshot,
+        await _run_backend_once(
+            fixture,
+            partial(_collect_clear, fixture, requested_by=requested_by),
+        ),
     )
 
 
@@ -70,7 +73,7 @@ async def _prompt_after_two_turns(
     status = await backend.last_status()
     prompt = capture["stdin_payload"]["prompt"]
     recent_entries = status["runtime_context"]["recent_entries"]
-    return prompt, recent_entries
+    return prompt, cast(list[object], recent_entries)
 
 
 async def _context_lifecycle_snapshots(

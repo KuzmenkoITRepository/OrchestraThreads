@@ -5,7 +5,7 @@ import pathlib
 import socket
 import unittest
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 from core.orchestra_agents import runtime as runtime_contract
 from core.orchestra_agents.tests.template_helpers.fixture import TemplateFixture
@@ -155,4 +155,5 @@ def _delivery(
 
 
 def _read_capture(capture_path: pathlib.Path) -> dict[str, Any]:
-    return json.loads(capture_path.read_text(encoding="utf-8"))
+    payload = json.loads(capture_path.read_text(encoding="utf-8"))
+    return cast(dict[str, Any], payload)

@@ -72,14 +72,14 @@ async def _assert_failed_dispatch(test_case: unittest.TestCase, backend: Any) ->
 
 async def _assert_process_active(test_case: unittest.TestCase, backend: Any) -> None:
     active = await _wait_for(
-        lambda: (backend._active_process is not None and backend._active_process.returncode is None)
+        lambda: backend._active_process is not None and backend._active_process.returncode is None
     )
     test_case.assertTrue(active)
 
 
 async def _assert_process_stopped(test_case: unittest.TestCase, backend: Any) -> None:
     cleared = await _wait_for(
-        lambda: (backend._active_process is None or backend._active_process.returncode is not None)
+        lambda: backend._active_process is None or backend._active_process.returncode is not None
     )
     test_case.assertTrue(cleared)
 
