@@ -143,6 +143,70 @@ services:
       - core.orchestra_agents.service_main
     restart: unless-stopped
 
+  orchestra-omniroute:
+    image: diegosouzapw/omniroute:latest
+    container_name: orchestra-omniroute
+    networks:
+      - default
+    ports:
+      - "20129:20129"
+    environment:
+      OMNIROUTE_PORT: 20129
+      INITIAL_PASSWORD: ${OMNIROUTE_INITIAL_PASSWORD:-CHANGEME}
+    volumes:
+      - ./.omniroute/data:/app/data
+    restart: unless-stopped
+
+  orchestra-wet:
+    image: ghcr.io/dzhng/wet:latest
+    container_name: orchestra-wet
+    depends_on:
+      orchestra-omniroute:
+        condition: service_started
+    networks:
+      - default
+    ports:
+      - "8100:8100"
+      - "8101:8101"
+    environment:
+      WET_PORT: 8100
+      WET_ADMIN_PORT: 8101
+      WET_UPSTREAM: http://orchestra-omniroute:20129
+    volumes:
+      - ./.omniroute/wet:/data
+    restart: unless-stopped
+
+  task-registry:
+    build: .
+    image: orchestra-threads:local
+    container_name: task-registry
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8791:8791"
+    environment:
+      PYTHONPATH: /app/src
+      TASK_REGISTRY_HOST: 0.0.0.0
+      TASK_REGISTRY_PORT: 8791
+      TASK_REGISTRY_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8791/healthz').status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command:
+      - python
+      - -m
+      - core.task_registry.service_main
+    restart: unless-stopped
+
   events-engine:
     build: .
     image: orchestra-threads:local
