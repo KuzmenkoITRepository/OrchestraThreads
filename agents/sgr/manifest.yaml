@@ -24,7 +24,7 @@ runtime:
     AGENT_HTTP_PORT: "8787"
     PYTHONPATH: /workspace/src:/workspace/agents/sgr
     ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
-    LLM_PROXY_URL: http://llm-proxy:8787
+    LLM_PROXY_URL: http://orchestra-wet:8100
     LLM_PROXY_ENABLED: "true"
     LLM_CLIENT_ROUTE_POLICY: minimax_only
     LLM_CLIENT_MODEL: MiniMax-M2.7
