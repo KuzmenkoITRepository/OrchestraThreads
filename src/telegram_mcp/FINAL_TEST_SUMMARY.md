@@ -94,7 +94,7 @@
 Это можно протестировать командой:
 ```bash
 source .env.telegram
-docker compose up -d postgres orchestra-threads orchestra-agents llm-proxy
+docker compose up -d postgres orchestra-threads orchestra-agents orchestra-omniroute orchestra-wet
 docker compose --profile agents up -d secretary
 ```
 

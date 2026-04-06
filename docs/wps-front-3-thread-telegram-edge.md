@@ -2,11 +2,13 @@
 
 ## Front mission
 
+**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
+
 This front reduces active WPS debt in thread orchestration, MCP/thread HTTP
 surfaces, persistent thread-store decomposition, and Telegram/event edge
 services.
 
-`src/core/llm_proxy/**` is not part of this front.
+`src/core/omniroute/**` and `src/core/wet/**` are not part of this front.
 
 ## Front work scope
 
@@ -62,7 +64,7 @@ This front must not:
 
 - modify lifecycle platform ownership files from Front 2;
 - refactor shared `agent_mux` runtime/template internals from Front 1;
-- pull `llm_proxy` into active work or use it as a dependency blocker.
+- pull `omniroute` or `wet` into active work or use them as a dependency blocker.
 
 ## Completion signal
 

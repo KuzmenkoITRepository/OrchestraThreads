@@ -1,5 +1,7 @@
 # agent-mux Refactor - Completion Summary
 
+**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
+
 **Date**: 2026-04-03
 **Status**: ✅ Completed
 
@@ -93,7 +95,7 @@ Refactor `agent-mux` runtime and agent templates to remove hardcoded thread depe
 - Agent-mux template tests pass (7/7) ✅
 - SGR example tests pass (5/5) ✅
 
-**llm_proxy tests:** 12/12 ✅
+**omniroute/wet tests:** 12/12 ✅
 - All proxy routing tests pass
 
 ### Issues Resolved

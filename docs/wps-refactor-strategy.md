@@ -1,20 +1,22 @@
-# WPS refactor strategy (excluding `llm_proxy`)
+# WPS refactor strategy (excluding `omniroute` + `wet`)
+
+**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
 
 ## Scope
 
 This document defines the repository-wide strategy for eliminating the remaining
-`wemake-python-styleguide` debt **without** treating `src/core/llm_proxy/` as an
-active refactoring target.
+`wemake-python-styleguide` debt **without** treating `src/core/omniroute/` or
+`src/core/wet/` as active refactoring targets.
 
-`llm_proxy` is deprecated and expected to be replaced by an external solution,
-so it is excluded from the active remediation plan. The goal of this strategy is
+`omniroute` + `wet` are the active replacement, so the old `llm-proxy` path is
+excluded from the active remediation plan. The goal of this strategy is
 to make the **rest of the repository** systematically maintainable and capable of
 reaching a green WPS state through architectural refactoring rather than
 file-by-file cosmetic cleanup.
 
 ## Measured active debt
 
-Current WPS count after excluding `src/core/llm_proxy/**`:
+Current WPS count after excluding `src/core/omniroute/**` and `src/core/wet/**`:
 
 - total active WPS debt: **443**
 - `tests`: **163**
@@ -122,7 +124,7 @@ Create a stable working frame so the campaign measures the right debt.
 
 ### Required outcomes
 
-- Exclude `src/core/llm_proxy/**` from the active WPS remediation target.
+- Exclude `src/core/omniroute/**` and `src/core/wet/**` from the active WPS remediation target.
 - Track active debt separately from deprecated debt.
 - Explicitly forbid new cosmetic shim layers as a default lint tactic.
 
@@ -140,7 +142,7 @@ agents.
 
 ### Diagnosis
 
-The heaviest non-`llm_proxy` debt is concentrated around the `agent_mux`
+The heaviest non-`omniroute`/`wet` debt is concentrated around the `agent_mux`
 template/runtime shape:
 
 - `src/core/orchestra_agents/templates/agent_mux/agent_runtime/backend.py`
@@ -302,7 +304,7 @@ large restructuring, an earlier phase was incomplete.
 
 ## Practical order of execution
 
-1. exclude `llm_proxy` from the active WPS campaign;
+1. exclude `omniroute` and `wet` from the active WPS campaign;
 2. implement shared `agent_mux` runtime primitives in `orchestra_agents`;
 3. migrate templates and example agents to the shared runtime;
 4. decompose `orchestra_thread` by operational role;
@@ -314,7 +316,7 @@ large restructuring, an earlier phase was incomplete.
 
 The campaign is successful when all of the following are true:
 
-- `llm_proxy` no longer blocks active WPS progress reporting;
+- `omniroute` and `wet` no longer block active WPS progress reporting;
 - duplicated complex runtime logic no longer exists across templates and
   example agents;
 - `orchestra_thread` no longer depends on monolithic coordination modules;

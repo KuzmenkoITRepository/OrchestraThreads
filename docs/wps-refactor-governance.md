@@ -1,10 +1,12 @@
 # WPS refactor governance rules
 
+**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
+
 This document codifies the rules governing the WPS remediation campaign.
 
 ## Excluded scope
 
-`src/core/llm_proxy/` is excluded from the active WPS campaign. It is
+`src/core/omniroute/` and `src/core/wet/` are excluded from the active WPS campaign. It is
 deprecated and pending replacement by an external solution. Its violations are
 not tracked in the active baseline.
 

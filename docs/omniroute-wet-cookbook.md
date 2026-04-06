@@ -174,7 +174,7 @@ If migrating from the old `llm-proxy`:
 1. Update agent manifests:
    ```yaml
    # Old
-   LLM_PROXY_URL: http://llm-proxy:8787
+   LLM_PROXY_URL: http://orchestra-wet:8100
 
    # New
    LLM_PROXY_URL: http://orchestra-wet:8100

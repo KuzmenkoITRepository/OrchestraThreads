@@ -99,7 +99,7 @@ docker compose build orchestra-threads
 
 ### 3. Запустить сервисы
 ```bash
-docker compose up -d postgres orchestra-threads orchestra-agents llm-proxy
+docker compose up -d postgres orchestra-threads orchestra-agents orchestra-omniroute orchestra-wet
 docker compose --profile agents up -d secretary
 ```
 

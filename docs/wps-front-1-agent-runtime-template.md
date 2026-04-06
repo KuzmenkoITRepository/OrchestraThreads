@@ -2,11 +2,13 @@
 
 ## Front mission
 
+**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
+
 This front reduces active WPS debt in the shared execution layer used by
 `agent_mux`, template runtimes, and example agents. It is responsible for the
 runtime engine shape, template adapter shape, and example-agent runtime reuse.
 
-`src/core/llm_proxy/**` is not part of this front.
+`src/core/omniroute/**` and `src/core/wet/**` are not part of this front.
 
 ## Front work scope
 
@@ -66,7 +68,7 @@ This front must not:
 
 - move runtime complexity into generic `helpers.py`-style dumping grounds;
 - change lifecycle service routes or manifest schema owned by Front 2;
-- pull `llm_proxy` into active refactoring work.
+- pull `omniroute` or `wet` into active refactoring work.
 
 ## Completion signal
 

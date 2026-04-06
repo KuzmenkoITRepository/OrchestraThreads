@@ -1,7 +1,9 @@
 # WPS violation baseline report
 
+**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
+
 **Generated:** 2026-04-04
-**Scope:** Active codebase (excluding `src/core/llm_proxy/`)
+**Scope:** Active codebase (excluding `src/core/omniroute/` and `src/core/wet/`)
 **Tool:** `flake8 . --select=WPS`
 
 ## Total violations: 444
@@ -79,7 +81,7 @@
 
 ## Notes
 
-- `src/core/llm_proxy/` is excluded from this baseline (deprecated, pending
+- `src/core/omniroute/` and `src/core/wet/` are excluded from this baseline (deprecated, pending
   replacement).
 - The dominant violation classes (WPS221, WPS210, WPS231) reflect concentrated
   responsibilities, large orchestration units, and procedural aggregation.

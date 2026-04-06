@@ -13,7 +13,7 @@ service split:
   inactivity, and status transitions.
 - `orchestra_agents` owns manifest loading, template scaffolding, and runtime
   lifecycle.
-- `llm_proxy` owns model/account routing and OpenAI/Codex-compatible HTTP
+- `omniroute` + `wet` own model/account routing and OpenAI/Codex-compatible HTTP
   access.
 
 `agent-mux` must remain a worker runtime layer, not the owner of thread
@@ -29,7 +29,7 @@ The finished template should let a manifest-defined agent:
 - build compact prompt context from `thread_compact` plus `thread_guide`;
 - run a worker through `agent-mux`;
 - send reply or status updates back into the same Orchestra thread;
-- use `llm_proxy` for Codex/OpenAI-compatible routing where applicable;
+- use `omniroute` + `wet` for Codex/OpenAI-compatible routing where applicable;
 - support interruption, timeout recovery, and durable artifacts.
 
 ## Design Constraints
@@ -177,22 +177,22 @@ For timed-out dispatches:
 - mark runtime state as recoverable;
 - optionally use `agent-mux --recover` on the next wake-up.
 
-## llm_proxy Integration
+## omniroute + wet Integration
 
 ### Baseline Approach
 
-The template should integrate `llm_proxy` without pushing that concern into
+The template should integrate `omniroute` + `wet` without pushing that concern into
 `orchestra_thread`.
 
 For Codex/OpenAI-compatible routing:
 
 - generate a local Codex config file in `.codex/config.toml`;
-- define a custom provider pointing at `llm_proxy`;
+- define a custom provider pointing at `omniroute` + `wet`;
 - pass auth and route settings through environment.
 
 ### Compatibility Work
 
-Current `llm_proxy` routes already expose:
+Current `omniroute` + `wet` routes already expose:
 
 - `/v1/chat/completions`
 - `/v1/codex/responses`
@@ -204,7 +204,7 @@ For smoother Codex provider integration, add compatibility aliases if needed:
 - `POST /v1/responses`
 - optional route-specific aliases mirroring current policy paths
 
-This should be implemented in `llm_proxy`, not in the template.
+This should be implemented in `omniroute` + `wet`, not in the template.
 
 ## Manifest Shape
 
@@ -316,13 +316,13 @@ Deliverable:
 
 - runtime behaves correctly under repeated delivery and cancellation.
 
-### Phase 6. llm_proxy Compatibility
+### Phase 6. omniroute + wet Compatibility
 
 Implement and verify:
 
 - Codex config generation;
-- provider wiring through `llm_proxy`;
-- any `llm_proxy` path aliases required for compatibility.
+- provider wiring through `omniroute` + `wet`;
+- any `omniroute` or `wet` path aliases required for compatibility.
 
 Deliverable:
 
@@ -336,7 +336,7 @@ Add dockerized tests covering:
 - event delivery and quick ack;
 - compact-state prompt flow;
 - timeout and recovery;
-- llm_proxy-backed execution path.
+- omniroute/wet-backed execution path.
 
 Deliverable:
 
@@ -356,7 +356,7 @@ Deliverable:
 ### Integration Tests
 
 - fake thread service + fake `agent-mux` subprocess;
-- fake `llm_proxy` route for Codex/OpenAI-compatible calls;
+- fake `omniroute` + `wet` route for Codex/OpenAI-compatible calls;
 - interrupting event during active dispatch;
 - timed-out dispatch with recoverable artifacts.
 
@@ -373,7 +373,7 @@ docker compose --profile test run --rm test
 1. Blocking `/event` on worker completion will break delivery semantics.
 2. Mapping `dispatch_id` too closely to `thread_id` will leak runtime concerns
    into service-level workflow.
-3. Codex provider compatibility may require small `llm_proxy` API aliases.
+3. Codex provider compatibility may require small `omniroute` + `wet` API aliases.
 4. Steering behavior differs by engine, so the first usable version should focus
    on one primary path before broad multi-engine support.
 

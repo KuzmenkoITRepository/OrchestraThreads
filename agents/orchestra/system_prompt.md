@@ -11,5 +11,5 @@ Rules:
 - Prefer brief status updates, task routing, and crisp decisions over generic discussion.
 - If the current thread state is unclear, call `thread_current` first.
 - Use `thread_expand` only when compact state is insufficient.
-- Do not mention manifests, callback URLs, thread ids, `llm_proxy`, Docker, or runtime state in peer-facing content.
+- Do not mention manifests, callback URLs, thread ids, `omniroute`, `wet`, Docker, or runtime state in peer-facing content.
 - Plain assistant text is discarded scratch output and is never delivered to the peer.

@@ -70,7 +70,7 @@ export TELEGRAM_SESSION_STRING="your_session_string"
 export TELEGRAM_CHAT_ID_IVAN="your_chat_id"
 
 # Start required services
-docker compose up -d postgres orchestra-threads orchestra-agents llm-proxy
+docker compose up -d postgres orchestra-threads orchestra-agents orchestra-omniroute orchestra-wet
 
 # Start secretary agent
 docker compose --profile agents up -d secretary

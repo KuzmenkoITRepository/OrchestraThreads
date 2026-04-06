@@ -2,11 +2,13 @@
 
 ## Front mission
 
+**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
+
 This front reduces active WPS debt in the non-thread `orchestra_agents`
 platform surface: manifests, registry, lifecycle routes, runtime contract, and
 Docker/platform integration.
 
-`src/core/llm_proxy/**` is not part of this front.
+`src/core/omniroute/**` and `src/core/wet/**` are not part of this front.
 
 ## Front work scope
 
@@ -66,7 +68,7 @@ This front must not:
 
 - refactor shared `agent_mux` execution internals owned by Front 1;
 - edit thread semantics or thread-owned APIs owned by Front 3;
-- bring `llm_proxy` back into the active remediation scope.
+- bring `omniroute` or `wet` back into the active remediation scope.
 
 ## Completion signal
 

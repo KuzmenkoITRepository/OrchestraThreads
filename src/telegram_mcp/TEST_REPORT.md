@@ -219,7 +219,7 @@ echo '{"jsonrpc":"2.0","id":100,"method":"tools/call","params":{"name":"send_tel
 ## Что НЕ протестировано
 
 ❌ **End-to-end тест с secretary** - требует:
-  - Запущенный Docker stack (postgres, orchestra-threads, orchestra-agents, llm-proxy)
+  - Запущенный Docker stack (postgres, orchestra-threads, orchestra-agents, omniroute + wet)
   - Secretary agent запущен с MCP сервером
   - Реальное взаимодействие через orchestra-threads API
 
@@ -279,7 +279,7 @@ source .env.telegram
 
 1. **Запустить secretary с credentials:**
    ```bash
-   docker compose up -d postgres orchestra-threads orchestra-agents llm-proxy
+   docker compose up -d postgres orchestra-threads orchestra-agents orchestra-omniroute orchestra-wet
    docker compose --profile agents up -d secretary
    ```
 

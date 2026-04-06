@@ -4,7 +4,7 @@
 
 - lifecycle via `core.orchestra_agents`
 - thread delivery via `core.orchestra_thread`
-- LLM routing via `core.llm_proxy`
+- LLM routing via `omniroute + wet`
 
 What it does:
 
@@ -14,7 +14,7 @@ What it does:
 - receives `/event` callbacks from `orchestra_thread`
 - fetches compact thread state instead of full history
 - runs a proactive tool loop through the compact `orchestra-threads-mcp` surface
-- calls Minimax through `llm_proxy` using the OpenAI-compatible route
+- calls Minimax through `wet` using the OpenAI-compatible route
 - answers only through `thread_send` and `thread_status`, never by returning raw assistant text to `/event`
 
 Default routing:
@@ -36,10 +36,10 @@ The defaults are safe placeholders. Override them with env when your Minimax ups
 Start the platform services first:
 
 ```bash
-docker compose up --build -d postgres orchestra-threads orchestra-agents llm-proxy
+docker compose up --build -d postgres orchestra-threads orchestra-agents orchestra-omniroute orchestra-wet
 ```
 
-If `llm-proxy` should forward Minimax traffic, set its fallback env before starting it:
+If `wet` should forward Minimax traffic, set its fallback env before starting it:
 
 ```bash
 export LLM_PROXY_FALLBACK_OPENAI_API_BASE_URL="https://<your-openai-compatible-endpoint>/v1"
@@ -47,7 +47,7 @@ export LLM_PROXY_FALLBACK_OPENAI_API_KEY="<api-key>"
 export LLM_PROXY_FALLBACK_OPENAI_MODEL="MiniMax-M2.7"
 ```
 
-In the current repo `llm-proxy` reads OpenAI-compatible Minimax creds from the local project `.env` through `OPENAI_API_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL`.
+In the current repo `wet` reads OpenAI-compatible Minimax creds from the local project `.env` through `OPENAI_API_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL`.
 
 Then reload manifests and start the agent:
 

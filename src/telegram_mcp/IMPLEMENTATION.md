@@ -105,7 +105,7 @@ send_telegram_message(
 
 3. **Start services:**
    ```bash
-   docker compose up -d postgres orchestra-threads orchestra-agents llm-proxy
+   docker compose up -d postgres orchestra-threads orchestra-agents orchestra-omniroute orchestra-wet
    ```
 
 4. **Start secretary:**

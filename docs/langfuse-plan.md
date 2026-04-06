@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add Langfuse tracing inside `llm_proxy` and group requests by the stable agent context:
+Add Langfuse tracing inside `omniroute` + `wet` and group requests by the stable agent context:
 
 - `agent_slug`
 - `context_id`
@@ -11,8 +11,8 @@ Add Langfuse tracing inside `llm_proxy` and group requests by the stable agent c
 
 ## Current State
 
-- `orchestra` already sends `X-Orchestra-Agent-Slug` and `X-Orchestra-Context-Id` to `llm_proxy`.
-- `llm_proxy` already extracts this metadata in `service.py`.
+- `orchestra` already sends `X-Orchestra-Agent-Slug` and `X-Orchestra-Context-Id` to `wet`.
+- `wet` already extracts this metadata in its request handling layer.
 - `router.py` currently discards that metadata and does not emit any Langfuse traces.
 
 ## Grouping Model
@@ -30,10 +30,10 @@ This preserves the requested business semantics while using Langfuse's native gr
 
 ## Implementation Steps
 
-1. Add a dedicated telemetry layer under `src/core/llm_proxy/langfuse.py`.
+1. Add a dedicated telemetry layer under `src/core/omniroute/langfuse.py`.
 2. Extend `ProxyConfig` and `service_main.py` with Langfuse settings.
 3. Keep using the existing agent-side headers, without changing the agent contract.
-4. Create one root Langfuse trace per `llm_proxy` request.
+4. Create one root Langfuse trace per `wet` request.
 5. Create one child generation per actual upstream attempt:
    - Codex profile attempt
    - OpenAI-compatible fallback attempt
@@ -44,12 +44,12 @@ This preserves the requested business semantics while using Langfuse's native gr
 
 ## Files To Change
 
-- `src/core/llm_proxy/langfuse.py`
-- `src/core/llm_proxy/service.py`
-- `src/core/llm_proxy/router.py`
-- `src/core/llm_proxy/service_main.py`
-- `src/core/llm_proxy/docs/README.md`
-- `src/core/llm_proxy/tests/test_service.py`
+- `src/core/omniroute/langfuse.py`
+- `src/core/omniroute/service.py`
+- `src/core/omniroute/router.py`
+- `src/core/omniroute/service_main.py`
+- `src/core/omniroute/docs/README.md`
+- `src/core/omniroute/tests/test_service.py`
 - `requirements.txt`
 - `docker-compose.yml`
 - `.env.example`
@@ -70,7 +70,7 @@ Automated:
 
 Manual:
 
-- start stack with Langfuse-enabled `llm_proxy`
+- start stack with Langfuse-enabled `wet`
 - send multiple requests through `thread CLI` into the same agent context
 - confirm identical Langfuse `session_id`
 - clear context

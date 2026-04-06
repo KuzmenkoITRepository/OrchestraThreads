@@ -1,19 +1,21 @@
 # WPS parallel execution fronts — common contract
 
+**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
+
 ## Purpose
 
 This document defines the shared execution model for the active WPS remediation
-campaign. It replaces any earlier decomposition that treated `src/core/llm_proxy/`
-as an active workstream.
+campaign. It replaces any earlier decomposition that treated `src/core/omniroute/`
+and `src/core/wet/` as active workstreams.
 
-`src/core/llm_proxy/` is **explicitly excluded** from all active fronts and is
+`src/core/omniroute/` and `src/core/wet/` are **explicitly excluded** from all active fronts and are
 also excluded from the active WPS check configuration.
 
 ## Active scope
 
 The active remediation scope is limited to these areas:
 
-- `src/core/orchestra_agents/**` except `src/core/llm_proxy/**`
+- `src/core/orchestra_agents/**` except `src/core/omniroute/**` and `src/core/wet/**`
 - `src/core/orchestra_thread/**`
 - `src/core/events_engine/**`
 - `src/core/telegram_events/**`
@@ -24,7 +26,7 @@ The active remediation scope is limited to these areas:
 
 The following area is not part of any execution front:
 
-- `src/core/llm_proxy/**`
+- `src/core/omniroute/**` and `src/core/wet/**`
 
 Reasons for exclusion:
 
@@ -36,7 +38,7 @@ Reasons for exclusion:
 
 At the time of this split:
 
-- active WPS campaign excludes `src/core/llm_proxy/**` in `setup.cfg`;
+- active WPS campaign excludes `src/core/omniroute/**` and `src/core/wet/**` in `setup.cfg`;
 - the `agent_mux` shared runtime/parity slice has already been cleaned and
   verified locally;
 - the repository still carries substantial active WPS debt in
@@ -50,7 +52,7 @@ Each front must satisfy all of the following:
 
 1. a file belongs to exactly one front;
 2. each front owns both its production files and its directly related tests;
-3. no front may move work into `llm_proxy` or wait on `llm_proxy` changes;
+3. no front may move work into `omniroute` or `wet` or wait on their changes;
 4. cross-front compatibility changes must be additive and backward-compatible;
 5. lint reduction must come from responsibility reduction, not wrapper churn.
 
@@ -78,7 +80,7 @@ The fronts are expected to run fully in parallel under these constraints:
 
 - Front 1 must not change lifecycle API contracts owned by Front 2.
 - Front 2 must not refactor `agent_mux` shared runtime internals owned by Front 1.
-- Front 3 must not depend on `llm_proxy` cleanup and must not edit `orchestra_agents`
+- Front 3 must not depend on `omniroute` or `wet` cleanup and must not edit `orchestra_agents`
   lifecycle or template ownership files.
 
 Allowed cross-front behavior:
@@ -91,7 +93,7 @@ Forbidden cross-front behavior:
 
 - parallel edits to the same file;
 - moving unresolved complexity into another front's module;
-- reintroducing `llm_proxy` into active scope.
+- reintroducing `omniroute` or `wet` into active scope.
 
 ## Verification standard for every front
 
@@ -102,7 +104,7 @@ files:
 2. `flake8 --select=WPS` passes for the owned files;
 3. relevant tests pass;
 4. the change leaves no new diagnostics in the owned modules;
-5. `llm_proxy` remains excluded from both scope and progress reporting.
+5. `omniroute` and `wet` remain excluded from both scope and progress reporting.
 
 ## Deliverables
 
