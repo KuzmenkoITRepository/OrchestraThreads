@@ -6,9 +6,9 @@
 ## STRUCTURE
 ```text
 agents/
-├── secretary/   # SGR-backed secretary manifest
+├── secretary/   # SGR-backed secretary manifest + Telegram MCP wiring
 ├── orchestra/   # agent_mux-backed orchestration example
-└── sgr/         # reusable SGR Minimax example runtime
+└── sgr/         # reusable SGR Minimax example runtime (with support/ submodule)
 ```
 
 ## WHERE TO LOOK
@@ -17,7 +17,8 @@ agents/
 | Basic SGR manifest shape | `secretary/manifest.yaml`, `sgr/manifest.yaml` | lifecycle wiring + backend config |
 | Tool-only orchestration prompt rules | `orchestra/system_prompt.md`, `sgr/system_prompt.md` | concise runtime behavior constraints |
 | agent_mux example | `orchestra/manifest.yaml` | optional MCP server wiring, runtime_state path |
-| Example runtime implementation | `sgr/agent_runtime/` | largest example backend in repo |
+| Secretary with Telegram MCP | `secretary/manifest.yaml` | MCP server block for `telegram_mcp` integration |
+| Example runtime implementation | `sgr/agent_runtime/` | largest example backend in repo (with `support/` helpers) |
 
 ## CONVENTIONS
 - Keep manifests aligned with `core.orchestra_agents` schema and runtime contract.
@@ -41,3 +42,4 @@ curl http://127.0.0.1:8790/api/v1/agents/sgr/status
 ## NOTES
 - `agents/orchestra/` uses `agent_mux`; `agents/secretary/` and `agents/sgr/` use the SGR runtime path.
 - Ignore unreadable/generated paths under `agents/orchestra/runtime_state/` during repo analysis.
+- `secretary` integrates `telegram_mcp` MCP server for outbound Telegram messaging via manifest wiring.
