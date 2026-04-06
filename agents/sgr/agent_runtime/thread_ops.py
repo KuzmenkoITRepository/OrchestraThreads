@@ -6,13 +6,12 @@ import asyncio
 import logging
 from dataclasses import dataclass
 
-from core.orchestra_thread.client import OrchestraThreadsClient
-from core.orchestra_thread.mcp_server import OrchestraThreadsMCPServer
-
 from agents.sgr.agent_runtime.support.settings import (
     SGRRuntimeSettings,
     thread_client_timeout_seconds,
 )
+from core.orchestra_thread.client import OrchestraThreadsClient
+from core.orchestra_thread.mcp_server import OrchestraThreadsMCPServer
 
 logger = logging.getLogger(__name__)
 

@@ -8,10 +8,9 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from agents.sgr.agent_runtime.backend import SGRMinimaxBackend
 from core.orchestra_agents.manifest import AgentManifest
 from core.orchestra_agents.runtime import StandardAgentApplication
-
-from agents.sgr.agent_runtime.backend import SGRMinimaxBackend
 
 
 @dataclass(frozen=True)
