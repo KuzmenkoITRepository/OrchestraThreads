@@ -1,15 +1,14 @@
 """Shared generic agent_mux dispatch helpers for the orchestra agent."""
 
-from core.orchestra_agents.templates.agent_mux.agent_runtime.dispatch import (
-    AgentMuxDispatchSpec,
-    build_agent_mux_command,
-    parse_agent_mux_result,
-    write_runtime_codex_config,
+from core.orchestra_agents.agent_mux_runtime import (
+    AgentMuxDispatchSpec as AgentMuxDispatchSpec,
 )
-
-__all__ = [
-    "AgentMuxDispatchSpec",
-    "build_agent_mux_command",
-    "parse_agent_mux_result",
-    "write_runtime_codex_config",
-]
+from core.orchestra_agents.agent_mux_runtime import (
+    build_agent_mux_command as build_agent_mux_command,
+)
+from core.orchestra_agents.agent_mux_runtime import (
+    parse_agent_mux_result as parse_agent_mux_result,
+)
+from core.orchestra_agents.agent_mux_runtime import (
+    write_runtime_codex_config as write_runtime_codex_config,
+)
