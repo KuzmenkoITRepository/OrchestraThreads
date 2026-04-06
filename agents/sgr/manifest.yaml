@@ -1,6 +1,6 @@
 slug: sgr
 display_name: SGR Minimax Example
-status: inactive
+status: active
 
 agent:
   working_dir: /workspace/agents/sgr
