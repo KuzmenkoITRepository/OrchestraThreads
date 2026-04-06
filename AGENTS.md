@@ -5,7 +5,7 @@
 **Branch:** master
 
 ## OVERVIEW
-OrchestraThreads is a Docker-first Python workspace for an autonomous assistant stack built around durable inter-agent threads. The main split is strict: `orchestra_thread` owns thread workflow, `orchestra_agents` owns manifest-driven lifecycles and the `agent_mux_runtime` subsystem, and `llm_proxy` (deprecated) owns model routing. `telegram_mcp` provides MCP-based Telegram messaging for agents.
+OrchestraThreads is a Docker-first Python workspace for an autonomous assistant stack built around durable inter-agent threads. The main split is strict: `orchestra_thread` owns thread workflow, `orchestra_agents` owns manifest-driven lifecycles and the `agent_mux_runtime` subsystem. LLM routing is handled by external `omniroute` + `wet` services. `telegram_mcp` provides MCP-based Telegram messaging for agents.
 
 ## STRUCTURE
 ```text
@@ -13,7 +13,7 @@ OrchestraThreads/
 ├── src/core/orchestra_thread/   # durable thread service, UI, MCP surface (36 py files)
 ├── src/core/orchestra_agents/   # manifest registry, Docker lifecycle, runtime contract
 │   └── agent_mux_runtime/       # 29-file multiplexed agent runtime subsystem
-├── src/core/llm_proxy/          # DEPRECATED — OpenAI/Codex routing + Langfuse hooks
+├── src/core/events_engine/      # external-event -> agent delivery bridge (minimal)
 ├── src/core/events_engine/      # external-event -> agent delivery bridge (minimal)
 ├── src/core/telegram_events/    # Telegram ingestion -> secretary/event bridge
 ├── src/telegram_mcp/            # MCP server for Telegram messaging via Telethon
@@ -35,7 +35,6 @@ OrchestraThreads/
 | HTTP handlers | `src/core/orchestra_thread/http_handlers.py` | read/write handler classes |
 | Agent registry, scaffold, Docker | `src/core/orchestra_agents/` | `service.py` delegates to `service_routes.py` + `service_state.py` |
 | Agent mux runtime | `src/core/orchestra_agents/agent_mux_runtime/` | queue, dispatch, state, codex config, bootstrap |
-| Model routing (deprecated) | `src/core/llm_proxy/` | facade stubs re-export from `_*_impl.py` files |
 | External event fan-in | `src/core/events_engine/` | minimal bridge into running agents |
 | Telegram ingress | `src/core/telegram_events/` | edge service; non-thread-native |
 | Telegram MCP server | `src/telegram_mcp/` | stdio MCP for `send_telegram_message`; shares Telethon session with telegram_events |
@@ -56,8 +55,6 @@ OrchestraThreads/
 | `ServiceState` | dataclass | `src/core/orchestra_agents/service_state.py` | registry + driver + lock |
 | `StandardAgentApplication` | class | `src/core/orchestra_agents/runtime/app.py` | `/healthz`, `/event`, `/stop`, `/last_status`, `/clear_context` |
 | `run_backend()` | function | `src/core/orchestra_agents/agent_mux_runtime/bootstrap.py` | mux runtime entry point |
-| `main()` | service entry | `src/core/llm_proxy/service_main.py` | parses env/CLI into `ProxyConfig` |
-| `LLMProxyService` | class | `src/core/llm_proxy/service.py` | OpenAI/Codex-compatible API surface |
 | `main()` | service entry | `src/core/events_engine/service_main.py` | starts external event bridge |
 | `main()` | service entry | `src/core/telegram_events/service_main.py` | starts Telegram listener |
 | `main()` | entry | `src/telegram_mcp/__main__.py` | stdio MCP server for Telegram messaging |
@@ -69,7 +66,6 @@ OrchestraThreads/
 - Treat `agents/` as manifest-driven runtime examples, not as the place to re-implement core service logic.
 - Put behavior-changing docs next to the module they describe (`src/core/<module>/docs/`).
 - Facade files (`service.py`, `store.py`, `router.py`, `accounts.py`, `langfuse.py`) re-export from `_*_impl.py` or `*_runtime.py` — edit the implementation files, not the facades.
-- `src/core/llm_proxy/` is **deprecated** — do not expand with new product logic (see `DEPRECATED.md`).
 
 ## CODE QUALITY ENFORCEMENT
 
@@ -118,7 +114,6 @@ Installed automatically via `make install`. Runs on every `git commit`:
 3. Prefer refactoring over suppression
 4. Ask for review if unsure
 
-**Excluded from checks:** `src/core/llm_proxy/` is excluded from ruff, mypy, and flake8 (deprecated module).
 
 ### Setup
 ```bash
@@ -133,7 +128,6 @@ make check          # Verify everything works
 - Do not expand specialist access by default; the architecture assumes minimal context and explicit escalation.
 - Do not ship major architectural changes as routine edits; incremental, reversible improvements are the default.
 - **Do not bypass code quality checks** — see CODE QUALITY ENFORCEMENT section above.
-- Do not expand `src/core/llm_proxy/` with new features — it is deprecated and scheduled for removal.
 
 ## UNIQUE STYLES
 - Product direction is autonomy-first, but with service-level observability, healthchecks, and rollback discipline.
@@ -154,7 +148,6 @@ make test                       # Run tests in Docker
 make clean                      # Clean cache files
 
 # Docker stack
-docker compose up --build -d postgres orchestra-threads orchestra-agents llm-proxy
 docker compose run --rm --use-aliases secretary
 docker compose run --rm --use-aliases orchestra
 docker compose --profile test run --rm test
@@ -167,4 +160,3 @@ docker compose down
 - `src/telegram_mcp/` is a standalone MCP server sharing Telethon auth with `telegram_events` — not a core service.
 - The root file is intentionally short; child `AGENTS.md` files below carry only domain-specific deltas.
 - All code must pass `make check` before commit — no exceptions.
-- `llm_proxy` facades (`router.py`, `accounts.py`, `langfuse.py`) use `importlib` re-exports — always edit the `_*_impl.py` backing files.

@@ -143,52 +143,6 @@ services:
       - core.orchestra_agents.service_main
     restart: unless-stopped
 
-  llm-proxy:
-    build: .
-    image: orchestra-threads:local
-    container_name: llm-proxy
-    ports:
-      - "8791:8787"
-    environment:
-      PYTHONPATH: /app/src
-      LLM_PROXY_AUTH_PROFILES_PATH: ${LLM_PROXY_AUTH_PROFILES_PATH:-/app/.shared_codex/openclaw/auth-profiles.json}
-      LLM_PROXY_CODEX_UPSTREAM_BASE_URL: ${LLM_PROXY_CODEX_UPSTREAM_BASE_URL:-https://chatgpt.com/backend-api}
-      LLM_PROXY_CODEX_PRIMARY_PROFILE_ID: ${LLM_PROXY_CODEX_PRIMARY_PROFILE_ID:-}
-      LLM_PROXY_CODEX_PROFILE_IDS: ${LLM_PROXY_CODEX_PROFILE_IDS:-}
-      LLM_PROXY_ACCOUNT_FAILURE_COOLDOWN_SECONDS: ${LLM_PROXY_ACCOUNT_FAILURE_COOLDOWN_SECONDS:-120}
-      LLM_PROXY_STATE_PATH: ${LLM_PROXY_STATE_PATH:-/app/.llm_proxy/proxy-state.json}
-      OPENAI_API_BASE_URL: ${OPENAI_API_BASE_URL:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-MiniMax-M2.7}
-      LLM_PROXY_FALLBACK_OPENAI_API_BASE_URL: ${LLM_PROXY_FALLBACK_OPENAI_API_BASE_URL:-}
-      LLM_PROXY_FALLBACK_OPENAI_API_KEY: ${LLM_PROXY_FALLBACK_OPENAI_API_KEY:-}
-      LLM_PROXY_FALLBACK_OPENAI_MODEL: ${LLM_PROXY_FALLBACK_OPENAI_MODEL:-MiniMax-M2.7}
-      LLM_PROXY_LANGFUSE_ENABLED: ${LLM_PROXY_LANGFUSE_ENABLED:-0}
-      LLM_PROXY_LANGFUSE_ENVIRONMENT: ${LLM_PROXY_LANGFUSE_ENVIRONMENT:-}
-      LLM_PROXY_LANGFUSE_RELEASE: ${LLM_PROXY_LANGFUSE_RELEASE:-}
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
-      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-http://langfuse:3000}
-      NO_PROXY: 127.0.0.1,localhost,llm-proxy,orchestra-threads,orchestra-agents,postgres,langfuse,langfuse-postgres
-      no_proxy: 127.0.0.1,localhost,llm-proxy,orchestra-threads,orchestra-agents,postgres,langfuse,langfuse-postgres
-    volumes:
-      - ./.shared_codex:/app/.shared_codex
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8787/healthz').status == 200 else 1)
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    command:
-      - python
-      - -m
-      - core.llm_proxy.service_main
-    restart: unless-stopped
-
   events-engine:
     build: .
     image: orchestra-threads:local
@@ -206,7 +160,7 @@ services:
       EVENTS_ENGINE_PORT: 8789
       ORCHESTRA_AGENTS_URL: http://orchestra-agents:8790
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,postgres,langfuse-postgres,langfuse,llm-proxy
+      NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,postgres,langfuse-postgres,langfuse
     healthcheck:
       test:
         - CMD
@@ -241,7 +195,7 @@ services:
       EVENTS_ENGINE_URL: http://events-engine:8789
       TARGET_AGENT_SLUG: ${TARGET_AGENT_SLUG:-secretary}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,postgres,langfuse-postgres,langfuse,llm-proxy
+      NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,postgres,langfuse-postgres,langfuse
     volumes:
       - ./sessions:/app/sessions
     command:
