@@ -7,8 +7,7 @@ import logging
 import os
 
 from core.orchestra_agents.runtime import StandardAgentApplication
-
-from .backend import TemplateBackend
+from core.orchestra_agents.templates.agent.agent_runtime.backend import TemplateBackend
 
 
 def configure_logging() -> None:
