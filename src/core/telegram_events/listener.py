@@ -3,11 +3,117 @@
 import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Any, cast
 
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
 logger = logging.getLogger(__name__)
+
+MessageHandler = Callable[[dict[str, Any]], Awaitable[None]]
+
+
+def _resolve_sender_name(
+    first_name: str,
+    last_name: str,
+    title: Any,
+    username: str | None,
+) -> str:
+    if first_name:
+        if last_name:
+            return f"{first_name} {last_name}"
+        return first_name
+    if title:
+        return str(title)
+    if username:
+        return f"@{username}"
+    return "Unknown"
+
+
+class _ListenerOps:
+    @staticmethod
+    def extract_field(value: Any, name: str) -> Any:
+        return getattr(value, name, None)
+
+    @staticmethod
+    def build_session(session_string: str | None, session_file: str | None) -> str | Any:
+        if session_string:
+            logger.info("Using session string from environment")
+            return StringSession(session_string)
+        if session_file:
+            logger.info("Using session file: %s", session_file)
+            return session_file
+        default_path = "sessions/telegram.session"
+        Path("sessions").mkdir(exist_ok=True)
+        logger.info("Using default session file: %s", default_path)
+        return default_path
+
+    @staticmethod
+    def extract_message_data(message: Any, sender: Any, chat: Any) -> dict[str, Any]:
+        sender_name, username, user_id = _ListenerOps.extract_sender(sender)
+        date_value = _ListenerOps.extract_field(message, "date")
+        timestamp = date_value.isoformat() if date_value else None
+        return {
+            "chat_id": _ListenerOps.extract_chat_id(message),
+            "chat_name": _ListenerOps.extract_chat_name(chat),
+            "message_id": int(_ListenerOps.extract_field(message, "id") or 0),
+            "sender_name": sender_name,
+            "username": username,
+            "user_id": user_id,
+            "text": str(_ListenerOps.extract_field(message, "message") or ""),
+            "timestamp": timestamp,
+        }
+
+    @staticmethod
+    def extract_chat_id(message: Any) -> str:
+        peer = _ListenerOps.extract_field(message, "peer_id")
+        if peer is None:
+            return "unknown"
+        for field_name in ("channel_id", "user_id", "chat_id"):
+            field_value = _ListenerOps.extract_field(peer, field_name)
+            if field_value is not None:
+                return str(field_value)
+        return "unknown"
+
+    @staticmethod
+    def extract_chat_name(chat: Any) -> str:
+        if chat is None:
+            return "Unknown Chat"
+        title = _ListenerOps.extract_field(chat, "title")
+        if title:
+            return str(title)
+        first_name = str(_ListenerOps.extract_field(chat, "first_name") or "")
+        last_name = str(_ListenerOps.extract_field(chat, "last_name") or "")
+        if first_name and last_name:
+            return f"{first_name} {last_name}"
+        if first_name:
+            return first_name
+        return "Unknown Chat"
+
+    @staticmethod
+    def extract_sender(sender: Any) -> tuple[str, str | None, str | None]:
+        if sender is None:
+            return "Unknown", None, None
+        user_id_raw = _ListenerOps.extract_field(sender, "id")
+        user_id = None
+        if user_id_raw is not None:
+            user_id = str(user_id_raw)
+        username_raw = _ListenerOps.extract_field(sender, "username")
+        username = str(username_raw) if username_raw else None
+        sender_name = _resolve_sender_name(
+            first_name=str(_ListenerOps.extract_field(sender, "first_name") or ""),
+            last_name=str(_ListenerOps.extract_field(sender, "last_name") or ""),
+            title=_ListenerOps.extract_field(sender, "title"),
+            username=username,
+        )
+        return sender_name, username, user_id
+
+    @staticmethod
+    async def extract_event_fields(event: Any) -> tuple[Any, Any, Any]:
+        message = event.message
+        sender = await event.get_sender()
+        chat = await event.get_chat()
+        return message, sender, chat
 
 
 class TelegramListener:
@@ -19,169 +125,74 @@ class TelegramListener:
         api_hash: str,
         session_string: str | None = None,
         session_file: str | None = None,
-        on_message: Callable[[dict], Awaitable[None]] | None = None,
-    ):
-        """
-        Initialize Telegram listener.
-
-        Args:
-            api_id: Telegram API ID
-            api_hash: Telegram API Hash
-            session_string: Optional session string for authentication
-            session_file: Optional path to session file
-            on_message: Async callback for new messages
-        """
+        on_message: MessageHandler | None = None,
+    ) -> None:
         self.api_id = api_id
         self.api_hash = api_hash
         self.session_string = session_string
         self.session_file = session_file
-        self.client: TelegramClient | None = None
+        self.client: Any | None = None
         self.on_message = on_message
 
-    def _create_session(self):
-        """Create Telegram session from string or file."""
-        if self.session_string:
-            session = StringSession(self.session_string)
-            logger.info("Using session string from environment")
-            return session
-        elif self.session_file:
-            session = self.session_file
-            logger.info(f"Using session file: {self.session_file}")
-            return session
-        else:
-            session = "sessions/telegram.session"
-            Path("sessions").mkdir(exist_ok=True)
-            logger.info(f"Using default session file: {session}")
-            return session
-
-    async def start(self):
-        """Start the Telegram client and begin listening."""
-        session = self._create_session()
-
-        self.client = TelegramClient(
-            session,
-            self.api_id,
-            self.api_hash,
-        )
-
+    async def start(self) -> None:
+        session = _ListenerOps.build_session(self.session_string, self.session_file)
+        client = TelegramClient(session, self.api_id, self.api_hash)
+        self.client = client
         logger.info("Starting Telegram client...")
+        await self._start_client(client)
+        me = await client.get_me()
+        me_name = _ListenerOps.extract_field(me, "first_name")
+        me_id = _ListenerOps.extract_field(me, "id")
+        logger.info("Logged in as: %s (ID: %s)", me_name, me_id)
+        self._maybe_log_session(client, session)
+        client.add_event_handler(self._handle_message, events.NewMessage(incoming=True))
+        client.add_event_handler(self._handle_message, events.NewMessage(outgoing=True))
+        logger.info("Telegram listener started and waiting for messages...")
+        await cast(Awaitable[None], client.run_until_disconnected())
 
+    async def stop(self) -> None:
+        client = self.client
+        if client is None:
+            return
+        await client.disconnect()
+        logger.info("Telegram client disconnected")
+
+    async def _start_client(self, client: Any) -> None:
         try:
-            await self.client.start()
-
-            me = await self.client.get_me()
-            logger.info(f"Logged in as: {me.first_name} (ID: {me.id})")
-
-        except Exception as e:
-            logger.error(f"Authentication error: {e}", exc_info=True)
+            await cast(Awaitable[None], client.start())
+        except Exception as exc:
+            logger.error("Authentication error: %s", exc, exc_info=True)
             raise
 
-        # Print session string for first run
-        if not self.session_string and isinstance(session, str):
-            try:
-                session_string = self.client.session.save()
-                if session_string:
-                    logger.info("Session authenticated successfully!")
-                    logger.info(f"Save this to TELEGRAM_SESSION_STRING: {session_string}")
-            except Exception as e:
-                logger.warning(f"Could not save session string: {e}")
+    def _maybe_log_session(self, client: Any, session: str | Any) -> None:
+        if self.session_string:
+            return
+        if isinstance(session, str):
+            self._log_session_string(client)
 
-        # Register event handlers for new messages
-        @self.client.on(events.NewMessage(incoming=True))
-        async def handler_incoming(event):
-            await self._handle_message(event)
-
-        @self.client.on(events.NewMessage(outgoing=True))
-        async def handler_outgoing(event):
-            await self._handle_message(event)
-
-        logger.info("Telegram listener started and waiting for messages...")
-
-        # Keep the client running
-        await self.client.run_until_disconnected()
-
-    async def _handle_message(self, event):
-        """Handle incoming message event."""
+    def _log_session_string(self, client: Any) -> None:
         try:
-            message = event.message
-            sender = await event.get_sender()
-            chat = await event.get_chat()
+            session_string = client.session.save()
+        except Exception as exc:
+            logger.warning("Could not save session string: %s", exc)
+            return
+        if session_string:
+            logger.info("Session authenticated successfully!")
+            logger.info("Save this to TELEGRAM_SESSION_STRING: %s", session_string)
 
-            message_data = await self._extract_message_data(message, sender, chat)
-
-            logger.info(
-                f"Received message from {message_data['sender_name']} "
-                f"in {message_data['chat_name']}: {message_data['text'][:50]}..."
+    async def _handle_message(self, event: Any) -> None:
+        try:
+            message_data = _ListenerOps.extract_message_data(
+                *await _ListenerOps.extract_event_fields(event),
             )
-
-            if self.on_message:
-                await self.on_message(message_data)
-
-        except Exception as e:
-            logger.error(f"Error handling message: {e}", exc_info=True)
-
-    async def _extract_message_data(self, message, sender, chat) -> dict:
-        """Extract message data into a dictionary."""
-        # Extract chat info
-        chat_id = None
-        if hasattr(message, "peer_id") and message.peer_id:
-            peer_id = message.peer_id
-            if hasattr(peer_id, "channel_id"):
-                chat_id = peer_id.channel_id
-            elif hasattr(peer_id, "user_id"):
-                chat_id = peer_id.user_id
-            elif hasattr(peer_id, "chat_id"):
-                chat_id = peer_id.chat_id
-
-        chat_name = "Unknown Chat"
-        if chat:
-            if hasattr(chat, "title"):
-                chat_name = chat.title
-            elif hasattr(chat, "first_name"):
-                chat_name = chat.first_name
-                if hasattr(chat, "last_name") and chat.last_name:
-                    chat_name += f" {chat.last_name}"
-
-        # Extract sender info
-        sender_name = "Unknown"
-        username = None
-        user_id = None
-
-        if sender:
-            if hasattr(sender, "id"):
-                user_id = str(sender.id)
-
-            if hasattr(sender, "username") and sender.username:
-                username = sender.username
-
-            if hasattr(sender, "first_name") and sender.first_name:
-                sender_name = sender.first_name
-                if hasattr(sender, "last_name") and sender.last_name:
-                    sender_name += f" {sender.last_name}"
-            elif hasattr(sender, "title"):
-                sender_name = sender.title
-            elif username:
-                sender_name = f"@{username}"
-
-        # Extract message text
-        text = message.message or ""
-
-        # Extract timestamp
-        timestamp = message.date.isoformat() if message.date else None
-
-        return {
-            "chat_id": str(chat_id) if chat_id else "unknown",
-            "chat_name": chat_name,
-            "message_id": message.id,
-            "sender_name": sender_name,
-            "username": username,
-            "user_id": user_id,
-            "text": text,
-            "timestamp": timestamp,
-        }
-
-    async def stop(self):
-        """Stop the Telegram client."""
-        if self.client:
-            await self.client.disconnect()
-            logger.info("Telegram client disconnected")
+        except Exception as exc:
+            logger.error("Error handling message: %s", exc, exc_info=True)
+            return
+        logger.info(
+            "Received message from %s in %s: %s...",
+            message_data["sender_name"],
+            message_data["chat_name"],
+            str(message_data["text"])[:50],
+        )
+        if self.on_message:
+            await self.on_message(message_data)

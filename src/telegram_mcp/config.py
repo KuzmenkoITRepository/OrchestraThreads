@@ -3,85 +3,76 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
+
+from telegram_mcp.config_parsers import parse_chat_id, parse_float_env, parse_int_env
 
 
+@dataclass(frozen=True)
+class TelegramAuth:
+    """Telethon authentication credentials."""
+
+    api_id: int
+    api_hash: str
+    session_string: str | None
+
+
+@dataclass(frozen=True)
+class TelegramDefaults:
+    """Default recipient and retry settings."""
+
+    default_recipient: str
+    timeout_seconds: float
+    max_retries: int
+    log_level: str
+
+
+@dataclass(frozen=True)
 class TelegramMCPConfig:
-    """Load and validate Telegram MCP settings from environment variables.
+    """Telegram MCP settings loaded from environment variables."""
 
-    Authentication uses Telethon user-session credentials:
-    TELEGRAM_API_ID, TELEGRAM_API_HASH, and optional TELEGRAM_SESSION_STRING.
-    """
-
-    def __init__(self) -> None:
-        self.api_id: int = int(self._require_env("TELEGRAM_API_ID"))
-        self.api_hash: str = self._require_env("TELEGRAM_API_HASH")
-        self.session_string: str | None = os.getenv("TELEGRAM_SESSION_STRING", "").strip() or None
-        chat_id_ivan = self._parse_chat_id(self._require_env("TELEGRAM_CHAT_ID_IVAN"))
-        if chat_id_ivan is None:
-            raise ValueError("TELEGRAM_CHAT_ID_IVAN must be a valid integer chat ID")
-        self.chat_id_ivan: int = chat_id_ivan
-
-        self.default_recipient: str = os.getenv("TELEGRAM_DEFAULT_RECIPIENT", "ivan")
-        if not self.default_recipient.strip():
-            raise ValueError("TELEGRAM_DEFAULT_RECIPIENT must not be empty")
-        self.default_recipient = self.default_recipient.strip().lower()
-
-        self.log_level: str = os.getenv("LOG_LEVEL", "INFO")
-        if not self.log_level.strip():
-            raise ValueError("LOG_LEVEL must not be empty")
-        self.log_level = self.log_level.strip().upper()
-
-        self.timeout_seconds: float = self._parse_float_env("TELEGRAM_TIMEOUT_SECONDS", "10.0")
-        self.max_retries: int = self._parse_int_env("TELEGRAM_MAX_RETRIES", "3")
+    auth: TelegramAuth
+    defaults: TelegramDefaults
+    chat_id_ivan: int
 
     def resolve_chat_id(self, recipient: str | None) -> int:
         """Resolve a recipient alias to a Telegram chat ID."""
-        alias = (recipient or self.default_recipient).strip().lower()
-
+        alias = (recipient or self.defaults.default_recipient).strip().lower()
         if alias == "ivan":
             return self.chat_id_ivan
-
         raise ValueError(f"Unknown recipient alias '{alias}'. Available aliases: ivan")
 
-    @staticmethod
-    def _require_env(key: str) -> str:
-        """Get a required environment variable or raise."""
-        value = os.getenv(key)
-        if value is None or not value.strip():
-            raise ValueError(f"Missing required environment variable: {key}")
-        return value.strip()
 
-    @staticmethod
-    def _parse_chat_id(value: str | None) -> int | None:
-        """Parse a Telegram chat ID from an environment value."""
-        if value is None:
-            return None
+def _require_env(key: str) -> str:
+    value = os.getenv(key)
+    if value is None or not value.strip():
+        raise ValueError(f"Missing required environment variable: {key}")
+    return value.strip()
 
-        stripped = value.strip()
-        if not stripped:
-            return None
 
-        try:
-            return int(stripped)
-        except ValueError as exc:
-            raise ValueError(f"Invalid Telegram chat ID: {value!r}") from exc
-
-    @staticmethod
-    def _parse_float_env(key: str, default: str) -> float:
-        value = os.getenv(key, default)
-        if value is None or not value.strip():
-            raise ValueError(f"{key} must not be empty")
-        try:
-            return float(value)
-        except ValueError as exc:
-            raise ValueError(f"{key} must be a valid float") from exc
-
-    @staticmethod
-    def _parse_int_env(key: str, default: str) -> int:
-        value = os.getenv(key, default)
-        if value is None or not value.strip():
-            raise ValueError(f"{key} must not be empty")
-        try:
-            return int(value)
-        except ValueError as exc:
-            raise ValueError(f"{key} must be a valid integer") from exc
+def load_config() -> TelegramMCPConfig:
+    """Load Telegram MCP config from environment variables."""
+    auth = TelegramAuth(
+        api_id=int(_require_env("TELEGRAM_API_ID")),
+        api_hash=_require_env("TELEGRAM_API_HASH"),
+        session_string=os.getenv("TELEGRAM_SESSION_STRING", "").strip() or None,
+    )
+    recipient = os.getenv("TELEGRAM_DEFAULT_RECIPIENT", "ivan").strip().lower()
+    if not recipient:
+        raise ValueError("TELEGRAM_DEFAULT_RECIPIENT must not be empty")
+    log_level = os.getenv("LOG_LEVEL", "INFO").strip().upper()
+    if not log_level:
+        raise ValueError("LOG_LEVEL must not be empty")
+    defaults = TelegramDefaults(
+        default_recipient=recipient,
+        timeout_seconds=parse_float_env(
+            os.getenv("TELEGRAM_TIMEOUT_SECONDS", "10.0"), "TELEGRAM_TIMEOUT_SECONDS"
+        ),
+        max_retries=parse_int_env(os.getenv("TELEGRAM_MAX_RETRIES", "3"), "TELEGRAM_MAX_RETRIES"),
+        log_level=log_level,
+    )
+    return TelegramMCPConfig(
+        auth=auth,
+        defaults=defaults,
+        chat_id_ivan=parse_chat_id(_require_env("TELEGRAM_CHAT_ID_IVAN")),
+    )

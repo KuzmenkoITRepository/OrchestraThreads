@@ -29,12 +29,12 @@ def read_active_context() -> dict[str, Any]:
         return {}
     try:
         raw = ACTIVE_CONTEXT_PATH.read_text(encoding="utf-8").strip()
-        if not raw:
-            return {}
-        payload = json.loads(raw)
-        return payload if isinstance(payload, dict) else {}
     except Exception:
         return {}
+    if not raw:
+        return {}
+    payload = json.loads(raw)
+    return payload if isinstance(payload, dict) else {}
 
 
 def clear_active_context() -> None:

@@ -1,22 +1,24 @@
 from __future__ import annotations
 
 import unittest
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, cast
+
+from aiohttp import web
 
 from core.orchestra_thread.agent_cli import ManualAgentCLI
 from core.orchestra_thread.client import OrchestraThreadsClient
 
 
+@dataclass
 class FakeThreadsClient:
-    def __init__(self) -> None:
-        self.register_calls: list[dict[str, Any]] = []
-        self.heartbeat_calls: list[dict[str, Any]] = []
-        self.agent_list_calls = 0
-        self.thread_list_calls: list[dict[str, Any]] = []
-        self.thread_get_calls: list[dict[str, Any]] = []
-        self.message_calls: list[dict[str, Any]] = []
-        self.notification_calls: list[dict[str, Any]] = []
-        self.closed = False
+    register_calls: list[dict[str, Any]] = field(default_factory=list)
+    heartbeat_calls: list[dict[str, Any]] = field(default_factory=list)
+    message_calls: list[dict[str, Any]] = field(default_factory=list)
+    notification_calls: list[dict[str, Any]] = field(default_factory=list)
+    thread_list_calls: list[dict[str, Any]] = field(default_factory=list)
+    thread_get_calls: list[dict[str, Any]] = field(default_factory=list)
+    closed: bool = False
 
     async def close(self) -> None:
         self.closed = True
@@ -29,10 +31,6 @@ class FakeThreadsClient:
         self.heartbeat_calls.append({"agent_slug": agent_slug})
         return {"success": True}
 
-    async def list_agents(self) -> dict[str, Any]:
-        self.agent_list_calls += 1
-        return {"success": True, "agents": []}
-
     async def list_threads(self, *, scope: str = "active", limit: int = 100) -> dict[str, Any]:
         self.thread_list_calls.append({"scope": scope, "limit": limit})
         return {"success": True, "threads": []}
@@ -41,106 +39,100 @@ class FakeThreadsClient:
         self.thread_get_calls.append({"thread_id": thread_id, "limit": limit})
         return {"success": True, "thread": {"thread_id": thread_id}, "events": []}
 
-    async def send_message(
-        self,
-        *,
-        from_agent_slug: str,
-        to_agent_slug: str,
-        message_text: str,
-        thread_id: str | None = None,
-        parent_thread_id: str | None = None,
-        client_request_id: str | None = None,
-    ) -> dict[str, Any]:
-        self.message_calls.append(
-            {
-                "from_agent_slug": from_agent_slug,
-                "to_agent_slug": to_agent_slug,
-                "message_text": message_text,
-                "thread_id": thread_id,
-                "parent_thread_id": parent_thread_id,
-                "client_request_id": client_request_id,
-            }
-        )
-        resolved_thread_id = thread_id or parent_thread_id or f"thread-{len(self.message_calls)}"
+    async def send_message(self, **payload: Any) -> dict[str, Any]:
+        self.message_calls.append(payload)
+        resolved_thread_id = payload.get("thread_id") or payload.get("parent_thread_id")
+        if resolved_thread_id is None:
+            resolved_thread_id = f"thread-{len(self.message_calls)}"
+        normalized_payload = dict(payload)
+        normalized_payload.setdefault("thread_id", None)
+        normalized_payload.setdefault("parent_thread_id", None)
+        self.message_calls[-1] = normalized_payload
         return {
             "success": True,
-            "created_thread": thread_id is None,
+            "created_thread": normalized_payload.get("thread_id") is None,
             "thread": {
                 "thread_id": resolved_thread_id,
                 "status": "open",
-                "scope": "child" if parent_thread_id else "root",
+                "scope": "child" if normalized_payload.get("parent_thread_id") else "root",
             },
         }
 
-    async def send_notification(
-        self,
-        *,
-        from_agent_slug: str,
-        to_agent_slug: str,
-        thread_id: str,
-        status: str,
-        message_text: str,
-        client_request_id: str | None = None,
-    ) -> dict[str, Any]:
-        self.notification_calls.append(
-            {
-                "from_agent_slug": from_agent_slug,
-                "to_agent_slug": to_agent_slug,
-                "thread_id": thread_id,
-                "status": status,
-                "message_text": message_text,
-                "client_request_id": client_request_id,
-            }
-        )
+    async def send_notification(self, **payload: Any) -> dict[str, Any]:
+        self.notification_calls.append(payload)
         return {
             "success": True,
-            "thread": {"thread_id": thread_id, "status": status},
-            "event": {"notification_status": status},
+            "thread": {
+                "thread_id": payload["thread_id"],
+                "status": payload["status"],
+            },
+            "event": {"notification_status": payload["status"]},
         }
 
 
-class ManualAgentCLITests(unittest.IsolatedAsyncioTestCase):
-    def _cli(self) -> tuple[ManualAgentCLI, FakeThreadsClient]:
-        client = FakeThreadsClient()
-        cli = ManualAgentCLI(
-            agent_slug="human",
-            service_url="http://127.0.0.1:8788",
-            listen_host="127.0.0.1",
-            listen_port=0,
-            advertise_host="127.0.0.1",
-            scheme="http",
-            heartbeat_interval_seconds=60,
-        )
-        cli.thread_client = client  # type: ignore[assignment]
-        return cli, client
+class RequestStub:
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self._payload = payload
 
-    async def test_chat_command_sets_target_and_plain_text_sends_message(self) -> None:
-        cli, client = self._cli()
+    async def json(self) -> dict[str, Any]:
+        return self._payload
+
+
+def make_cli() -> tuple[ManualAgentCLI, FakeThreadsClient]:
+    client = FakeThreadsClient()
+    args = type(
+        "Args",
+        (),
+        {
+            "slug": "human",
+            "service_url": "http://127.0.0.1:8788",
+            "listen_host": "127.0.0.1",
+            "listen_port": 0,
+            "advertise_host": "127.0.0.1",
+            "scheme": "http",
+            "heartbeat_interval": 60,
+            "target": None,
+        },
+    )()
+    cli = ManualAgentCLI(args)
+    cli.thread_client = cast(OrchestraThreadsClient, client)
+    return cli, client
+
+
+def make_request(payload: dict[str, Any]) -> web.Request:
+    return cast(web.Request, RequestStub(payload))
+
+
+class ManualAgentCLIMessageTests(unittest.IsolatedAsyncioTestCase):
+    async def test_chat_command_sets_target(self) -> None:
+        cli, client = make_cli()
 
         await cli._dispatch_command("chat sgr")
         await cli._dispatch_command("Привет, нужен апдейт")
 
+        first_call = client.message_calls[0]
         self.assertEqual(cli.default_target_agent_slug, "sgr")
         self.assertEqual(len(client.message_calls), 1)
-        self.assertEqual(client.message_calls[0]["to_agent_slug"], "sgr")
-        self.assertEqual(client.message_calls[0]["thread_id"], None)
-        self.assertEqual(client.message_calls[0]["message_text"], "Привет, нужен апдейт")
+        self.assertEqual(first_call["to_agent_slug"], "sgr")
+        self.assertIsNone(first_call["thread_id"])
+        self.assertEqual(first_call["message_text"], "Привет, нужен апдейт")
         self.assertEqual(cli.current_thread_id, "thread-1")
 
     async def test_plain_text_replies_into_current_thread(self) -> None:
-        cli, client = self._cli()
+        cli, client = make_cli()
         cli.current_thread_id = "thread-42"
         cli.thread_peers["thread-42"] = "sgr"
 
         await cli._dispatch_command("Готово, смотри")
 
+        first_call = client.message_calls[0]
         self.assertEqual(len(client.message_calls), 1)
-        self.assertEqual(client.message_calls[0]["to_agent_slug"], "sgr")
-        self.assertEqual(client.message_calls[0]["thread_id"], "thread-42")
-        self.assertEqual(client.message_calls[0]["message_text"], "Готово, смотри")
+        self.assertEqual(first_call["to_agent_slug"], "sgr")
+        self.assertEqual(first_call["thread_id"], "thread-42")
+        self.assertEqual(first_call["message_text"], "Готово, смотри")
 
-    async def test_plain_text_input_strips_terminal_surrogates(self) -> None:
-        cli, client = self._cli()
+    async def test_plain_text_strips_terminal_surrogates(self) -> None:
+        cli, client = make_cli()
         cli.current_thread_id = "thread-42"
         cli.thread_peers["thread-42"] = "sgr"
 
@@ -150,7 +142,7 @@ class ManualAgentCLITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client.message_calls[0]["message_text"], "close")
 
     async def test_at_prefix_sends_to_explicit_target(self) -> None:
-        cli, client = self._cli()
+        cli, client = make_cli()
 
         await cli._dispatch_command("@researcher Проверь, пожалуйста")
 
@@ -159,28 +151,28 @@ class ManualAgentCLITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client.message_calls[0]["message_text"], "Проверь, пожалуйста")
         self.assertEqual(cli.default_target_agent_slug, "researcher")
 
-    async def test_inactive_event_keeps_known_peer_instead_of_service_slug(self) -> None:
-        cli, _ = self._cli()
+
+class ManualAgentCLIStateTests(unittest.IsolatedAsyncioTestCase):
+    async def test_inactive_event_keeps_known_peer(self) -> None:
+        cli, _ = make_cli()
         cli.current_thread_id = "thread-42"
         cli.thread_peers["thread-42"] = "secretary"
         cli.default_target_agent_slug = "secretary"
 
-        class _Request:
-            async def json(self) -> dict[str, Any]:
-                return {
-                    "events": [
-                        {
-                            "thread_id": "thread-42",
-                            "sequence_no": 2,
-                            "event_kind": "inactive",
-                            "from_agent_slug": "orchestra_threads",
-                            "to_agent_slug": "human",
-                            "message_text": "No new activity.",
-                        }
-                    ]
-                }
-
-        request = _Request()
+        request = make_request(
+            {
+                "events": [
+                    {
+                        "thread_id": "thread-42",
+                        "sequence_no": 2,
+                        "event_kind": "inactive",
+                        "from_agent_slug": "orchestra_threads",
+                        "to_agent_slug": "human",
+                        "message_text": "No new activity.",
+                    }
+                ]
+            }
+        )
 
         response = await cli._handle_event(request)
 
@@ -190,7 +182,7 @@ class ManualAgentCLITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cli.default_target_agent_slug, "secretary")
 
     async def test_leave_clears_target_and_thread(self) -> None:
-        cli, _ = self._cli()
+        cli, _ = make_cli()
         cli.default_target_agent_slug = "sgr"
         cli.current_thread_id = "thread-1"
 
@@ -199,16 +191,15 @@ class ManualAgentCLITests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(cli.default_target_agent_slug)
         self.assertIsNone(cli.current_thread_id)
 
-    async def test_start_autobinds_free_port_and_registers_actual_base_url(self) -> None:
-        cli, client = self._cli()
+    async def test_start_autobinds_free_port(self) -> None:
+        cli, client = make_cli()
 
         await cli.start()
-        try:
-            self.assertEqual(len(client.register_calls), 1)
-            self.assertGreater(cli.listen_port, 0)
-            self.assertIn(f":{cli.listen_port}", client.register_calls[0]["base_url"])
-        finally:
-            await cli.stop()
+        self.addAsyncCleanup(cli.stop)
+
+        self.assertEqual(len(client.register_calls), 1)
+        self.assertGreater(cli.listen_port, 0)
+        self.assertIn(f":{cli.listen_port}", client.register_calls[0]["base_url"])
 
 
 class OrchestraThreadsClientSurfaceTests(unittest.TestCase):

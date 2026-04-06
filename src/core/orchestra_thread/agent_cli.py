@@ -2,51 +2,45 @@
 
 from __future__ import annotations
 
-import argparse
 import asyncio
+import importlib
 import json
-import logging
-import shlex
 import sys
 from collections import deque
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
-from aiohttp import web
+from core.orchestra_thread.client import OrchestraThreadsClient
+from core.orchestra_thread.common import normalize_text_input
 
-from .client import OrchestraThreadsClient
-from .common import normalize_text_input
+web = importlib.import_module("aiohttp.web")
 
-logger = logging.getLogger(__name__)
+JsonDict = dict[str, Any]
+JsonObjectList = list[JsonDict]
+CommandHandler = Callable[[Sequence[str]], Awaitable[bool]]
 
 
-class ManualAgentCLI:
+def _write_line(message: str) -> None:
+    sys.stdout.write(f"{message}\n")
+
+
+class ManualAgentCLI:  # noqa: WPS214, WPS230
     """A callback-capable manual agent with a small REPL."""
 
-    def __init__(
-        self,
-        *,
-        agent_slug: str,
-        service_url: str,
-        listen_host: str,
-        listen_port: int,
-        advertise_host: str,
-        scheme: str,
-        heartbeat_interval_seconds: float,
-        default_target_agent_slug: str | None = None,
-    ) -> None:
-        self.agent_slug = agent_slug
-        self.service_url = service_url.rstrip("/")
-        self.listen_host = listen_host
-        self.listen_port = listen_port
-        self.advertise_host = advertise_host
-        self.scheme = scheme
-        self.heartbeat_interval_seconds = max(2.0, heartbeat_interval_seconds)
+    def __init__(self, args: Any) -> None:
+        self.agent_slug = str(args.slug)
+        self.service_url = str(args.service_url).rstrip("/")
+        self.listen_host = str(args.listen_host)
+        self.listen_port = int(args.listen_port)
+        self.advertise_host = str(args.advertise_host or args.listen_host)
+        self.scheme = str(args.scheme)
+        self.heartbeat_interval_seconds = max(2.0, float(args.heartbeat_interval))
         self.current_thread_id: str | None = None
-        self.default_target_agent_slug = str(default_target_agent_slug or "").strip() or None
+        self.default_target_agent_slug = str(args.target or "").strip() or None
         self.thread_peers: dict[str, str] = {}
         self.inbox: deque[dict[str, Any]] = deque(maxlen=200)
         self.stop_signals: deque[dict[str, Any]] = deque(maxlen=50)
-        self.http_runner: web.AppRunner | None = None
+        self.http_runner: Any | None = None
         self.thread_client: OrchestraThreadsClient | None = None
         self.heartbeat_task: asyncio.Task[None] | None = None
         self.shutdown_event = asyncio.Event()
@@ -56,12 +50,11 @@ class ManualAgentCLI:
         return f"{self.scheme}://{self.advertise_host}:{self.listen_port}"
 
     async def start(self) -> None:
-        if self.thread_client is None:
-            self.thread_client = OrchestraThreadsClient(
-                base_url=self.service_url, timeout_seconds=10
-            )
+        self.thread_client = self.thread_client or OrchestraThreadsClient(
+            base_url=self.service_url, timeout_seconds=10
+        )
         await self._start_callback_server()
-        await self.register()
+        await self._register()
         self.heartbeat_task = asyncio.create_task(
             self._heartbeat_loop(), name=f"{self.agent_slug}-heartbeat"
         )
@@ -70,10 +63,7 @@ class ManualAgentCLI:
         self.shutdown_event.set()
         if self.heartbeat_task is not None:
             self.heartbeat_task.cancel()
-            try:
-                await self.heartbeat_task
-            except asyncio.CancelledError:
-                pass
+            await asyncio.gather(self.heartbeat_task, return_exceptions=True)
             self.heartbeat_task = None
         if self.http_runner is not None:
             await self.http_runner.cleanup()
@@ -87,19 +77,18 @@ class ManualAgentCLI:
         app.router.add_post("/event", self._handle_event)
         app.router.add_post("/stop", self._handle_stop)
         app.router.add_get("/healthz", self._handle_health)
-        self.http_runner = web.AppRunner(app)
-        await self.http_runner.setup()
-        site = web.TCPSite(self.http_runner, host=self.listen_host, port=self.listen_port)
+        runner = web.AppRunner(app)
+        self.http_runner = runner
+        await runner.setup()
+        site = web.TCPSite(runner, host=self.listen_host, port=self.listen_port)
         await site.start()
         sockets = getattr(site, "_server", None)
         if sockets is not None and getattr(sockets, "sockets", None):
             bound_port = sockets.sockets[0].getsockname()[1]
             self.listen_port = int(bound_port)
 
-    async def register(self) -> dict[str, Any]:
-        if self.thread_client is None:
-            raise RuntimeError("HTTP client is not started")
-        result = await self.thread_client.register_agent(
+    async def _register(self) -> dict[str, Any]:
+        result = await self._require_client().register_agent(
             agent_slug=self.agent_slug,
             display_name=self.agent_slug,
             base_url=self.base_url,
@@ -108,28 +97,26 @@ class ManualAgentCLI:
                 "argv": sys.argv,
             },
         )
-        print(
+        _write_line(
             f"[register] {self.agent_slug} -> {self.base_url} "
             f"(lease={result.get('agent_lease_seconds')}s)"
         )
         return result
 
-    async def heartbeat(self) -> None:
+    async def _heartbeat(self) -> None:
         try:
-            if self.thread_client is None:
-                raise RuntimeError("HTTP client is not started")
-            await self.thread_client.heartbeat(agent_slug=self.agent_slug)
+            await self._require_client().heartbeat(agent_slug=self.agent_slug)
         except Exception as exc:
-            print(f"[heartbeat-error] {exc}")
+            _write_line(f"[heartbeat-error] {exc}")
 
     async def _heartbeat_loop(self) -> None:
         while not self.shutdown_event.is_set():
             await asyncio.sleep(self.heartbeat_interval_seconds)
             if self.shutdown_event.is_set():
                 return
-            await self.heartbeat()
+            await self._heartbeat()
 
-    async def _handle_health(self, _: web.Request) -> web.Response:
+    async def _handle_health(self, _: Any) -> Any:
         return web.json_response(
             {
                 "status": "ok",
@@ -138,9 +125,9 @@ class ManualAgentCLI:
             }
         )
 
-    async def _handle_event(self, request: web.Request) -> web.Response:
+    async def _handle_event(self, request: Any) -> Any:
         payload = await request.json()
-        events = payload.get("events") if isinstance(payload.get("events"), list) else []
+        events = self._payload_items(payload, key="events")
         for event in events:
             self.inbox.append(event)
             thread_id = str(event.get("thread_id") or "").strip()
@@ -152,20 +139,20 @@ class ManualAgentCLI:
             self._print_event(event)
         return web.json_response({"accepted": True, "event_count": len(events)})
 
-    async def _handle_stop(self, request: web.Request) -> web.Response:
+    async def _handle_stop(self, request: Any) -> Any:
         payload = await request.json()
         self.stop_signals.append(payload)
         thread_id = str(payload.get("thread_id") or "").strip()
-        print(f"\n[stop] {json.dumps(payload, ensure_ascii=False)}")
+        _write_line(f"\n[stop] {json.dumps(payload, ensure_ascii=False)}")
         if thread_id and thread_id == self.current_thread_id:
             self.current_thread_id = None
         return web.json_response({"accepted": True})
 
     def _print_event(self, event: dict[str, Any]) -> None:
-        preview = " ".join(str(event.get("message_text") or "").split())
+        preview = self._preview_message(event)
         if len(preview) > 160:
             preview = f"{preview[:157]}..."
-        print(
+        _write_line(
             "\n[event] "
             f"thread={event.get('thread_id')} "
             f"seq={event.get('sequence_no')} "
@@ -175,23 +162,28 @@ class ManualAgentCLI:
             f"text={preview}"
         )
 
-    async def run_repl(self) -> None:
+    async def _run_repl(self) -> None:
         self._print_help()
         while not self.shutdown_event.is_set():
-            try:
-                raw = await asyncio.to_thread(input, f"{self._prompt()}> ")
-            except EOFError:
-                raw = "quit"
-            raw = raw.strip()
+            raw = (await self._read_repl_input()).strip()
             if not raw:
                 continue
-            try:
-                should_stop = await self._dispatch_command(raw)
-            except Exception as exc:
-                print(f"[error] {exc}")
-                continue
+            should_stop = await self._dispatch_command_safe(raw)
             if should_stop:
                 return
+
+    async def _read_repl_input(self) -> str:
+        try:
+            return await asyncio.to_thread(input, f"{self._prompt()}> ")
+        except EOFError:
+            return "quit"
+
+    async def _dispatch_command_safe(self, raw: str) -> bool:
+        try:
+            return await self._dispatch_command(raw)
+        except Exception as exc:
+            _write_line(f"[error] {exc}")
+            return False
 
     def _prompt(self) -> str:
         current_peer = self.thread_peers.get(self.current_thread_id or "", None)
@@ -227,14 +219,12 @@ class ManualAgentCLI:
         return None
 
     async def _send_root_message(self, *, target: str, message: str) -> None:
-        if self.thread_client is None:
-            raise RuntimeError("HTTP client is not started")
-        payload = await self.thread_client.send_message(
+        payload = await self._require_client().send_message(
             from_agent_slug=self.agent_slug,
             to_agent_slug=target,
             message_text=message,
         )
-        thread_id = str(payload.get("thread", {}).get("thread_id") or "").strip()
+        thread_id = self._payload_thread_id(payload)
         if thread_id:
             self.current_thread_id = thread_id
             self.thread_peers[thread_id] = target
@@ -242,14 +232,12 @@ class ManualAgentCLI:
         self._print_message_ack(payload, target=target)
 
     async def _reply_current_thread(self, *, message: str) -> None:
-        if self.thread_client is None:
-            raise RuntimeError("HTTP client is not started")
         if not self.current_thread_id:
             raise RuntimeError("No current thread selected")
         target = self._known_peer_for_current_thread()
         if not target:
             raise RuntimeError(f"No known peer for thread {self.current_thread_id}")
-        payload = await self.thread_client.send_message(
+        payload = await self._require_client().send_message(
             from_agent_slug=self.agent_slug,
             to_agent_slug=target,
             thread_id=self.current_thread_id,
@@ -259,17 +247,15 @@ class ManualAgentCLI:
         self._print_message_ack(payload, target=target)
 
     async def _send_child_message(self, *, target: str, message: str) -> None:
-        if self.thread_client is None:
-            raise RuntimeError("HTTP client is not started")
         if not self.current_thread_id:
             raise RuntimeError("No current parent thread selected")
-        payload = await self.thread_client.send_message(
+        payload = await self._require_client().send_message(
             from_agent_slug=self.agent_slug,
             to_agent_slug=target,
             parent_thread_id=self.current_thread_id,
             message_text=message,
         )
-        child_thread_id = str(payload.get("thread", {}).get("thread_id") or "").strip()
+        child_thread_id = self._payload_thread_id(payload)
         if child_thread_id:
             self.current_thread_id = child_thread_id
             self.thread_peers[child_thread_id] = target
@@ -277,14 +263,12 @@ class ManualAgentCLI:
         self._print_message_ack(payload, target=target)
 
     async def _send_notification(self, *, status: str, message: str) -> None:
-        if self.thread_client is None:
-            raise RuntimeError("HTTP client is not started")
         if not self.current_thread_id:
             raise RuntimeError("No current thread selected")
         target = self._known_peer_for_current_thread()
         if not target:
             raise RuntimeError(f"No known peer for thread {self.current_thread_id}")
-        payload = await self.thread_client.send_notification(
+        payload = await self._require_client().send_notification(
             from_agent_slug=self.agent_slug,
             to_agent_slug=target,
             thread_id=self.current_thread_id,
@@ -295,50 +279,53 @@ class ManualAgentCLI:
 
     def _print_message_ack(self, payload: dict[str, Any], *, target: str) -> None:
         thread = payload.get("thread") or {}
-        thread_id = str(thread.get("thread_id") or "").strip() or "-"
-        status = str(thread.get("status") or "").strip() or "-"
-        created = bool(payload.get("created_thread"))
-        scope = str(thread.get("scope") or "").strip() or "root"
-        created_text = "new" if created else "reused"
-        print(
-            f"[sent] to={target} thread={thread_id} scope={scope} status={status} route={created_text}"
+        _write_line(
+            "[sent] "
+            f"to={target} "
+            f"thread={str(thread.get('thread_id') or '').strip() or '-'} "
+            f"scope={str(thread.get('scope') or '').strip() or 'root'} "
+            f"status={str(thread.get('status') or '').strip() or '-'} "
+            f"route={'new' if payload.get('created_thread') else 'reused'}"
         )
 
     def _print_notification_ack(self, payload: dict[str, Any], *, target: str) -> None:
         thread = payload.get("thread") or {}
         event = payload.get("event") or {}
-        print(
+        _write_line(
             f"[status] to={target} thread={thread.get('thread_id')} "
             f"thread_status={thread.get('status')} published={event.get('notification_status')}"
         )
 
     def _print_threads(self, payload: dict[str, Any]) -> None:
-        threads = payload.get("threads") if isinstance(payload.get("threads"), list) else []
+        threads = self._payload_items(payload, key="threads")
         if not threads:
-            print("[threads] none")
+            _write_line("[threads] none")
             return
         for thread in threads:
             if not isinstance(thread, dict):
                 continue
             thread_id = str(thread.get("thread_id") or "").strip()
-            participant_a = str(thread.get("participant_a_agent_slug") or "").strip()
-            participant_b = str(thread.get("participant_b_agent_slug") or "").strip()
-            peer = participant_b if participant_a == self.agent_slug else participant_a
+            peer = self._thread_peer(thread)
             marker = "*" if thread_id and thread_id == self.current_thread_id else " "
-            print(
+            _write_line(
                 f"{marker} {thread_id} peer={peer or '?'} "
                 f"status={thread.get('status')} scope={thread.get('scope')} owner={thread.get('owner_agent_slug')}"
             )
 
+    def _thread_peer(self, thread: dict[str, Any]) -> str:
+        participant_a = str(thread.get("participant_a_agent_slug") or "").strip()
+        participant_b = str(thread.get("participant_b_agent_slug") or "").strip()
+        return participant_b if participant_a == self.agent_slug else participant_a
+
     def _print_agents(self, payload: dict[str, Any]) -> None:
-        agents = payload.get("agents") if isinstance(payload.get("agents"), list) else []
+        agents = self._payload_items(payload, key="agents")
         if not agents:
-            print("[agents] none")
+            _write_line("[agents] none")
             return
         for agent in agents:
             if not isinstance(agent, dict):
                 continue
-            print(
+            _write_line(
                 f"{agent.get('agent_slug')} online={agent.get('online')} "
                 f"last_seen_at={agent.get('last_seen_at')} base_url={agent.get('event_callback_url')}"
             )
@@ -362,14 +349,184 @@ class ManualAgentCLI:
             return True
         raise RuntimeError("No chat target selected. Use `chat <agent_slug>` or `@agent message`.")
 
+    def _require_client(self) -> OrchestraThreadsClient:
+        if self.thread_client is None:
+            raise RuntimeError("HTTP client is not started")
+        return self.thread_client
+
+    async def _command_agents(self, _: Sequence[str]) -> bool:
+        self._print_agents(await self._require_client().list_agents())
+        return False
+
+    async def _command_threads(self, parts: Sequence[str]) -> bool:
+        scope = self._part_or_default(parts, index=1, default="active")
+        self._print_threads(await self._require_client().list_threads(scope=scope))
+        return False
+
+    async def _command_thread(self, parts: Sequence[str]) -> bool:
+        thread_id = self._part_or_none(parts, index=1) or self.current_thread_id
+        if not thread_id:
+            raise RuntimeError("No current thread. Use `thread <thread_id>` or `use <thread_id>`.")
+        payload = await self._require_client().get_thread(thread_id=thread_id)
+        _write_line(json.dumps(payload, ensure_ascii=False, indent=2))
+        return False
+
+    async def _command_use(self, parts: Sequence[str]) -> bool:
+        if not self._has_exact_parts(parts, count=2):
+            raise RuntimeError("Usage: use <thread_id>")
+        self.current_thread_id = parts[1]
+        peer = self.thread_peers.get(self.current_thread_id, "?")
+        if peer and peer != "?":
+            self.default_target_agent_slug = peer
+        _write_line(f"[current] thread={self.current_thread_id} peer={peer}")
+        return False
+
+    async def _command_chat(self, parts: Sequence[str]) -> bool:
+        if not self._has_exact_parts(parts, count=2):
+            raise RuntimeError("Usage: chat <target_agent_slug>")
+        target = parts[1].strip()
+        self.default_target_agent_slug = target
+        if self._known_peer_for_current_thread() not in {None, target}:
+            self.current_thread_id = None
+        _write_line(
+            f"[chat] target={target} thread={self.current_thread_id or 'new-root-on-first-message'}"
+        )
+        return False
+
+    async def _command_leave(self, _: Sequence[str]) -> bool:
+        self.current_thread_id = None
+        self.default_target_agent_slug = None
+        _write_line("[chat] cleared current thread and target")
+        return False
+
+    async def _command_current(self, _: Sequence[str]) -> bool:
+        _write_line(f"agent_slug={self.agent_slug}")
+        _write_line(f"current_thread_id={self.current_thread_id}")
+        _write_line(f"current_peer={self.thread_peers.get(self.current_thread_id or '', None)}")
+        _write_line(f"default_target_agent_slug={self.default_target_agent_slug}")
+        return False
+
+    async def _command_inbox(self, parts: Sequence[str]) -> bool:
+        limit = self._inbox_limit(parts)
+        items = list(self.inbox)[-limit:]
+        _write_line(json.dumps(items, ensure_ascii=False, indent=2))
+        return False
+
+    async def _command_send(self, parts: Sequence[str]) -> bool:
+        if not self._has_min_parts(parts, minimum=3):
+            raise RuntimeError('Usage: send <target_agent_slug> "<message>"')
+        await self._send_root_message(
+            target=parts[1], message=self._command_message(parts, start=2)
+        )
+        return False
+
+    async def _command_reply(self, parts: Sequence[str]) -> bool:
+        if not self._has_min_parts(parts, minimum=2):
+            raise RuntimeError('Usage: reply "<message>"')
+        await self._reply_current_thread(message=" ".join(parts[1:]))
+        return False
+
+    async def _command_child(self, parts: Sequence[str]) -> bool:
+        if not self._has_min_parts(parts, minimum=3):
+            raise RuntimeError('Usage: child <target_agent_slug> "<message>"')
+        await self._send_child_message(
+            target=parts[1], message=self._command_message(parts, start=2)
+        )
+        return False
+
+    async def _command_notify(self, parts: Sequence[str]) -> bool:
+        if not self._has_min_parts(parts, minimum=3):
+            raise RuntimeError('Usage: notify <in_progress|review|done|closed> "<message>"')
+        await self._send_notification(
+            status=parts[1], message=self._command_message(parts, start=2)
+        )
+        return False
+
+    async def _command_say(self, parts: Sequence[str]) -> bool:
+        if not self._has_min_parts(parts, minimum=2):
+            raise RuntimeError('Usage: say "<message>"')
+        await self._handle_text_input(self._command_message(parts, start=1))
+        return False
+
+    @staticmethod
+    def _payload_items(payload: JsonDict, *, key: str) -> JsonObjectList:
+        items = payload.get(key)
+        if not isinstance(items, list):
+            return []
+        dict_items: JsonObjectList = []
+        for item in items:
+            if isinstance(item, dict):
+                dict_items.append(item)
+        return dict_items
+
+    @staticmethod
+    def _payload_thread_id(payload: JsonDict) -> str:
+        thread = payload.get("thread")
+        if not isinstance(thread, dict):
+            return ""
+        return str(thread.get("thread_id") or "").strip()
+
+    @staticmethod
+    def _preview_message(event: dict[str, Any]) -> str:
+        return " ".join(str(event.get("message_text") or "").split())
+
+    def _inbox_limit(self, parts: Sequence[str]) -> int:
+        if not self._has_min_parts(parts, minimum=2):
+            return len(self.inbox)
+        return max(1, int(self._part_or_default(parts, index=1, default="1")))
+
+    @staticmethod
+    def _part_or_default(parts: Sequence[str], *, index: int, default: str) -> str:
+        return parts[index] if len(parts) > index else default
+
+    @staticmethod
+    def _part_or_none(parts: Sequence[str], *, index: int) -> str | None:
+        return parts[index] if len(parts) > index else None
+
+    @staticmethod
+    def _has_exact_parts(parts: Sequence[str], *, count: int) -> bool:
+        return len(parts) == count
+
+    @staticmethod
+    def _has_min_parts(parts: Sequence[str], *, minimum: int) -> bool:
+        return len(parts) >= minimum
+
+    @staticmethod
+    def _command_message(parts: Sequence[str], *, start: int) -> str:
+        return " ".join(parts[start:])
+
+    def _command_handlers(self) -> dict[str, CommandHandler]:
+        return {
+            "agents": self._command_agents,
+            "threads": self._command_threads,
+            "thread": self._command_thread,
+            "use": self._command_use,
+            "chat": self._command_chat,
+            "dm": self._command_chat,
+            "leave": self._command_leave,
+            "clear": self._command_leave,
+            "current": self._command_current,
+            "inbox": self._command_inbox,
+            "send": self._command_send,
+            "reply": self._command_reply,
+            "child": self._command_child,
+            "notify": self._command_notify,
+            "say": self._command_say,
+        }
+
     async def _dispatch_command(self, raw: str) -> bool:
         raw = normalize_text_input(raw).strip()
         if not raw:
             return False
+        import shlex
+
         normalized_raw = raw[1:] if raw.startswith("/") else raw
         parts = shlex.split(normalized_raw)
         if not parts:
             return False
+        return await self._run_command(parts=parts, raw=raw)
+
+    async def _run_command(self, *, parts: Sequence[str], raw: str) -> bool:
         command = parts[0].lower()
         if command in {"quit", "exit"}:
             return True
@@ -377,108 +534,22 @@ class ManualAgentCLI:
             self._print_help()
             return False
         if command == "register":
-            await self.register()
+            await self._register()
             return False
-        if command == "agents":
-            if self.thread_client is None:
-                raise RuntimeError("HTTP client is not started")
-            payload = await self.thread_client.list_agents()
-            self._print_agents(payload)
-            return False
-        if command == "threads":
-            scope = "active"
-            if len(parts) > 1:
-                scope = parts[1]
-            if self.thread_client is None:
-                raise RuntimeError("HTTP client is not started")
-            payload = await self.thread_client.list_threads(scope=scope)
-            self._print_threads(payload)
-            return False
-        if command == "thread":
-            thread_id = self.current_thread_id
-            if len(parts) > 1:
-                thread_id = parts[1]
-            if not thread_id:
-                raise RuntimeError(
-                    "No current thread. Use `thread <thread_id>` or `use <thread_id>`."
-                )
-            if self.thread_client is None:
-                raise RuntimeError("HTTP client is not started")
-            payload = await self.thread_client.get_thread(thread_id=thread_id)
-            print(json.dumps(payload, ensure_ascii=False, indent=2))
-            return False
-        if command == "use":
-            if len(parts) != 2:
-                raise RuntimeError("Usage: use <thread_id>")
-            self.current_thread_id = parts[1]
-            peer = self.thread_peers.get(self.current_thread_id, "?")
-            if peer and peer != "?":
-                self.default_target_agent_slug = peer
-            print(f"[current] thread={self.current_thread_id} peer={peer}")
-            return False
-        if command in {"chat", "dm"}:
-            if len(parts) != 2:
-                raise RuntimeError("Usage: chat <target_agent_slug>")
-            target = parts[1].strip()
-            self.default_target_agent_slug = target
-            current_peer = self._known_peer_for_current_thread()
-            if current_peer and current_peer != target:
-                self.current_thread_id = None
-            print(
-                f"[chat] target={target} thread={self.current_thread_id or 'new-root-on-first-message'}"
-            )
-            return False
-        if command in {"leave", "clear"}:
-            self.current_thread_id = None
-            self.default_target_agent_slug = None
-            print("[chat] cleared current thread and target")
-            return False
-        if command == "current":
-            print(f"agent_slug={self.agent_slug}")
-            print(f"current_thread_id={self.current_thread_id}")
-            print(f"current_peer={self.thread_peers.get(self.current_thread_id or '', None)}")
-            print(f"default_target_agent_slug={self.default_target_agent_slug}")
-            return False
-        if command == "inbox":
-            limit = len(self.inbox)
-            if len(parts) > 1:
-                limit = max(1, int(parts[1]))
-            items = list(self.inbox)[-limit:]
-            print(json.dumps(items, ensure_ascii=False, indent=2))
-            return False
-        if command == "send":
-            if len(parts) < 3:
-                raise RuntimeError('Usage: send <target_agent_slug> "<message>"')
-            await self._send_root_message(target=parts[1], message=" ".join(parts[2:]))
-            return False
-        if command == "reply":
-            if len(parts) < 2:
-                raise RuntimeError('Usage: reply "<message>"')
-            await self._reply_current_thread(message=" ".join(parts[1:]))
-            return False
-        if command == "child":
-            if len(parts) < 3:
-                raise RuntimeError('Usage: child <target_agent_slug> "<message>"')
-            await self._send_child_message(target=parts[1], message=" ".join(parts[2:]))
-            return False
-        if command == "notify":
-            if len(parts) < 3:
-                raise RuntimeError('Usage: notify <in_progress|review|done|closed> "<message>"')
-            await self._send_notification(status=parts[1], message=" ".join(parts[2:]))
-            return False
-        if command == "say":
-            if len(parts) < 2:
-                raise RuntimeError('Usage: say "<message>"')
-            await self._handle_text_input(" ".join(parts[1:]))
-            return False
-        handled = await self._handle_text_input(raw)
-        if handled:
-            return False
-        raise RuntimeError(f"Unknown command: {command}")
+        handler = self._command_handlers().get(command)
+        if handler is not None:
+            return await handler(parts)
+        if not await self._handle_text_input(raw):
+            raise RuntimeError(f"Unknown command: {command}")
+        return False
+
+    async def _register_command(self, _: Sequence[str]) -> bool:
+        await self._register()
+        return False
 
     @staticmethod
     def _print_help() -> None:
-        print(
+        _write_line(
             """
 Commands:
   help
@@ -504,7 +575,9 @@ Commands:
         )
 
 
-def _build_arg_parser() -> argparse.ArgumentParser:
+def _build_arg_parser() -> Any:
+    import argparse
+
     parser = argparse.ArgumentParser(description="Manual CLI agent for OrchestraThreads")
     parser.add_argument("--slug", required=True, help="Agent slug used in threads")
     parser.add_argument(
@@ -534,29 +607,18 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-async def _main_async(args: argparse.Namespace) -> None:
-    agent = ManualAgentCLI(
-        agent_slug=args.slug,
-        service_url=args.service_url,
-        listen_host=args.listen_host,
-        listen_port=args.listen_port,
-        advertise_host=args.advertise_host or args.listen_host,
-        scheme=args.scheme,
-        heartbeat_interval_seconds=args.heartbeat_interval,
-        default_target_agent_slug=args.target,
-    )
+async def _main_async(args: Any) -> None:
+    agent = ManualAgentCLI(args)
     await agent.start()
     try:
-        await agent.run_repl()
-    finally:
+        await agent._run_repl()
+    except Exception:
         await agent.stop()
+        raise
+    await agent.stop()
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
     args = _build_arg_parser().parse_args()
     asyncio.run(_main_async(args))
 

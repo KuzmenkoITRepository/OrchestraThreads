@@ -1,8 +1,8 @@
 """Core OrchestraThreads package."""
 
-from .service import OrchestraThreadsService, build_app
-
-__all__ = [
-    "OrchestraThreadsService",
-    "build_app",
-]
+from core.orchestra_thread.service import (
+    OrchestraThreadsService as OrchestraThreadsService,
+)
+from core.orchestra_thread.service import (
+    build_app as build_app,
+)
