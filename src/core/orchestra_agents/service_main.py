@@ -8,7 +8,7 @@ import os
 
 from aiohttp import web
 
-from .service import OrchestraAgentsService, build_app
+from core.orchestra_agents.service import OrchestraAgentsService, build_app
 
 
 def configure_logging() -> None:
@@ -18,25 +18,28 @@ def configure_logging() -> None:
     )
 
 
-async def _run() -> None:
+async def _build_runner() -> tuple[web.AppRunner, OrchestraAgentsService]:
     service = OrchestraAgentsService()
-    app = build_app(service)
-    runner = web.AppRunner(app)
+    runner = web.AppRunner(build_app(service))
     await runner.setup()
-    site = web.TCPSite(
-        runner,
-        host=str(os.getenv("ORCHESTRA_AGENTS_HOST") or "0.0.0.0"),
-        port=int(os.getenv("ORCHESTRA_AGENTS_PORT", "8790")),
-    )
-    await site.start()
+    return runner, service
+
+
+async def _run() -> None:
+    runner, service = await _build_runner()
+    host = str(os.getenv("ORCHESTRA_AGENTS_HOST") or "0.0.0.0")
+    port = int(os.getenv("ORCHESTRA_AGENTS_PORT") or "8790")
+    await web.TCPSite(runner, host=host, port=port).start()
     logging.getLogger(__name__).info(
         "orchestra_agents listening on %s:%s (manifests_root=%s)",
-        os.getenv("ORCHESTRA_AGENTS_HOST", "0.0.0.0"),
-        os.getenv("ORCHESTRA_AGENTS_PORT", "8790"),
+        host,
+        port,
         service.registry.manifests_root,
     )
     try:
         await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        raise
     finally:
         await runner.cleanup()
 
