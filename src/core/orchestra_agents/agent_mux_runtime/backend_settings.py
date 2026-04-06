@@ -61,7 +61,7 @@ def _llm_runtime_settings(
     llm_model: str | None,
 ) -> dict[str, Any]:
     return {
-        "llm_proxy_url": str(raw_config.get("llm_proxy_url") or "http://127.0.0.1:8787").rstrip(
+        "llm_proxy_url": str(raw_config.get("llm_proxy_url") or "http://orchestra-wet:8100").rstrip(
             "/"
         ),
         "llm_proxy_api_key": str(raw_config.get("llm_proxy_api_key") or "llm-proxy").strip()
