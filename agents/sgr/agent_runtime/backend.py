@@ -5,16 +5,15 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from core.llm_proxy import client_config as _llm_cfg
-from core.orchestra_agents import runtime as _rt
-from core.orchestra_thread import active_context as _active_ctx
-
 from agents.sgr.agent_runtime import config_builder as _cfg
 from agents.sgr.agent_runtime import event_routing as _routing
 from agents.sgr.agent_runtime import llm_client as _llm_mod
 from agents.sgr.agent_runtime import status_tracking as _status_mod
 from agents.sgr.agent_runtime import thread_ops as _thread_mod
 from agents.sgr.agent_runtime import tool_definitions as _tool_defs
+from core.llm_proxy import client_config as _llm_cfg
+from core.orchestra_agents import runtime as _rt
+from core.orchestra_thread import active_context as _active_ctx
 
 
 class SGRMinimaxBackend(_rt.BaseAgentBackend):

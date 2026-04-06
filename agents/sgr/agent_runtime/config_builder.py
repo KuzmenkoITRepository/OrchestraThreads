@@ -5,10 +5,9 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from agents.sgr.agent_runtime import support as _support
 from core.llm_proxy import client_config as _llm_cfg
 from core.orchestra_agents import agent_mux_runtime as _mux_rt
-
-from agents.sgr.agent_runtime import support as _support
 
 
 def build_llm_raw_config(raw: dict[str, Any]) -> dict[str, Any]:
