@@ -6,9 +6,25 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from core.llm_proxy.client_config import build_llm_proxy_openai_base_url
 from core.orchestra_agents.agent_mux_runtime.codex_config_servers import render_server_block
 from core.orchestra_agents.agent_mux_runtime.toml_rendering import toml_quote
+
+
+def _build_openai_base_url(route_policy: str, *, proxy_url: str) -> str:
+    """Build OpenAI-compatible base URL for the given route policy."""
+    base = proxy_url.rstrip("/")
+    prefix = _route_policy_path_prefix(route_policy)
+    return f"{base}{prefix}/v1"
+
+
+def _route_policy_path_prefix(route_policy: str) -> str:
+    """Return URL path prefix for the given route policy."""
+    normalized = route_policy.strip().lower().replace("-", "_")
+    if normalized in {"codex", "codex_only"}:
+        return "/codex"
+    if normalized in {"minimax", "minimax_only", "fallback", "fallback_only"}:
+        return "/minimax"
+    return ""
 
 
 @dataclass(frozen=True)
@@ -70,7 +86,7 @@ def write_runtime_codex_config(
     config_path.parent.mkdir(parents=True, exist_ok=True)
     lines = _base_config_lines(
         model=request.model,
-        base_url=build_llm_proxy_openai_base_url(
+        base_url=_build_openai_base_url(
             request.route_policy,
             proxy_url=request.llm_proxy_url,
         ),
@@ -88,10 +104,10 @@ def write_runtime_codex_config(
 def _base_config_lines(*, model: str, base_url: str) -> list[str]:
     return [
         f"model = {toml_quote(model)}",
-        'model_provider = "llm_proxy"',
+        'model_provider = "omniroute"',
         "",
-        "[model_providers.llm_proxy]",
-        'name = "LLM Proxy"',
+        "[model_providers.omniroute]",
+        'name = "OmniRoute/WET"',
         f"base_url = {toml_quote(base_url)}",
         'env_key = "LLM_PROXY_API_KEY"',
         'wire_api = "responses"',
