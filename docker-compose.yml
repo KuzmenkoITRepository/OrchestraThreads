@@ -269,15 +269,12 @@ services:
         condition: service_healthy
       langfuse:
         condition: service_healthy
-      llm-proxy:
-        condition: service_healthy
     environment:
       PYTHONPATH: /app/src
       ORCHESTRA_THREADS_TEST_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
       LANGFUSE_BASE_URL: http://langfuse:3000
-      LLM_PROXY_BASE_URL: http://llm-proxy:8787
     command:
       - python
       - -m
@@ -293,7 +290,6 @@ services:
       - core.orchestra_agents.tests.test_agent_mux_template
       - core.orchestra_agents.tests.test_sgr_example
       - core.orchestra_agents.tests.test_service
-      - core.llm_proxy.tests.test_service
     init: true
     restart: "no"
     profiles:
