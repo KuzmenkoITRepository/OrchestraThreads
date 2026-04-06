@@ -6,12 +6,11 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
+from agents.sgr.agent_runtime import support as _support
+from agents.sgr.agent_runtime import tool_exec as _tools
 from core.llm_proxy.client_config import DEFAULT_LLM_PROXY_MODEL
 from core.orchestra_agents import runtime as _rt
 from core.orchestra_thread import active_context as _active_ctx
-
-from agents.sgr.agent_runtime import support as _support
-from agents.sgr.agent_runtime import tool_exec as _tools
 
 if TYPE_CHECKING:
     from agents.sgr.agent_runtime.backend import SGRMinimaxBackend

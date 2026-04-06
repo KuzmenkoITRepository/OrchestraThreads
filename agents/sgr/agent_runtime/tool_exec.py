@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from agents.sgr.agent_runtime import support as _support
 from core.llm_proxy import protocol as _llm_proto
 from core.orchestra_agents import agent_mux_runtime as _mux_rt
-
-from agents.sgr.agent_runtime import support as _support
 
 if TYPE_CHECKING:
     from agents.sgr.agent_runtime.backend import SGRMinimaxBackend

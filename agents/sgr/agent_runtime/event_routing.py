@@ -5,11 +5,10 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from core.orchestra_agents import runtime as _rt
-
 from agents.sgr.agent_runtime import event_loop as _loop
 from agents.sgr.agent_runtime import result_builders as _results
 from agents.sgr.agent_runtime import support as _support
+from core.orchestra_agents import runtime as _rt
 
 if TYPE_CHECKING:
     from agents.sgr.agent_runtime.backend import SGRMinimaxBackend

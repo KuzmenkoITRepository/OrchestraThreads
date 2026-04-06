@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from core.orchestra_agents import runtime as _rt
-
 from agents.sgr.agent_runtime import support as _support
+from core.orchestra_agents import runtime as _rt
 
 if TYPE_CHECKING:
     from agents.sgr.agent_runtime.backend import SGRMinimaxBackend
