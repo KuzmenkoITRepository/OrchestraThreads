@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.orchestra_agents.runtime import EventDelivery
-
 from agents.sgr.agent_runtime.support.settings import normalize_optional_str
+from core.orchestra_agents.runtime import EventDelivery
 
 
 def tool_runtime_rules_text() -> str:

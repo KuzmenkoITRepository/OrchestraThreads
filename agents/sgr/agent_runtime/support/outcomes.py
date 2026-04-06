@@ -6,9 +6,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from core.orchestra_agents.agent_mux_runtime import message_preview
-
 from agents.sgr.agent_runtime.support.settings import normalize_optional_str
+from core.orchestra_agents.agent_mux_runtime import message_preview
 
 
 @dataclass
