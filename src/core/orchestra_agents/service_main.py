@@ -19,7 +19,7 @@ def configure_logging() -> None:
 
 
 async def _build_runner() -> tuple[web.AppRunner, OrchestraAgentsService]:
-    service = OrchestraAgentsService()
+    service = OrchestraAgentsService.create()
     runner = web.AppRunner(build_app(service))
     await runner.setup()
     return runner, service
@@ -34,7 +34,7 @@ async def _run() -> None:
         "orchestra_agents listening on %s:%s (manifests_root=%s)",
         host,
         port,
-        service.registry.manifests_root,
+        service.state.registry.manifests_root,
     )
     try:
         await asyncio.Event().wait()
