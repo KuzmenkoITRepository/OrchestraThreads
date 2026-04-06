@@ -1,15 +1,8 @@
 """Manifest-driven Docker lifecycle service for Orchestra agents."""
 
-from .docker_driver import DockerDriver
-from .manifest import AgentManifest, ManifestValidationError
-from .registry import AgentManifestRegistry
-from .service import OrchestraAgentsService, build_app
-
-__all__ = [
-    "AgentManifest",
-    "AgentManifestRegistry",
-    "DockerDriver",
-    "ManifestValidationError",
-    "OrchestraAgentsService",
-    "build_app",
-]
+from core.orchestra_agents.docker_driver import DockerDriver as DockerDriver
+from core.orchestra_agents.errors import ManifestValidationError as ManifestValidationError
+from core.orchestra_agents.manifest import AgentManifest as AgentManifest
+from core.orchestra_agents.registry import AgentManifestRegistry as AgentManifestRegistry
+from core.orchestra_agents.service import OrchestraAgentsService as OrchestraAgentsService
+from core.orchestra_agents.service import build_app as build_app
