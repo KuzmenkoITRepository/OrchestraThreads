@@ -6,10 +6,8 @@ from typing import Any
 
 
 def chat_completions_url(route_policy: str) -> str:
-    proxy_url = os.getenv("LLM_PROXY_URL", "http://orchestra-wet:8100").rstrip("/")
-    if _is_minimax_route(route_policy):
-        return f"{proxy_url}/minimax/v1/chat/completions"
-    return f"{proxy_url}/v1/chat/completions"
+    omniroute_url = os.getenv("OMNIROUTE_URL", "http://orchestra-omniroute:20128").rstrip("/")
+    return f"{omniroute_url}/v1/chat/completions"
 
 
 def build_headers(
@@ -22,9 +20,9 @@ def build_headers(
     headers = {
         "Content-Type": "application/json",
         trace_agent_header: agent_slug,
-        trace_context_header: str(payload.get("thread_id") or agent_slug),
+        trace_context_header: str(payload.get("agent_slug") or agent_slug),
     }
-    api_key = _resolve_llm_proxy_api_key()
+    api_key = _resolve_omniroute_api_key()
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     return headers
@@ -34,19 +32,15 @@ def parse_response(raw: str) -> dict[str, Any]:
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f"llm_proxy returned invalid JSON: {exc}") from exc
+        raise RuntimeError(f"omniroute returned invalid JSON: {exc}") from exc
     if isinstance(parsed, dict):
         return parsed
-    raise RuntimeError("llm_proxy returned a non-object payload")
+    raise RuntimeError("omniroute returned a non-object payload")
 
 
-def _resolve_llm_proxy_api_key() -> str | None:
-    api_key = os.getenv("LLM_PROXY_API_KEY")
+def _resolve_omniroute_api_key() -> str | None:
+    api_key = os.getenv("OMNIROUTE_API_KEY")
     if api_key is None:
         return None
     text = api_key.strip()
     return text or None
-
-
-def _is_minimax_route(route_policy: str) -> bool:
-    return str(route_policy or "").strip().lower() == "minimax_only"

@@ -1,5 +1,5 @@
-"""Shared generic agent_mux backend for the secretary agent."""
+"""SGR backend re-export for the secretary agent."""
 
-from core.orchestra_agents.templates.agent_mux.agent_runtime.backend import (
-    AgentMuxBackend as AgentMuxBackend,
+from agents.sgr.agent_runtime.backend import (
+    SGRMinimaxBackend as SGRMinimaxBackend,
 )

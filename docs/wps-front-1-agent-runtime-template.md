@@ -2,7 +2,7 @@
 
 ## Front mission
 
-**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
+**Historical note:** legacy proxy routing has been replaced by `omniroute` + `wet`.
 
 This front reduces active WPS debt in the shared execution layer used by
 `agent_mux`, template runtimes, and example agents. It is responsible for the

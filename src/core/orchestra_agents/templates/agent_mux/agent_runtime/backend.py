@@ -6,22 +6,14 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from core.orchestra_agents import runtime as runtime_contract
 from core.orchestra_agents.agent_mux_runtime import backend_settings, normalization
-from core.orchestra_agents.runtime import (
-    BaseAgentBackend,
-    ClearContextRequest,
-    EventDelivery,
-    EventDeliveryResult,
-    StopRequest,
+from core.orchestra_agents.templates.agent_mux.agent_runtime import process_control, status_tracking
+from core.orchestra_agents.templates.agent_mux.agent_runtime import state as runtime_state
+from core.orchestra_agents.templates.opencode.agent_runtime import (
+    backend_registration,
 )
-from core.orchestra_agents.templates.agent_mux.agent_runtime.process_control import (
-    ActiveContextManager,
-    BackendRuntimeEngine,
-    EngineCallbacks,
-    ProcessController,
-)
-from core.orchestra_agents.templates.agent_mux.agent_runtime.state import AgentMuxRuntimeState
-from core.orchestra_agents.templates.agent_mux.agent_runtime.status_tracking import StatusTracker
+from core.orchestra_thread.client import OrchestraThreadsClient
 
 
 @dataclass(frozen=True)
@@ -38,7 +30,7 @@ class _StatusField:
     def __init__(self, field_name: str) -> None:
         self._field_name = field_name
 
-    def __get__(self, instance: AgentMuxBackend | None, owner: type[AgentMuxBackend]) -> Any:
+    def __get__(self, instance: Any, owner: type[Any]) -> Any:
         if instance is None:
             return self
         if not isinstance(instance, owner):
@@ -46,100 +38,104 @@ class _StatusField:
         return getattr(instance._status, self._field_name)
 
 
+class _BackendBootstrap:
+    @staticmethod
+    def resolve_http_endpoint(kwargs: dict[str, Any]) -> str | None:
+        if "http_endpoint" not in kwargs:
+            return None
+        raw_endpoint = kwargs["http_endpoint"]
+        if raw_endpoint is None:
+            return None
+        if isinstance(raw_endpoint, str):
+            return raw_endpoint
+        return str(raw_endpoint)
+
+    @staticmethod
+    def resolve_llm_config(raw_config: dict[str, Any]) -> _LLMClientConfig:
+        return _LLMClientConfig(
+            route_policy=str(raw_config.get("llm_route_policy") or "codex_only").strip()
+            or "codex_only",
+            model=_BackendBootstrap._optional_str(
+                raw_config.get("model") or os.getenv("LLM_CLIENT_MODEL")
+            ),
+            timeout_seconds=_BackendBootstrap._optional_float(
+                raw_config.get("timeout_seconds") or os.getenv("LLM_CLIENT_TIMEOUT_SECONDS")
+            ),
+            reasoning_effort=_BackendBootstrap._optional_str(
+                raw_config.get("reasoning_effort") or os.getenv("LLM_CLIENT_REASONING_EFFORT")
+            ),
+            reasoning_summary=_BackendBootstrap._optional_str(
+                raw_config.get("reasoning_summary") or os.getenv("LLM_CLIENT_REASONING_SUMMARY")
+            ),
+            text_verbosity=_BackendBootstrap._optional_str(
+                raw_config.get("text_verbosity") or os.getenv("LLM_CLIENT_TEXT_VERBOSITY")
+            ),
+        )
+
+    @staticmethod
+    def restore_context_state(owner: Any) -> None:
+        persisted_context = owner.runtime_state.context_snapshot()
+        context_generation = getattr(owner, "context_generation", 0)
+        try:
+            persisted_generation = persisted_context["context_generation"]
+        except KeyError:
+            persisted_generation = None
+        if persisted_generation is not None:
+            context_generation = int(persisted_generation)
+        owner.context_generation = context_generation
+        fallback_context_id = str(getattr(owner, "current_context_id", "")).strip()
+        if not fallback_context_id:
+            fallback_context_id = uuid.uuid4().hex[:12]
+        owner.current_context_id = owner.runtime_state.ensure_context_id(
+            fallback_context_id=fallback_context_id,
+            generation=owner.context_generation,
+        )
+        owner.context.generation = owner.context_generation
+        owner.context.current_id = owner.current_context_id
+
+    @staticmethod
+    def build_engine(owner: Any) -> process_control.BackendRuntimeEngine:
+        context_manager = process_control.ActiveContextManager(owner)
+        process_controller = process_control.ProcessController(owner)
+        owner._context_manager = context_manager
+        owner._process_controller = process_controller
+        return process_control.BackendRuntimeEngine(
+            owner,
+            context_manager,
+            process_controller,
+            process_control.EngineCallbacks(
+                on_processing_event=owner._status.mark_processing_event,
+                on_running_dispatch=owner._status.mark_running_dispatch,
+                on_failed_dispatch=owner._status.mark_failed_dispatch,
+                on_completed_dispatch=owner._status.mark_completed_dispatch,
+            ),
+        )
+
+    @staticmethod
+    def _optional_str(value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @staticmethod
+    def _optional_float(value: Any) -> float | None:
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+
 def _sanitize_reply_text(text: str) -> str:
     return normalization.sanitize_reply_text(text)
 
 
-def _resolve_http_endpoint(kwargs: dict[str, Any]) -> str | None:
-    if "http_endpoint" not in kwargs:
-        return None
-    raw_endpoint = kwargs["http_endpoint"]
-    if raw_endpoint is None:
-        return None
-    if isinstance(raw_endpoint, str):
-        return raw_endpoint
-    return str(raw_endpoint)
-
-
-def _resolve_llm_config(raw_config: dict[str, Any]) -> _LLMClientConfig:
-    return _LLMClientConfig(
-        route_policy=str(raw_config.get("llm_route_policy") or "codex_only").strip()
-        or "codex_only",
-        model=_optional_str(raw_config.get("model") or os.getenv("LLM_CLIENT_MODEL")),
-        timeout_seconds=_optional_float(
-            raw_config.get("timeout_seconds") or os.getenv("LLM_CLIENT_TIMEOUT_SECONDS")
-        ),
-        reasoning_effort=_optional_str(
-            raw_config.get("reasoning_effort") or os.getenv("LLM_CLIENT_REASONING_EFFORT")
-        ),
-        reasoning_summary=_optional_str(
-            raw_config.get("reasoning_summary") or os.getenv("LLM_CLIENT_REASONING_SUMMARY")
-        ),
-        text_verbosity=_optional_str(
-            raw_config.get("text_verbosity") or os.getenv("LLM_CLIENT_TEXT_VERBOSITY")
-        ),
-    )
-
-
-def _optional_str(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
-def _optional_float(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _restore_context_state(owner: AgentMuxBackend) -> None:
-    persisted_context = owner.runtime_state.context_snapshot()
-    context_generation = getattr(owner, "context_generation", 0)
-    try:
-        persisted_generation = persisted_context["context_generation"]
-    except KeyError:
-        persisted_generation = None
-    if persisted_generation is not None:
-        context_generation = int(persisted_generation)
-    owner.context_generation = context_generation
-    fallback_context_id = str(getattr(owner, "current_context_id", "")).strip()
-    if not fallback_context_id:
-        fallback_context_id = uuid.uuid4().hex[:12]
-    owner.current_context_id = owner.runtime_state.ensure_context_id(
-        fallback_context_id=fallback_context_id,
-        generation=owner.context_generation,
-    )
-    owner.context.generation = owner.context_generation
-    owner.context.current_id = owner.current_context_id
-
-
-def _build_engine(owner: AgentMuxBackend) -> BackendRuntimeEngine:
-    context_manager = ActiveContextManager(owner)
-    process_controller = ProcessController(owner)
-    owner._context_manager = context_manager
-    owner._process_controller = process_controller
-    return BackendRuntimeEngine(
-        owner,
-        context_manager,
-        process_controller,
-        EngineCallbacks(
-            on_processing_event=owner._status.mark_processing_event,
-            on_running_dispatch=owner._status.mark_running_dispatch,
-            on_failed_dispatch=owner._status.mark_failed_dispatch,
-            on_completed_dispatch=owner._status.mark_completed_dispatch,
-        ),
-    )
-
-
-class AgentMuxBackend(BaseAgentBackend):
-    _status: StatusTracker
-    _context_manager: ActiveContextManager
-    _process_controller: ProcessController
+class AgentMuxBackend(runtime_contract.BaseAgentBackend):
+    _status: status_tracking.StatusTracker
+    _context_manager: process_control.ActiveContextManager
+    _process_controller: process_control.ProcessController
     context_generation: int
 
     last_queued_event_id = _StatusField("queued_event_id")
@@ -176,26 +172,29 @@ class AgentMuxBackend(BaseAgentBackend):
             raw_system_prompt = ""
         system_prompt = str(raw_system_prompt or "")
         self.system_prompt = system_prompt.strip()
-        llm_config = _resolve_llm_config(raw_config)
+        llm_config = _BackendBootstrap.resolve_llm_config(raw_config)
         self.settings = backend_settings.build_runtime_settings(
             raw_config,
             working_dir=working_dir,
-            http_endpoint=_resolve_http_endpoint(kwargs),
+            http_endpoint=_BackendBootstrap.resolve_http_endpoint(kwargs),
             llm_route_policy=llm_config.route_policy,
             llm_model=llm_config.model,
         )
-        self.runtime_state = AgentMuxRuntimeState(self.settings.state_root)
+        self.runtime_state = runtime_state.AgentMuxRuntimeState(self.settings.state_root)
         self.context_generation = self.context.generation
         self.current_context_id = self.context.current_id
-        _restore_context_state(self)
+        _BackendBootstrap.restore_context_state(self)
         self._task_lock = asyncio.Lock()
         self._processor_task: asyncio.Task[None] | None = None
         self._active_process: asyncio.subprocess.Process | None = None
         self._active_dispatch_id: str | None = None
         self._active_event_payload: dict[str, Any] | None = None
-        self._status = StatusTracker()
-        self._engine = _build_engine(self)
+        self._status = status_tracking.StatusTracker()
+        self._engine = _BackendBootstrap.build_engine(self)
         self._queue_processing_hooks = self._engine._queue_processing_hooks
+        self.http_endpoint: str | None = self.settings.http_endpoint
+        self._threads_client: OrchestraThreadsClient | None = None
+        self._heartbeat_task: asyncio.Task[None] | None = None
 
     async def on_start(self) -> None:
         self.runtime_state.ensure_layout()
@@ -205,20 +204,21 @@ class AgentMuxBackend(BaseAgentBackend):
         )
         self.context.generation = self.context_generation
         self.context.current_id = self.current_context_id
+        await backend_registration.register_with_threads(self)
         if self.runtime_state.queue_size() > 0:
             await self._process_controller.schedule_processor(processor=self._engine.process_queue)
 
     async def on_shutdown(self) -> None:
+        await backend_registration.stop_registration(self)
         await self._process_controller.cancel_runtime()
         self._context_manager.clear_active_context()
 
     async def handle_events(
         self,
-        delivery: EventDelivery,
+        delivery: runtime_contract.EventDelivery,
         *,
         is_interrupt: bool = False,
-    ) -> EventDeliveryResult:
-        _ = is_interrupt
+    ) -> runtime_contract.EventDeliveryResult:
         self.remember_delivery(delivery)
         queue_result = self.runtime_state.queue_delivery(delivery)
         self._status.mark_queued(
@@ -231,7 +231,7 @@ class AgentMuxBackend(BaseAgentBackend):
             )
         if queue_result["queued_events"] > 0:
             await self._process_controller.schedule_processor(processor=self._engine.process_queue)
-        return EventDeliveryResult(
+        return runtime_contract.EventDeliveryResult(
             accepted=True,
             accepted_events=len(delivery.events),
             delivery_id=delivery.delivery_id,
@@ -249,7 +249,7 @@ class AgentMuxBackend(BaseAgentBackend):
             },
         )
 
-    async def stop(self, request: StopRequest) -> dict[str, Any]:
+    async def stop(self, request: runtime_contract.StopRequest) -> dict[str, Any]:
         payload = await super().stop(request)
         cleared_queue = 0
         if request.thread_id or request.parent_thread_id:
@@ -280,7 +280,7 @@ class AgentMuxBackend(BaseAgentBackend):
                 "http_endpoint": self.settings.http_endpoint,
                 "wrapper_mode": "agent_mux_codex_generic",
                 "agent_mux_binary": self.settings.agent_mux_binary,
-                "llm_proxy_url": self.settings.llm_proxy_url,
+                "omniroute_url": self.settings.omniroute_url,
                 "llm_route_policy": self.settings.llm_route_policy,
                 "default_model": self.settings.default_model,
                 "configured_mcp_servers": [item["name"] for item in self.settings.mcp_servers],
@@ -305,7 +305,7 @@ class AgentMuxBackend(BaseAgentBackend):
         )
         return payload
 
-    async def clear_context(self, request: ClearContextRequest) -> dict[str, Any]:
+    async def clear_context(self, request: runtime_contract.ClearContextRequest) -> dict[str, Any]:
         previous_context_id = self.current_context_id
         payload = await super().clear_context(request)
         self.context_generation = self.context.generation

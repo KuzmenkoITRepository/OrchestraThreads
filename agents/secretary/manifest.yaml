@@ -1,15 +1,17 @@
 slug: secretary
-display_name: Secretary Agent Mux
+display_name: Main Secretary
 status: active
 
 agent:
   working_dir: /workspace/agents/secretary
   http_endpoint: http://{container_name}:8787
   system_prompt_file: system_prompt.md
+  allowed_peer_agent_slugs:
+    - orchestra
 
 runtime:
   driver: docker
-  image: orchestra-agent-mux-runtime:latest
+  image: orchestra-threads:local
   command:
     - python
     - -m
@@ -22,71 +24,46 @@ runtime:
   env:
     AGENT_HTTP_HOST: 0.0.0.0
     AGENT_HTTP_PORT: "8787"
-    PYTHONPATH: /workspace/src:/workspace/agents/secretary
-    ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
-    LLM_PROXY_URL: http://orchestra-wet:8100
-    LLM_PROXY_ENABLED: "true"
-    LLM_PROXY_API_KEY: llm-proxy
-    AGENT_MUX_BINARY: agent-mux
-    AGENT_MUX_STATE_ROOT: /workspace/agents/secretary/runtime_state
+    PYTHONPATH: /workspace/src:/workspace
+    OMNIROUTE_URL: http://orchestra-omniroute:20128
     LOG_LEVEL: INFO
+    TELEGRAM_EVENTS_URL: http://telegram-events:8787
+    TELEGRAM_CHAT_ID_IVAN: "748976004"
+    ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
+    ORCHESTRA_THREADS_AGENT_SLUG: secretary
   env_passthrough:
-    - ORCHESTRA_THREADS_URL
-    - LLM_PROXY_URL
-    - LLM_PROXY_ENABLED
-    - LLM_PROXY_API_KEY
+    - OMNIROUTE_URL
+    - OMNIROUTE_API_KEY
     - LLM_CLIENT_MODEL
     - LLM_CLIENT_ROUTE_POLICY
-    - AGENT_MUX_BINARY
-    - AGENT_MUX_STATE_ROOT
-    - TELEGRAM_API_ID
-    - TELEGRAM_API_HASH
-    - TELEGRAM_SESSION_STRING
+    - LLM_CLIENT_TIMEOUT_SECONDS
+    - LLM_CLIENT_TEMPERATURE
+    - LLM_CLIENT_MAX_TOKENS
+    - LLM_CLIENT_REASONING_EFFORT
+    - LLM_CLIENT_REASONING_SUMMARY
+    - SGR_MAX_REASONING_STEPS
+    - SGR_MAX_DIRECT_TEXT_RETRIES
+    - TELEGRAM_EVENTS_URL
     - TELEGRAM_CHAT_ID_IVAN
     - LOG_LEVEL
 
 backend:
-  type: agent_mux
+  type: sgr_minimax
   config:
-    artifact_root: /workspace/agents/secretary/runtime_state/artifacts
-    llm_route_policy: managed_auto
-    model: gpt-5.4-mini
+    route_policy: codex_only
+    model: cx/gpt-5.4-mini
+    temperature: 0.2
+    max_tokens: 600
     timeout_seconds: 180
-    require_tool_call_for_response: true
+    react_to_inactive: true
+    max_reasoning_steps: 8
+    max_direct_text_retries: 2
     mcp_servers:
+      - name: send_telegram_message
+        module: telegram_mcp.mcp_server
+        class: TelegramMCPServer
+        schema_fn: telegram_tool_definitions
       - name: orchestra_threads
-        command: python
-        args:
-          - -m
-          - core.orchestra_thread.mcp_server
-        cwd: "{working_dir}"
-        startup_timeout_sec: 15
-        required: false
-        enabled: false
-        enabled_tools:
-          - thread_send
-          - thread_status
-          - thread_current
-          - thread_expand
-          - thread_guide
-        env:
-          ORCHESTRA_THREADS_AGENT_SLUG: "{agent_slug}"
-          ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
-          ORCHESTRA_THREADS_ACTIVE_CONTEXT_PATH: "{active_context_path}"
-          PYTHONPATH: "{pythonpath}"
-      - name: telegram
-        command: python
-        args:
-          - -m
-          - telegram_mcp
-        cwd: "{working_dir}"
-        startup_timeout_sec: 15
-        required: false
-        enabled: true
-        env:
-          TELEGRAM_API_ID: "{env.TELEGRAM_API_ID}"
-          TELEGRAM_API_HASH: "{env.TELEGRAM_API_HASH}"
-          TELEGRAM_SESSION_STRING: "{env.TELEGRAM_SESSION_STRING}"
-          TELEGRAM_CHAT_ID_IVAN: "{env.TELEGRAM_CHAT_ID_IVAN}"
-          LOG_LEVEL: "{env.LOG_LEVEL}"
-          PYTHONPATH: "{pythonpath}"
+        module: core.orchestra_thread.mcp_server
+        class: OrchestraThreadsMCPServer
+        schema_fn: orchestra_threads_tool_definitions

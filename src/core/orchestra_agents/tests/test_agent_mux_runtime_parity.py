@@ -137,53 +137,6 @@ class AgentMuxRuntimeParityTests(unittest.TestCase):
                         "core.orchestra_agents.agent_mux_runtime", "build_context_memory_block"
                     ),
                 ),
-                (
-                    _symbol("agents.secretary.agent_runtime.state", "AgentMuxRuntimeState"),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "AgentMuxRuntimeState"),
-                ),
-                (
-                    _symbol("agents.secretary.agent_runtime.state", "QueueEntry"),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "QueueEntry"),
-                ),
-                (
-                    _symbol("agents.secretary.agent_runtime.dispatch", "AgentMuxDispatchSpec"),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "AgentMuxDispatchSpec"),
-                ),
-                (
-                    _symbol("agents.secretary.agent_runtime.dispatch", "build_agent_mux_command"),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "build_agent_mux_command"),
-                ),
-                (
-                    _symbol("agents.secretary.agent_runtime.dispatch", "parse_agent_mux_result"),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "parse_agent_mux_result"),
-                ),
-                (
-                    _symbol(
-                        "agents.secretary.agent_runtime.dispatch",
-                        "write_runtime_codex_config",
-                    ),
-                    _symbol(
-                        "core.orchestra_agents.agent_mux_runtime", "write_runtime_codex_config"
-                    ),
-                ),
-                (
-                    _symbol(
-                        "agents.secretary.agent_runtime.prompting",
-                        "build_compact_wakeup_block",
-                    ),
-                    _symbol(
-                        "core.orchestra_agents.agent_mux_runtime", "build_compact_wakeup_block"
-                    ),
-                ),
-                (
-                    _symbol(
-                        "agents.secretary.agent_runtime.prompting",
-                        "build_context_memory_block",
-                    ),
-                    _symbol(
-                        "core.orchestra_agents.agent_mux_runtime", "build_context_memory_block"
-                    ),
-                ),
             ),
         )
 
@@ -193,13 +146,6 @@ class AgentMuxRuntimeParityTests(unittest.TestCase):
             (
                 (
                     _symbol("agents.orchestra.agent_runtime.backend", "AgentMuxBackend"),
-                    _symbol(
-                        "core.orchestra_agents.templates.agent_mux.agent_runtime.backend",
-                        "AgentMuxBackend",
-                    ),
-                ),
-                (
-                    _symbol("agents.secretary.agent_runtime.backend", "AgentMuxBackend"),
                     _symbol(
                         "core.orchestra_agents.templates.agent_mux.agent_runtime.backend",
                         "AgentMuxBackend",

@@ -38,6 +38,8 @@ def _service_options(logger: logging.Logger) -> dict[str, Any]:
         "session_file": os.getenv("TELEGRAM_SESSION_FILE") or None,
         "events_engine_url": os.getenv("EVENTS_ENGINE_URL", "http://events-engine:8789"),
         "target_agent_slug": os.getenv("TARGET_AGENT_SLUG", "secretary"),
+        "http_host": os.getenv("TELEGRAM_EVENTS_HTTP_HOST", "0.0.0.0"),
+        "http_port": int(os.getenv("TELEGRAM_EVENTS_HTTP_PORT", "8787")),
     }
 
 
@@ -50,4 +52,6 @@ def build_service(logger: logging.Logger) -> TelegramEventsService:
         session_file=service_options["session_file"],
         events_engine_url=service_options["events_engine_url"],
         target_agent_slug=service_options["target_agent_slug"],
+        http_host=service_options["http_host"],
+        http_port=service_options["http_port"],
     )

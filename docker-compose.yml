@@ -115,7 +115,17 @@ services:
       ORCHESTRA_AGENTS_PORT: 8790
       ORCHESTRA_AGENTS_MANIFESTS_DIR: ${PWD}/agents
       ORCHESTRA_AGENTS_DOCKER_NETWORK: ${COMPOSE_PROJECT_NAME:-orchestrathreads}_default
+      OMNIROUTE_URL: ${OMNIROUTE_URL:-}
       OMNIROUTE_API_KEY: ${OMNIROUTE_API_KEY:-}
+      LLM_CLIENT_MODEL: ${LLM_CLIENT_MODEL:-}
+      LLM_CLIENT_ROUTE_POLICY: ${LLM_CLIENT_ROUTE_POLICY:-}
+      LLM_CLIENT_TIMEOUT_SECONDS: ${LLM_CLIENT_TIMEOUT_SECONDS:-}
+      LLM_CLIENT_TEMPERATURE: ${LLM_CLIENT_TEMPERATURE:-}
+      LLM_CLIENT_MAX_TOKENS: ${LLM_CLIENT_MAX_TOKENS:-}
+      LLM_CLIENT_REASONING_EFFORT: ${LLM_CLIENT_REASONING_EFFORT:-}
+      LLM_CLIENT_REASONING_SUMMARY: ${LLM_CLIENT_REASONING_SUMMARY:-}
+      SGR_MAX_REASONING_STEPS: ${SGR_MAX_REASONING_STEPS:-}
+      SGR_MAX_DIRECT_TEXT_RETRIES: ${SGR_MAX_DIRECT_TEXT_RETRIES:-}
       TELEGRAM_API_ID: ${TELEGRAM_API_ID}
       TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
       TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING}
@@ -277,16 +287,30 @@ services:
         condition: service_healthy
     networks:
       - default
+    ports:
+      - "${OT_PORT_TELEGRAM_EVENTS:-8793}:8787"
     environment:
       PYTHONPATH: /app/src
       TELEGRAM_API_ID: ${TELEGRAM_API_ID}
       TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
       TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING:-}
       TELEGRAM_SESSION_FILE: ${TELEGRAM_SESSION_FILE:-sessions/telegram.session}
+      TELEGRAM_EVENTS_HTTP_HOST: 0.0.0.0
+      TELEGRAM_EVENTS_HTTP_PORT: "8787"
       EVENTS_ENGINE_URL: http://events-engine:8789
       TARGET_AGENT_SLUG: ${TARGET_AGENT_SLUG:-secretary}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,postgres,langfuse-postgres,langfuse
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import sys,os,urllib.request; os.environ['no_proxy']='127.0.0.1,localhost'; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8787/healthz').status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     volumes:
       - ./sessions:/app/sessions
     command:
@@ -298,13 +322,14 @@ services:
   telegram-mcp:
     build: .
     image: orchestra-threads:${OT_TAG:-local}
+    depends_on:
+      telegram-events:
+        condition: service_healthy
     networks:
       - default
     environment:
       PYTHONPATH: /app/src
-      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
-      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
-      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING:-}
+      TELEGRAM_EVENTS_URL: http://telegram-events:8787
       TELEGRAM_CHAT_ID_IVAN: ${TELEGRAM_CHAT_ID_IVAN:-748976004}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     command:

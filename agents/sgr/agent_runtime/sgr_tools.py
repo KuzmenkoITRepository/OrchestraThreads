@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from agents.sgr.agent_runtime import sgr_tool_support as _support
 
+_CLARIFICATION_REASONING_MAX = 2048
+
 
 @dataclass(frozen=True)
 class ReasoningToolArgs:
@@ -73,15 +75,17 @@ class ClarificationToolArgs:
     unclear_terms: list[str]
     assumptions: list[str]
     questions: list[str]
+    reasoning_was_truncated: bool
 
     @classmethod
     def from_arguments(cls, arguments: dict[str, Any]) -> ClarificationToolArgs:
+        reasoning, reasoning_was_truncated = _support.bounded_text_with_truncation(
+            arguments.get("reasoning"),
+            field_name="reasoning",
+            maximum=_CLARIFICATION_REASONING_MAX,
+        )
         return cls(
-            reasoning=_support.bounded_text(
-                arguments.get("reasoning"),
-                field_name="reasoning",
-                maximum=200,
-            ),
+            reasoning=reasoning,
             unclear_terms=_support.string_list(
                 arguments.get("unclear_terms"),
                 minimum=1,
@@ -97,6 +101,7 @@ class ClarificationToolArgs:
                 minimum=1,
                 maximum=3,
             ),
+            reasoning_was_truncated=reasoning_was_truncated,
         )
 
 
@@ -129,7 +134,7 @@ class SGRInternalTools:
             ),
             _tool_entry(
                 name=cls.final_answer,
-                description="Send the final answer once the task is complete.",
+                description="Record the final answer internally. Use an MCP send tool to deliver it.",
                 properties={
                     "reasoning": _string_prop(),
                     "completed_steps": _array_prop(),
@@ -140,7 +145,7 @@ class SGRInternalTools:
             ),
             _tool_entry(
                 name=cls.clarification,
-                description="Ask the peer a concise clarification question when the request is ambiguous.",
+                description="Record a clarification question internally. Use an MCP send tool to ask it.",
                 properties={
                     "reasoning": _string_prop(),
                     "unclear_terms": _array_prop(),
@@ -176,5 +181,5 @@ def _string_prop() -> dict[str, str]:
     return {"type": "string"}
 
 
-def _array_prop() -> dict[str, str]:
-    return {"type": "array"}
+def _array_prop() -> dict[str, Any]:
+    return {"type": "array", "items": _string_prop()}

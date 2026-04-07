@@ -24,9 +24,6 @@ from agents.sgr.agent_runtime.support.outcomes import (
     parse_tool_call as parse_tool_call,
 )
 from agents.sgr.agent_runtime.support.prompt_context import (
-    context_memory_block as context_memory_block,
-)
-from agents.sgr.agent_runtime.support.prompt_context import (
     operational_notes_text as operational_notes_text,
 )
 from agents.sgr.agent_runtime.support.prompts import (
@@ -43,16 +40,4 @@ from agents.sgr.agent_runtime.support.settings import (
 )
 from agents.sgr.agent_runtime.support.settings import (
     normalize_optional_str as normalize_optional_str,
-)
-from agents.sgr.agent_runtime.support.settings import (
-    thread_client_timeout_seconds as thread_client_timeout_seconds,
-)
-from agents.sgr.agent_runtime.support.validation import (
-    validate_http_endpoint as validate_http_endpoint,
-)
-from agents.sgr.agent_runtime.support.validation import (
-    validate_reasoning_steps as validate_reasoning_steps,
-)
-from agents.sgr.agent_runtime.support.validation import (
-    validate_threads_url as validate_threads_url,
 )

@@ -1,6 +1,6 @@
 # WPS refactor governance rules
 
-**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
+**Historical note:** legacy proxy routing has been replaced by `omniroute` + `wet`.
 
 This document codifies the rules governing the WPS remediation campaign.
 

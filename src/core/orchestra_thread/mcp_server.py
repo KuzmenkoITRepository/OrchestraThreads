@@ -79,5 +79,10 @@ def main() -> None:
     asyncio.run(main_async())
 
 
+def orchestra_threads_tool_definitions() -> list[dict[str, object]]:
+    """Return tool definitions for SGR inline MCP loading."""
+    return [dict(td) for td in list_tools()]
+
+
 if __name__ == "__main__":
     main()

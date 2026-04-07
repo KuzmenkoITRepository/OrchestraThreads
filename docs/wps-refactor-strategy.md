@@ -1,6 +1,6 @@
 # WPS refactor strategy (excluding `omniroute` + `wet`)
 
-**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
+**Historical note:** legacy proxy routing has been replaced by `omniroute` + `wet`.
 
 ## Scope
 
@@ -8,7 +8,7 @@ This document defines the repository-wide strategy for eliminating the remaining
 `wemake-python-styleguide` debt **without** treating `src/core/omniroute/` or
 `src/core/wet/` as active refactoring targets.
 
-`omniroute` + `wet` are the active replacement, so the old `llm-proxy` path is
+`omniroute` + `wet` are the active replacement, so the old proxy path is
 excluded from the active remediation plan. The goal of this strategy is
 to make the **rest of the repository** systematically maintainable and capable of
 reaching a green WPS state through architectural refactoring rather than

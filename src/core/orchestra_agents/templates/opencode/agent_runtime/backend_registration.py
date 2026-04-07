@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Protocol
 
 from core.orchestra_thread.client import OrchestraThreadsClient
@@ -32,6 +33,7 @@ async def register_with_threads(backend: _RegistrationBackend) -> None:
             "kind": "opencode-omo-agent",
             "backend_type": backend.backend_type,
             "tool_surface": "orchestra-threads-mcp",
+            "allowed_peer_agent_slugs": _allowed_peers(),
         },
     )
     backend._threads_client = client
@@ -43,10 +45,7 @@ async def stop_registration(backend: _RegistrationBackend) -> None:
     if heartbeat_task is not None:
         backend._heartbeat_task = None
         heartbeat_task.cancel()
-        try:
-            await heartbeat_task
-        except asyncio.CancelledError:
-            pass  # noqa: WPS420
+        await asyncio.gather(heartbeat_task, return_exceptions=True)
     threads_client = backend._threads_client
     if threads_client is not None:
         await threads_client.close()
@@ -60,3 +59,15 @@ async def _heartbeat_loop(backend: _RegistrationBackend) -> None:
         if threads_client is None:
             return
         await threads_client.heartbeat(agent_slug=backend.agent_slug)
+
+
+def _allowed_peers() -> list[str]:
+    raw = str(os.getenv("ORCHESTRA_AGENT_ALLOWED_PEER_AGENT_SLUGS") or "").strip()
+    if not raw:
+        return []
+    peers: list[str] = []
+    for item in raw.split(","):
+        slug = item.strip()
+        if slug:
+            peers.append(slug)
+    return peers

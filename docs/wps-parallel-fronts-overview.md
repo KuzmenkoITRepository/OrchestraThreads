@@ -1,6 +1,6 @@
 # WPS parallel execution fronts — common contract
 
-**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
+**Historical note:** legacy proxy routing has been replaced by `omniroute` + `wet`.
 
 ## Purpose
 

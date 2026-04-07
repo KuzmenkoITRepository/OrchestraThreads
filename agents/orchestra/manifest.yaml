@@ -6,6 +6,11 @@ agent:
   working_dir: /workspace/agents/orchestra
   http_endpoint: http://{container_name}:8787
   system_prompt_file: system_prompt.md
+  allowed_peer_agent_slugs:
+    - secretary
+    - dev
+    - qa
+    - devops
 
 runtime:
   driver: docker
@@ -24,17 +29,14 @@ runtime:
     AGENT_HTTP_PORT: "8787"
     PYTHONPATH: /workspace/src:/workspace/agents/orchestra
     ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
-    LLM_PROXY_URL: http://orchestra-wet:8100
-    LLM_PROXY_ENABLED: "true"
-    LLM_PROXY_API_KEY: llm-proxy
+    OMNIROUTE_URL: http://orchestra-omniroute:20128
     AGENT_MUX_BINARY: agent-mux
     AGENT_MUX_STATE_ROOT: /workspace/agents/orchestra/runtime_state
     LOG_LEVEL: INFO
   env_passthrough:
     - ORCHESTRA_THREADS_URL
-    - LLM_PROXY_URL
-    - LLM_PROXY_ENABLED
-    - LLM_PROXY_API_KEY
+    - OMNIROUTE_URL
+    - OMNIROUTE_API_KEY
     - LLM_CLIENT_MODEL
     - LLM_CLIENT_ROUTE_POLICY
     - AGENT_MUX_BINARY

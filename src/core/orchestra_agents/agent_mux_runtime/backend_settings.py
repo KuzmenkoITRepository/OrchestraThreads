@@ -1,6 +1,7 @@
 # flake8: noqa: WPS202
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -99,11 +100,12 @@ def _llm_runtime_settings(
     llm_model: str | None,
 ) -> dict[str, Any]:
     return {
-        "llm_proxy_url": str(raw_config.get("llm_proxy_url") or "http://orchestra-wet:8100").rstrip(
-            "/"
-        ),
-        "llm_proxy_api_key": str(raw_config.get("llm_proxy_api_key") or "llm-proxy").strip()
-        or "llm-proxy",
+        "omniroute_url": str(
+            raw_config.get("omniroute_url") or "http://orchestra-omniroute:20128"
+        ).rstrip("/"),
+        "omniroute_api_key": str(
+            raw_config.get("omniroute_api_key") or os.getenv("OMNIROUTE_API_KEY") or ""
+        ).strip(),
         "llm_route_policy": str(llm_route_policy or llm_config.route_policy or "codex_only").strip()
         or "codex_only",
         "default_model": str(llm_model or llm_config.model or "cx/gpt-5.1-codex-mini").strip()
