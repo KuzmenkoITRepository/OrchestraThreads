@@ -66,6 +66,7 @@ OrchestraThreads/
 - Treat `agents/` as manifest-driven runtime examples, not as the place to re-implement core service logic.
 - Put behavior-changing docs next to the module they describe (`src/core/<module>/docs/`).
 - Facade files (`service.py`, `store.py`, `router.py`, `accounts.py`, `langfuse.py`) re-export from `_*_impl.py` or `*_runtime.py` — edit the implementation files, not the facades.
+- Any human or subagent that writes Python in this repo must read `CODE-STYLE.md` first and follow it as the shortest lint-passing cookbook.
 
 ## CODE QUALITY ENFORCEMENT
 
@@ -94,6 +95,7 @@ Installed automatically via `make install`. Runs on every `git commit`:
 - ❌ NO `--no-verify` on git commit
 - ❌ NO disabling pre-commit hooks
 - ❌ NO committing code that fails `make check`
+- ❌ NO changing linter thresholds or configuration to make new code pass
 
 **Type safety:**
 - ✅ ALL functions must have type annotations
@@ -102,17 +104,26 @@ Installed automatically via `make install`. Runs on every `git commit`:
 - ✅ Prefer `TypedDict` over `dict[str, Any]`
 
 **Code quality:**
-- ✅ Max function complexity: 12 (cognitive complexity)
-- ✅ Max nesting depth: 20
-- ✅ Max function length: reasonable (wemake enforces)
+- ✅ Repo complexity gate: `max-complexity = 10` in `setup.cfg`
+- ✅ WSP-style constraints apply: keep functions small, nesting shallow, locals low, and split early
+- ✅ Function length must stay reasonable; prefer decomposition over large handlers
 - ✅ NO magic numbers — use named constants
 - ✅ NO mutable default arguments
+- ✅ Split early when functions accumulate too many locals, loops, or branches; see `CODE-STYLE.md`
 
 **When checks fail:**
 1. Fix the root cause, don't suppress warnings
 2. If suppression is truly needed, add inline comment explaining WHY
 3. Prefer refactoring over suppression
 4. Ask for review if unsure
+
+### Mandatory reading for code-writing agents
+
+- `CODE-STYLE.md` is required reading before writing Python.
+- Delegated subagents that implement code must be told to follow `CODE-STYLE.md`.
+- When delegating code changes, include the requirement to keep modules, classes, and functions small; reduce imports, locals, loop count, branch density, and avoid linter bypasses.
+- The most common real agent failures in this repo family are `WPS221`, `WPS202`, `WPS300`, `WPS414`, `WPS229`, `WPS214`, `WPS210`, `WPS231`, `WPS201`, and `WPS211`; code-writing prompts should explicitly guard against them.
+- Treat `CODE-STYLE.md` as the minimal context file for ChatGPT/Sonnet-style agents that need to produce lint-clean code quickly.
 
 
 ### Setup
@@ -160,3 +171,4 @@ docker compose down
 - `src/telegram_mcp/` is a standalone MCP server sharing Telethon auth with `telegram_events` — not a core service.
 - The root file is intentionally short; child `AGENTS.md` files below carry only domain-specific deltas.
 - All code must pass `make check` before commit — no exceptions.
+- `CODE-STYLE.md` is the authoritative quick cookbook for writing new Python that passes repo linters without bypasses.
