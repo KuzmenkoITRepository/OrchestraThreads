@@ -45,8 +45,30 @@ class ScaffoldAgentTests(unittest.TestCase):
 
             self.assertIn("slug: thread_worker", manifest_text)
             self.assertIn("type: agent_mux", manifest_text)
-            self.assertIn("Generic event-driven compatibility wrapper", backend_text)
+            self.assertIn("class AgentMuxBackend(BaseAgentBackend)", backend_text)
             self._assert_generated_configs(output_dir)
+
+    def test_scaffold_opencode_template_creates_runtime_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir) / "opencode_agent"
+            scaffold_agent(
+                slug="opencode_agent",
+                output_dir=output_dir,
+                options=ScaffoldOptions(
+                    display_name="Opencode Agent",
+                    backend_type="opencode_omo",
+                    template="opencode",
+                ),
+            )
+
+            manifest_text = (output_dir / "manifest.yaml").read_text(encoding="utf-8")
+            backend_text = (output_dir / "agent_runtime" / "backend.py").read_text(encoding="utf-8")
+
+            self.assertIn("slug: opencode_agent", manifest_text)
+            self.assertIn("type: opencode_omo", manifest_text)
+            self.assertIn("OpencodeOmoBackend", backend_text)
+            self.assertTrue((output_dir / "agent_runtime" / "main.py").exists())
+            self.assertTrue((output_dir / "system_prompt.md").exists())
 
     def _assert_generated_configs(self, output_dir: Path) -> None:
         self.assertTrue((output_dir / ".agent-mux" / "config.toml").exists())
