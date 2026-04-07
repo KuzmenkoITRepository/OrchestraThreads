@@ -149,10 +149,10 @@ class DockerDriver:  # noqa: WPS214, WPS230
         container_name = self.container_name(manifest.slug)
         if not self._container_exists(container_name):
             return self.start(manifest)
-        result = _run(["docker", "restart", container_name], timeout=180)
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip() or f"failed to restart {container_name}")
-        return self.status(manifest)
+        self.stop(manifest.slug, remove=True)
+        status = self._start_new(manifest, container_name=container_name)
+        status["message"] = "container recreated"
+        return status
 
     def status(self, manifest_or_slug: AgentManifest | str) -> dict[str, Any]:
         context = self._status_context(manifest_or_slug)
@@ -305,6 +305,9 @@ class DockerDriver:  # noqa: WPS214, WPS230
             "-e",
             f"ORCHESTRA_AGENT_WORKING_DIR={manifest.agent.working_dir}",
             "-e",
+            "ORCHESTRA_AGENT_ALLOWED_PEER_AGENT_SLUGS="
+            + ",".join(manifest.agent.allowed_peer_agent_slugs),
+            "-e",
             f"ORCHESTRA_AGENT_MANIFESTS_DIR={self.manifest_mount_path}",
             "--health-cmd",
             self._healthcheck_command(manifest, container_name=container_name),
@@ -377,7 +380,7 @@ class DockerDriver:  # noqa: WPS214, WPS230
             rendered[key] = str(value).format(**values)
         for key in manifest.runtime.env_passthrough:
             host_value = os.getenv(key)
-            if host_value is not None:
+            if host_value is not None and host_value != "":
                 rendered[key] = host_value
         return rendered
 

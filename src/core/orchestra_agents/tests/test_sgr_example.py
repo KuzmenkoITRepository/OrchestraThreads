@@ -3,16 +3,13 @@ from __future__ import annotations
 import json
 import os
 import socket
-import tempfile
 import unittest
-from pathlib import Path
 from typing import Any
 
 from aiohttp import web
 
 from agents.sgr.agent_runtime.backend import SGRMinimaxBackend
 from core.orchestra_agents.runtime import EventDelivery
-from core.orchestra_thread import active_context as active_context_module
 
 
 def _free_port() -> int:
@@ -75,33 +72,115 @@ def _text_response(text: str, *, model: str = "MiniMax-M2.7") -> dict[str, Any]:
     }
 
 
+def _stream_tool_response(
+    *,
+    tool_name: str,
+    arguments: dict[str, Any],
+    call_id: str,
+    model: str = "gpt-5.4-mini-2026-03-17",
+) -> list[dict[str, Any]]:
+    serialized_args = json.dumps(arguments, ensure_ascii=False)
+    chunks = [serialized_args[index : index + 8] for index in range(0, len(serialized_args), 8)]
+    result: list[dict[str, Any]] = [
+        {
+            "id": "chatcmpl-stream-tool",
+            "object": "chat.completion.chunk",
+            "created": 1735689600,
+            "model": model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": call_id,
+                                "type": "function",
+                                "function": {"name": tool_name, "arguments": ""},
+                            }
+                        ]
+                    },
+                    "finish_reason": None,
+                }
+            ],
+        }
+    ]
+    for raw_chunk in chunks:
+        result.append(
+            {
+                "id": "chatcmpl-stream-tool",
+                "object": "chat.completion.chunk",
+                "created": 1735689600,
+                "model": model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "tool_calls": [{"index": 0, "function": {"arguments": raw_chunk}}]
+                        },
+                        "finish_reason": None,
+                    }
+                ],
+            }
+        )
+    result.append(
+        {
+            "id": "chatcmpl-stream-tool",
+            "object": "chat.completion.chunk",
+            "created": 1735689600,
+            "model": model,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+        }
+    )
+    return result
+
+
+def _base_event_payload() -> dict[str, Any]:
+    return {
+        "event_id": "event-1",
+        "thread_id": "thread-1",
+        "root_thread_id": "thread-1",
+        "parent_thread_id": None,
+        "owner_agent_slug": "secretary",
+        "sequence_no": 3,
+        "event_kind": "message",
+        "notification_status": None,
+        "from_agent_slug": "secretary",
+        "to_agent_slug": "sgr",
+        "message_text": "Please prepare the summary.",
+        "interrupts_runtime": True,
+        "requires_response": True,
+        "created_at": "2026-04-03T07:00:00Z",
+    }
+
+
+def _build_delivery(*, delivery_id: str, event_payload: dict[str, Any]) -> EventDelivery:
+    return EventDelivery.from_dict(
+        {
+            "delivery_id": delivery_id,
+            "events": [event_payload],
+        }
+    )
+
+
 def _assert_message_event_result(
     test_case: unittest.IsolatedAsyncioTestCase,
-    *,
-    result: Any,
-    status: dict[str, Any],
     observed: dict[str, Any],
 ) -> None:
     test_case.assertEqual(
         observed,
         {
             "accepted": True,
-            "register_calls": 1,
             "chat_requests": 3,
             "model": "MiniMax-M2.7",
-            "to_agent": "secretary",
-            "thread": "thread-1",
-            "request_id": "tool-reply-1",
             "message": "Draft ready for handoff.",
             "sent": 1,
             "tool_calls": 2,
-            "last_thread": "thread-1",
             "last_peer": "secretary",
             "last_reply": "Draft ready for handoff.",
             "last_action": True,
         },
     )
-    test_case.assertIn("thread_send", result.details["used_tools"])
 
 
 class FakeThreadService:
@@ -219,23 +298,23 @@ class FakeThreadService:
         )
 
 
-class FakeLLMProxy:
+class FakeOmniRoute:
     def __init__(self) -> None:
         self.port = _free_port()
         self.runner: web.AppRunner | None = None
         self.chat_requests: list[dict[str, Any]] = []
-        self.responses: list[dict[str, Any]] = []
+        self.responses: list[dict[str, Any] | list[dict[str, Any]]] = []
 
     @property
     def base_url(self) -> str:
         return f"http://127.0.0.1:{self.port}"
 
-    def enqueue(self, payload: dict[str, Any]) -> None:
+    def enqueue(self, payload: dict[str, Any] | list[dict[str, Any]]) -> None:
         self.responses.append(payload)
 
     async def start(self) -> None:
         app = web.Application()
-        app.router.add_post("/minimax/v1/chat/completions", self._handle_chat)
+        app.router.add_post("/v1/chat/completions", self._handle_chat)
         self.runner = web.AppRunner(app)
         await self.runner.setup()
         await web.TCPSite(self.runner, host="127.0.0.1", port=self.port).start()
@@ -245,39 +324,64 @@ class FakeLLMProxy:
             await self.runner.cleanup()
             self.runner = None
 
-    async def _handle_chat(self, request: web.Request) -> web.Response:
+    async def _handle_chat(self, request: web.Request) -> web.StreamResponse:
         payload = await request.json()
         self.chat_requests.append(
             {
                 "path": request.path,
                 "headers": dict(request.headers),
                 "payload": payload,
+                "request": request,
             }
         )
         if not self.responses:
             return web.json_response(
                 {"error": {"message": "No queued fake LLM response"}}, status=500
             )
-        response_payload = dict(self.responses.pop(0))
+        queued_payload = self.responses.pop(0)
+        if payload.get("stream"):
+            return await self._handle_stream_response(queued_payload)
+        if not isinstance(queued_payload, dict):
+            return web.json_response(
+                {"error": {"message": "Expected non-stream response payload"}}, status=500
+            )
+        response_payload = dict(queued_payload)
         response_payload["model"] = (
             payload.get("model") or response_payload.get("model") or "MiniMax-M2.7"
         )
         return web.json_response(response_payload)
 
+    async def _handle_stream_response(
+        self,
+        response_payload: dict[str, Any] | list[dict[str, Any]],
+    ) -> web.StreamResponse:
+        stream = web.StreamResponse(
+            status=200,
+            headers={"Content-Type": "text/event-stream"},
+        )
+        request = self.chat_requests[-1]["request"]
+        await stream.prepare(request)
+        chunks = response_payload if isinstance(response_payload, list) else [response_payload]
+        await _write_stream_chunks(stream, chunks)
+        await stream.write_eof()
+        return stream
 
-class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
+
+async def _write_stream_chunks(
+    stream: web.StreamResponse,
+    chunks: list[dict[str, Any]],
+) -> None:
+    lines = [f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n" for chunk in chunks]
+    lines.append("data: [DONE]\n\n")
+    await stream.write("".join(lines).encode())
+
+
+class _SGRMinimaxBackendBase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.previous_env = {
-            "ORCHESTRA_THREADS_URL": os.environ.get("ORCHESTRA_THREADS_URL"),
-            "LLM_PROXY_URL": os.environ.get("LLM_PROXY_URL"),
-            "LLM_PROXY_ENABLED": os.environ.get("LLM_PROXY_ENABLED"),
-            "LLM_PROXY_API_KEY": os.environ.get("LLM_PROXY_API_KEY"),
+            "OMNIROUTE_URL": os.environ.get("OMNIROUTE_URL"),
+            "OMNIROUTE_API_KEY": os.environ.get("OMNIROUTE_API_KEY"),
         }
-        self.context_path = (
-            Path(tempfile.mkdtemp(prefix="sgr_runtime_ctx_")) / "active_context.json"
-        )
-        self.original_context_path = active_context_module.ACTIVE_CONTEXT_PATH
-        active_context_module.ACTIVE_CONTEXT_PATH = self.context_path
 
         self.thread_service = FakeThreadService()
         self.thread_service.compact_threads["thread-1"] = {
@@ -294,13 +398,11 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
             "last_event_to_agent_slug": "sgr",
             "last_event_message_preview": "Please prepare the summary.",
         }
-        self.llm_proxy = FakeLLMProxy()
+        self.omniroute = FakeOmniRoute()
         await self.thread_service.start()
-        await self.llm_proxy.start()
-        os.environ["ORCHESTRA_THREADS_URL"] = self.thread_service.base_url
-        os.environ["LLM_PROXY_URL"] = self.llm_proxy.base_url
-        os.environ["LLM_PROXY_ENABLED"] = "true"
-        os.environ["LLM_PROXY_API_KEY"] = "llm-proxy"
+        await self.omniroute.start()
+        os.environ["OMNIROUTE_URL"] = self.omniroute.base_url
+        os.environ["OMNIROUTE_API_KEY"] = "omniroute-test-key"
         self.backend = SGRMinimaxBackend(
             agent_slug="sgr",
             backend_type="sgr_minimax",
@@ -308,33 +410,43 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
             config={
                 "route_policy": "minimax_only",
                 "model": "MiniMax-M2.7",
-                "guide_view": "compact",
-                "heartbeat_interval_seconds": 60,
                 "react_to_inactive": True,
                 "max_reasoning_steps": 6,
                 "max_direct_text_retries": 1,
-                "http_endpoint": "http://orchestra-agent-sgr:8787",
             },
             system_prompt="Use thread_send or thread_status via OrchestraThreads MCP tools.",
+        )
+        self._fake_mcp = _FakeToolMCPServer(self.thread_service)
+        from agents.sgr.agent_runtime.backend import configure_mcp_tools
+
+        configure_mcp_tools(
+            self.backend,
+            {
+                "thread_send": self._fake_mcp,
+                "thread_status": self._fake_mcp,
+                "thread_current": self._fake_mcp,
+                "thread_expand": self._fake_mcp,
+            },
         )
         await self.backend.on_start()
 
     async def asyncTearDown(self) -> None:
         await self.backend.on_shutdown()
-        await self.llm_proxy.stop()
+        await self.omniroute.stop()
         await self.thread_service.stop()
-        active_context_module.ACTIVE_CONTEXT_PATH = self.original_context_path
         for key, value in self.previous_env.items():
             if value is None:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
 
+
+class SGRMinimaxMessageEventTests(_SGRMinimaxBackendBase):
     async def test_message_event_triggers_mcp_tools(self) -> None:
-        self.llm_proxy.enqueue(
+        self.omniroute.enqueue(
             _tool_response(tool_name="thread_current", arguments={}, call_id="call-current")
         )
-        self.llm_proxy.enqueue(
+        self.omniroute.enqueue(
             _tool_response(
                 tool_name="thread_send",
                 arguments={
@@ -344,63 +456,36 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
                 call_id="call-send",
             )
         )
-        self.llm_proxy.enqueue(_text_response("Turn complete."))
+        self.omniroute.enqueue(_text_response("Turn complete."))
 
-        delivery = EventDelivery.from_dict(
-            {
-                "delivery_id": "delivery-1",
-                "events": [
-                    {
-                        "event_id": "event-1",
-                        "thread_id": "thread-1",
-                        "root_thread_id": "thread-1",
-                        "parent_thread_id": None,
-                        "owner_agent_slug": "secretary",
-                        "sequence_no": 3,
-                        "event_kind": "message",
-                        "notification_status": None,
-                        "from_agent_slug": "secretary",
-                        "to_agent_slug": "sgr",
-                        "message_text": "Please prepare the summary.",
-                        "interrupts_runtime": True,
-                        "requires_response": True,
-                        "created_at": "2026-04-03T07:00:00Z",
-                    }
-                ],
-            }
-        )
+        delivery = _build_delivery(delivery_id="delivery-1", event_payload=_base_event_payload())
         result = await self.backend.handle_events(delivery)
-        first_payload = self.llm_proxy.chat_requests[0]["payload"]
-        self.assertEqual(self.llm_proxy.chat_requests[0]["path"], "/minimax/v1/chat/completions")
+        first_payload = self.omniroute.chat_requests[0]["payload"]
         status = await self.backend.last_status()
         observed = {
             "accepted": result.accepted,
-            "register_calls": len(self.thread_service.register_calls),
-            "chat_requests": len(self.llm_proxy.chat_requests),
+            "chat_requests": len(self.omniroute.chat_requests),
             "model": first_payload["model"],
-            "to_agent": self.thread_service.message_calls[0]["to_agent_slug"],
-            "thread": self.thread_service.message_calls[0]["thread_id"],
-            "request_id": self.thread_service.message_calls[0]["client_request_id"],
-            "message": self.thread_service.message_calls[0]["message_text"],
+            "message": self.thread_service.message_calls[0]["message"],
             "sent": result.details["messages_sent"],
             "tool_calls": result.details["tool_calls"],
-            "last_thread": status["last_thread_id"],
             "last_peer": status["last_peer_agent_slug"],
             "last_reply": status["last_reply_preview"],
             "last_action": status["last_action_emitted"],
         }
-        _assert_message_event_result(
-            self,
-            result=result,
-            status=status,
-            observed=observed,
-        )
+        _assert_message_event_result(self, observed)
+        first_headers = self.omniroute.chat_requests[0]["headers"]
+        self.assertEqual(self.omniroute.chat_requests[0]["path"], "/v1/chat/completions")
         self.assertTrue(first_payload["tools"])
+        self.assertEqual(
+            first_headers.get("Authorization"),
+            "Bearer omniroute-test-key",
+        )
         self.assertIn("thread_send", result.details["used_tools"])
 
     async def test_direct_text_ignored_before_tool(self) -> None:
-        self.llm_proxy.enqueue(_text_response("I would answer with a short summary."))
-        self.llm_proxy.enqueue(
+        self.omniroute.enqueue(_text_response("I would answer with a short summary."))
+        self.omniroute.enqueue(
             _tool_response(
                 tool_name="thread_send",
                 arguments={
@@ -410,42 +495,20 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
                 call_id="call-send",
             )
         )
-        self.llm_proxy.enqueue(_text_response("Done."))
+        self.omniroute.enqueue(_text_response("Done."))
 
-        delivery = EventDelivery.from_dict(
-            {
-                "delivery_id": "delivery-1",
-                "events": [
-                    {
-                        "event_id": "event-1",
-                        "thread_id": "thread-1",
-                        "root_thread_id": "thread-1",
-                        "parent_thread_id": None,
-                        "owner_agent_slug": "secretary",
-                        "sequence_no": 3,
-                        "event_kind": "message",
-                        "notification_status": None,
-                        "from_agent_slug": "secretary",
-                        "to_agent_slug": "sgr",
-                        "message_text": "Please prepare the summary.",
-                        "interrupts_runtime": True,
-                        "requires_response": True,
-                        "created_at": "2026-04-03T07:00:00Z",
-                    }
-                ],
-            }
-        )
+        delivery = _build_delivery(delivery_id="delivery-1", event_payload=_base_event_payload())
         result = await self.backend.handle_events(delivery)
 
         self.assertEqual(
             (
                 result.accepted,
                 len(self.thread_service.message_calls),
-                len(self.llm_proxy.chat_requests),
+                len(self.omniroute.chat_requests),
             ),
             (True, 1, 3),
         )
-        second_payload = self.llm_proxy.chat_requests[1]["payload"]
+        second_payload = self.omniroute.chat_requests[1]["payload"]
         reminder_messages = [
             str(message.get("content") or "")
             for message in second_payload["messages"]
@@ -462,61 +525,39 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
             ("Here is the requested short summary.", "Done."),
         )
 
-    async def test_inactive_event_publishes_status(self) -> None:
-        self.llm_proxy.enqueue(
-            _tool_response(
-                tool_name="thread_status",
-                arguments={
-                    "status": "in_progress",
-                    "message": "Still working on the requested summary.",
-                    "client_request_id": "tool-status-1",
-                },
-                call_id="call-status",
-            )
-        )
-        self.llm_proxy.enqueue(_text_response("Done."))
 
-        delivery = EventDelivery.from_dict(
+class SGRMinimaxDeliveryEventTests(_SGRMinimaxBackendBase):
+    async def test_inactive_event_publishes_status(self) -> None:
+        self.omniroute.enqueue(_inactive_status_tool_response())
+        self.omniroute.enqueue(_text_response("Done."))
+
+        inactive_event = _base_event_payload()
+        inactive_event.update(
             {
-                "delivery_id": "delivery-2",
-                "events": [
-                    {
-                        "event_id": "event-2",
-                        "thread_id": "thread-1",
-                        "root_thread_id": "thread-1",
-                        "parent_thread_id": None,
-                        "owner_agent_slug": "secretary",
-                        "sequence_no": 4,
-                        "event_kind": "inactive",
-                        "notification_status": None,
-                        "from_agent_slug": "orchestra_threads",
-                        "to_agent_slug": "sgr",
-                        "message_text": "",
-                        "interrupts_runtime": True,
-                        "requires_response": False,
-                        "created_at": "2026-04-03T07:01:00Z",
-                    }
-                ],
+                "event_id": "event-2",
+                "sequence_no": 4,
+                "event_kind": "inactive",
+                "from_agent_slug": "orchestra_threads",
+                "message_text": "",
+                "requires_response": False,
+                "created_at": "2026-04-03T07:01:00Z",
             }
         )
+        delivery = _build_delivery(delivery_id="delivery-2", event_payload=inactive_event)
 
         result = await self.backend.handle_events(delivery)
 
-        self.assertTrue(result.accepted)
-        self.assertEqual(len(self.thread_service.notification_calls), 1)
-        self.assertEqual(self.thread_service.notification_calls[0]["status"], "in_progress")
-        self.assertEqual(result.details["statuses_published"], 1)
-        self.assertEqual(result.details["published_status"], "in_progress")
+        _assert_inactive_delivery_result(self, result, self.thread_service.notification_calls)
 
         status = await self.backend.last_status()
         self.assertEqual(status["last_published_status"], "in_progress")
         self.assertEqual(status["last_status_preview"], "Still working on the requested summary.")
 
     async def test_duplicate_delivery_skips_tool(self) -> None:
-        self.llm_proxy.enqueue(
+        self.omniroute.enqueue(
             _tool_response(tool_name="thread_current", arguments={}, call_id="call-current")
         )
-        self.llm_proxy.enqueue(
+        self.omniroute.enqueue(
             _tool_response(
                 tool_name="thread_send",
                 arguments={
@@ -526,31 +567,9 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
                 call_id="call-send",
             )
         )
-        self.llm_proxy.enqueue(_text_response("Turn complete."))
+        self.omniroute.enqueue(_text_response("Turn complete."))
 
-        delivery = EventDelivery.from_dict(
-            {
-                "delivery_id": "delivery-1",
-                "events": [
-                    {
-                        "event_id": "event-1",
-                        "thread_id": "thread-1",
-                        "root_thread_id": "thread-1",
-                        "parent_thread_id": None,
-                        "owner_agent_slug": "secretary",
-                        "sequence_no": 3,
-                        "event_kind": "message",
-                        "notification_status": None,
-                        "from_agent_slug": "secretary",
-                        "to_agent_slug": "sgr",
-                        "message_text": "Please prepare the summary.",
-                        "interrupts_runtime": True,
-                        "requires_response": True,
-                        "created_at": "2026-04-03T07:00:00Z",
-                    }
-                ],
-            }
-        )
+        delivery = _build_delivery(delivery_id="delivery-1", event_payload=_base_event_payload())
         first = await self.backend.handle_events(delivery)
         second = await self.backend.handle_events(delivery)
 
@@ -558,11 +577,11 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(second.accepted)
         self.assertTrue(second.duplicate)
         self.assertEqual(len(self.thread_service.message_calls), 1)
-        self.assertEqual(len(self.llm_proxy.chat_requests), 3)
+        self.assertEqual(len(self.omniroute.chat_requests), 3)
 
     async def test_notification_event_processed(self) -> None:
-        self.llm_proxy.enqueue(_text_response("Noted. I will keep that in mind."))
-        self.llm_proxy.enqueue(_text_response("Nothing else to send right now."))
+        self.omniroute.enqueue(_text_response("Noted. I will keep that in mind."))
+        self.omniroute.enqueue(_text_response("Nothing else to send right now."))
         delivery = EventDelivery.from_dict(
             {
                 "delivery_id": "delivery-3",
@@ -589,7 +608,64 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("event_metadata", result.details)
         self.assertEqual(len(self.thread_service.message_calls), 0)
         self.assertEqual(len(self.thread_service.notification_calls), 0)
-        self.assertEqual(len(self.llm_proxy.chat_requests), 2)
+        self.assertEqual(len(self.omniroute.chat_requests), 2)
+
+
+class _FakeToolMCPServer:
+    """Fake MCP server that delegates tool calls to a FakeThreadService."""
+
+    def __init__(self, thread_service: FakeThreadService) -> None:
+        self._thread_service = thread_service
+
+    async def handle_tools_call(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Route tool calls to the fake thread service."""
+        if name == "thread_send":
+            msg = str(arguments.get("message") or "")
+            self._thread_service.message_calls.append(arguments)
+            return _fake_mcp_result({"ok": True, "message": msg, "route": "auto"})
+        if name == "thread_status":
+            self._thread_service.notification_calls.append(arguments)
+            status = str(arguments.get("status") or "")
+            return _fake_mcp_result({"ok": True, "published_status": status})
+        return _fake_mcp_result({"ok": True})
+
+    async def close(self) -> None:
+        """No-op close."""
+
+
+def _fake_mcp_result(structured: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "content": [{"type": "text", "text": json.dumps(structured)}],
+        "structuredContent": structured,
+    }
+
+
+def _inactive_status_tool_response() -> dict[str, Any]:
+    return _tool_response(
+        tool_name="thread_status",
+        arguments={
+            "status": "in_progress",
+            "message": "Still working on the requested summary.",
+            "client_request_id": "tool-status-1",
+        },
+        call_id="call-status",
+    )
+
+
+def _assert_inactive_delivery_result(
+    test_case: unittest.IsolatedAsyncioTestCase,
+    result: Any,
+    notification_calls: list[dict[str, Any]],
+) -> None:
+    test_case.assertTrue(result.accepted)
+    test_case.assertEqual(len(notification_calls), 1)
+    test_case.assertEqual(notification_calls[0]["status"], "in_progress")
+    test_case.assertEqual(result.details["statuses_published"], 1)
+    test_case.assertEqual(result.details["published_status"], "in_progress")
 
 
 if __name__ == "__main__":

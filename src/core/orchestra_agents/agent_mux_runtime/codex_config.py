@@ -30,7 +30,7 @@ def _route_policy_path_prefix(route_policy: str) -> str:
 @dataclass(frozen=True)
 class RuntimeCodexConfigRequest:
     codex_home: Path
-    llm_proxy_url: str
+    omniroute_url: str
     route_policy: str
     model: str
     mcp_servers: Sequence[Mapping[str, Any]] | None = None
@@ -66,7 +66,7 @@ def create_runtime_codex_request(
 ) -> RuntimeCodexConfigRequest:
     return RuntimeCodexConfigRequest(
         codex_home=settings.codex_home,
-        llm_proxy_url=settings.llm_proxy_url,
+        omniroute_url=settings.omniroute_url,
         route_policy=settings.route_policy,
         model=settings.model,
         mcp_servers=settings.mcp_servers,
@@ -88,7 +88,7 @@ def write_runtime_codex_config(
         model=request.model,
         base_url=_build_openai_base_url(
             request.route_policy,
-            proxy_url=request.llm_proxy_url,
+            proxy_url=request.omniroute_url,
         ),
     )
     variables = dict(request.variables or {})
@@ -109,7 +109,7 @@ def _base_config_lines(*, model: str, base_url: str) -> list[str]:
         "[model_providers.omniroute]",
         'name = "OmniRoute/WET"',
         f"base_url = {toml_quote(base_url)}",
-        'env_key = "LLM_PROXY_API_KEY"',
+        'env_key = "OMNIROUTE_API_KEY"',
         'wire_api = "responses"',
         'env_http_headers = { "X-Orchestra-Agent-Slug" = "ORCHESTRA_AGENT_SLUG", "X-Orchestra-Context-Id" = "ORCHESTRA_CONTEXT_ID", "X-Orchestra-Langfuse-Session-Id" = "ORCHESTRA_CONTEXT_ID" }',
         "",

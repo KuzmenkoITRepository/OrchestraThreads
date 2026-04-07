@@ -71,6 +71,22 @@ class _FieldParsers:
         errors.append(f"{field_name} must be a string or list of strings")
         return []
 
+    @staticmethod
+    def allowed_peers(raw: Any, *, errors: list[str]) -> list[str]:
+        if raw is None:
+            return []
+        if not isinstance(raw, list):
+            errors.append("agent.allowed_peer_agent_slugs must be a list")
+            return []
+        allowed: list[str] = []
+        for index, item in enumerate(raw):
+            slug = str(item or "").strip()
+            if not slug:
+                errors.append(f"agent.allowed_peer_agent_slugs[{index}] must not be empty")
+                continue
+            allowed.append(slug)
+        return allowed
+
 
 class _EnvParser:
     @staticmethod
@@ -249,6 +265,10 @@ class _ManifestParser:
     def _parse_agent(self, raw: Any) -> dict[str, Any]:
         agent_raw = _FieldParsers.as_dict(raw, "agent", errors=self.errors)
         system_prompt_file = str(agent_raw.get("system_prompt_file") or "").strip() or None
+        allowed_peer_agent_slugs = _FieldParsers.allowed_peers(
+            agent_raw.get("allowed_peer_agent_slugs"),
+            errors=self.errors,
+        )
         return {
             "working_dir": _FieldParsers.as_string(
                 agent_raw.get("working_dir", "/workspace"),
@@ -261,6 +281,7 @@ class _ManifestParser:
                 errors=self.errors,
             ),
             "system_prompt_file": system_prompt_file,
+            "allowed_peer_agent_slugs": allowed_peer_agent_slugs,
         }
 
     def _parse_runtime(self, raw: Any) -> dict[str, Any]:

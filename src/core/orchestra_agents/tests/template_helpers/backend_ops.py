@@ -69,8 +69,8 @@ def _build_backend(
         backend_type="agent_mux",
         working_dir=str(fixture.agent_dir),
         config={
-            "llm_proxy_url": f"http://127.0.0.1:{_free_port()}",
-            "llm_proxy_api_key": "llm-proxy-key",
+            "omniroute_url": f"http://127.0.0.1:{_free_port()}",
+            "omniroute_api_key": "omniroute-test-key",
             "llm_route_policy": "codex_only",
             "model": "cx/gpt-5.1-codex-mini",
             "agent_mux_binary": str(fixture.agent_mux_binary),

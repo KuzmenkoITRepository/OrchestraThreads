@@ -105,6 +105,10 @@ class _DockerRunSideEffect:
             return CompletedProcess(cmd, 1, "", "image not found")
         if cmd[:2] == ["docker", "build"]:
             return CompletedProcess(cmd, 0, "built", "")
+        if cmd[:2] == ["docker", "stop"]:
+            return CompletedProcess(cmd, 0, "stopped\n", "")
+        if cmd[:3] == ["docker", "rm", "-f"]:
+            return CompletedProcess(cmd, 0, "removed\n", "")
         if cmd[:3] == ["docker", "run", "-d"]:
             return CompletedProcess(cmd, 0, "container-id\n", "")
         raise AssertionError(f"unexpected docker command: {cmd}")
@@ -132,6 +136,33 @@ def _assert_build_commands_for_image(
     assert build_cmd[:2] == ["docker", "build"]
     assert str(root / dockerfile_name) in build_cmd
     assert run_cmd[:3] == ["docker", "run", "-d"]
+
+
+def _build_driver_case(root: Path) -> tuple[DockerDriver, AgentManifest]:
+    agents_root = root / "agents"
+    agents_root.mkdir()
+    (root / "Dockerfile.agent_mux_runtime").write_text("FROM scratch\n", encoding="utf-8")
+    manifest = _create_manifest(agents_root, image="orchestra-agent-mux-runtime:latest")
+    driver = DockerDriver(manifests_root=agents_root, build_context_root=root)
+    return driver, manifest
+
+
+def _run_build_scenario(tmpdir: str) -> BuildScenarioResult:
+    root = Path(tmpdir)
+    driver, manifest = _build_driver_case(root)
+    recorder = _DockerRunSideEffect()
+
+    with ExitStack() as stack:
+        stack.enter_context(patch.object(driver, "_container_exists", return_value=False))
+        stack.enter_context(
+            patch.object(
+                driver,
+                "status",
+                return_value={"exists": True, "running": True, "healthy": False},
+            )
+        )
+        stack.enter_context(patch("core.orchestra_agents.docker_driver._run", side_effect=recorder))
+        return driver.start(manifest), recorder.commands, root
 
 
 class DockerDriverTests(unittest.TestCase):
@@ -182,9 +213,60 @@ class DockerDriverTests(unittest.TestCase):
             self.assertTrue(result["exists"])
             self.assertEqual(run_command[:3], ["docker", "run", "-d"])
 
+    def test_empty_passthrough_does_not_override_manifest_env(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manifest = _create_manifest(Path(tmpdir))
+            manifest = AgentManifest.from_dict(
+                {
+                    **manifest.to_dict(),
+                    "runtime": {
+                        **manifest.runtime.to_dict(),
+                        "env": {"OPENAI_API_KEY": "manifest-secret", "LOG_LEVEL": "INFO"},
+                        "env_passthrough": ["OPENAI_API_KEY"],
+                    },
+                },
+                manifest_path=manifest.manifest_path,
+            )
+            driver = DockerDriver(manifests_root=Path(tmpdir))
+            with patch.dict("os.environ", {"OPENAI_API_KEY": ""}, clear=False):
+                rendered = driver._render_env(  # noqa: SLF001
+                    manifest,
+                    container_name="orchestra-agent-coding_agent",
+                )
+            self.assertEqual(rendered["OPENAI_API_KEY"], "manifest-secret")
+
+    def test_restart_recreates_existing_container(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manifest = _create_manifest(Path(tmpdir))
+            driver = DockerDriver(manifests_root=Path(tmpdir))
+            recorder = _DockerRunSideEffect()
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(driver, "_container_exists", return_value=True))
+                stack.enter_context(
+                    patch("core.orchestra_agents.docker_driver._run", side_effect=recorder)
+                )
+                stack.enter_context(
+                    patch.object(
+                        driver,
+                        "status",
+                        return_value={"exists": True, "running": True, "healthy": False},
+                    )
+                )
+                result = driver.restart(manifest)
+
+            self.assertEqual(recorder.commands[0][:2], ["docker", "stop"])
+            self.assertEqual(recorder.commands[0][2], "orchestra-agent-coding_agent")
+            self.assertEqual(
+                recorder.commands[1][:4],
+                ["docker", "rm", "-f", "orchestra-agent-coding_agent"],
+            )
+            self.assertEqual(recorder.commands[-1][:3], ["docker", "run", "-d"])
+            self.assertEqual(result["message"], "container recreated")
+
     def test_start_builds_missing_local_image(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            result, commands, root = self._run_build_scenario(tmpdir)
+            result, commands, root = _run_build_scenario(tmpdir)
             self.assertTrue(result["exists"])
             _assert_build_commands(commands, root)
 
@@ -214,30 +296,3 @@ class DockerDriverTests(unittest.TestCase):
 
             self.assertTrue(result["exists"])
             _assert_build_commands_for_image(recorder.commands, root, "Dockerfile.opencode_runtime")
-
-    def _build_driver_case(self, root: Path) -> tuple[DockerDriver, AgentManifest]:
-        agents_root = root / "agents"
-        agents_root.mkdir()
-        (root / "Dockerfile.agent_mux_runtime").write_text("FROM scratch\n", encoding="utf-8")
-        manifest = _create_manifest(agents_root, image="orchestra-agent-mux-runtime:latest")
-        driver = DockerDriver(manifests_root=agents_root, build_context_root=root)
-        return driver, manifest
-
-    def _run_build_scenario(self, tmpdir: str) -> BuildScenarioResult:
-        root = Path(tmpdir)
-        driver, manifest = self._build_driver_case(root)
-        recorder = _DockerRunSideEffect()
-
-        with ExitStack() as stack:
-            stack.enter_context(patch.object(driver, "_container_exists", return_value=False))
-            stack.enter_context(
-                patch.object(
-                    driver,
-                    "status",
-                    return_value={"exists": True, "running": True, "healthy": False},
-                )
-            )
-            stack.enter_context(
-                patch("core.orchestra_agents.docker_driver._run", side_effect=recorder)
-            )
-            return driver.start(manifest), recorder.commands, root

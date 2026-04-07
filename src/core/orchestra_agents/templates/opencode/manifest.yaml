@@ -25,11 +25,11 @@ runtime:
     OPENCODE_RUNTIME_STATE_ROOT: /tmp/opencode-runtime/__AGENT_SLUG__
     PYTHONPATH: /workspace/src:/workspace/agents/__AGENT_SLUG__
     ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
-    LLM_PROXY_URL: http://host.docker.internal:8100
+    OMNIROUTE_URL: http://host.docker.internal:8100
     LOG_LEVEL: INFO
   env_passthrough:
     - ORCHESTRA_THREADS_URL
-    - LLM_PROXY_URL
+    - OMNIROUTE_URL
     - OMNIROUTE_API_KEY
     - OPENCODE_RUNTIME_STATE_ROOT
     - LOG_LEVEL
