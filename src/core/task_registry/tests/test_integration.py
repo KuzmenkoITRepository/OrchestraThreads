@@ -7,8 +7,8 @@ import unittest
 import uuid
 from typing import Any, cast
 
-from core.task_registry.mcp_tools import TaskRegistryTools  # type: ignore[reportMissingImports]
-from core.task_registry.store import TaskStore  # type: ignore[reportMissingImports]
+from core.task_registry.mcp_tools import TaskRegistryTools
+from core.task_registry.store import TaskStore
 
 JsonDict = dict[str, Any]
 CREATED_BY = "integration-suite"

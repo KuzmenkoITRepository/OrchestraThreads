@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-import asyncpg  # type: ignore[no-any-unimported]
+import asyncpg
 
-from core.task_registry.store_base import row_to_dict  # type: ignore[reportMissingImports]
+from core.task_registry.store_base import row_to_dict
 
 
 class TaskStoreChecklists:
-    pool: asyncpg.Pool | None  # type: ignore[no-any-unimported]
+    pool: asyncpg.Pool | None
 
     async def get_checklist(self, task_id: str) -> list[dict[str, Any]]:
         assert self.pool is not None

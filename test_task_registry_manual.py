@@ -42,6 +42,11 @@ class TestRunner:
                 return json.loads(text)
         return {}
 
+    def _require_tools(self) -> TaskRegistryTools:
+        if self.tools is None:
+            raise RuntimeError("tools are not initialized")
+        return self.tools
+
     async def test_task_create(self) -> None:
         print("=" * 60)
         print("TEST 1: task_create")
@@ -61,7 +66,7 @@ class TestRunner:
             ],
         }
 
-        result = await self.tools.dispatch("task_create", arguments)
+        result = await self._require_tools().dispatch("task_create", arguments)
         payload = self._parse_result(result)
 
         self.test_task_id = str(payload.get("id", ""))
@@ -79,7 +84,7 @@ class TestRunner:
         print("=" * 60)
 
         arguments = {"task_id": self.test_task_id}
-        result = await self.tools.dispatch("task_get", arguments)
+        result = await self._require_tools().dispatch("task_get", arguments)
         payload = self._parse_result(result)
 
         print(f"Retrieved task ID: {payload.get('id')}")
@@ -95,21 +100,21 @@ class TestRunner:
 
         # Test 3a: List all tasks
         arguments = {"limit": 10}
-        result = await self.tools.dispatch("task_list", arguments)
+        result = await self._require_tools().dispatch("task_list", arguments)
         payload = self._parse_result(result)
 
         print(f"Total tasks found: {payload.get('count')}")
 
         # Test 3b: Filter by status
         arguments = {"status": "draft", "limit": 10}
-        result = await self.tools.dispatch("task_list", arguments)
+        result = await self._require_tools().dispatch("task_list", arguments)
         payload = self._parse_result(result)
 
         print(f"Draft tasks: {payload.get('count')}")
 
         # Test 3c: Filter by creator
         arguments = {"created_by": "manual-tester", "limit": 10}
-        result = await self.tools.dispatch("task_list", arguments)
+        result = await self._require_tools().dispatch("task_list", arguments)
         payload = self._parse_result(result)
 
         print(f"Tasks by manual-tester: {payload.get('count')}")
@@ -124,13 +129,15 @@ class TestRunner:
             "task_id": self.test_task_id,
             "status": "in_progress",
         }
-        result = await self.tools.dispatch("task_update_status", arguments)
+        result = await self._require_tools().dispatch("task_update_status", arguments)
         payload = self._parse_result(result)
 
         print(f"Update result: {payload.get('ok')}")
 
         # Verify the update
-        verify_result = await self.tools.dispatch("task_get", {"task_id": self.test_task_id})
+        verify_result = await self._require_tools().dispatch(
+            "task_get", {"task_id": self.test_task_id}
+        )
         verify_payload = self._parse_result(verify_result)
 
         print(f"New status: {verify_payload.get('status')}")
@@ -145,13 +152,15 @@ class TestRunner:
             "task_id": self.test_task_id,
             "assignee": "test-agent-007",
         }
-        result = await self.tools.dispatch("task_assign", arguments)
+        result = await self._require_tools().dispatch("task_assign", arguments)
         payload = self._parse_result(result)
 
         print(f"Assign result: {payload.get('ok')}")
 
         # Verify the assignment
-        verify_result = await self.tools.dispatch("task_get", {"task_id": self.test_task_id})
+        verify_result = await self._require_tools().dispatch(
+            "task_get", {"task_id": self.test_task_id}
+        )
         verify_payload = self._parse_result(verify_result)
 
         print(f"Assignee: {verify_payload.get('assignee')}")
@@ -163,7 +172,7 @@ class TestRunner:
         print("=" * 60)
 
         arguments = {"task_id": self.test_task_id}
-        result = await self.tools.dispatch("task_get_checklist", arguments)
+        result = await self._require_tools().dispatch("task_get_checklist", arguments)
         payload = self._parse_result(result)
 
         items = payload.get("items", [])
@@ -188,13 +197,13 @@ class TestRunner:
             "checked": True,
             "checked_by": "manual-tester",
         }
-        result = await self.tools.dispatch("task_update_checklist", arguments)
+        result = await self._require_tools().dispatch("task_update_checklist", arguments)
         payload = self._parse_result(result)
 
         print(f"Update result: {payload.get('ok')}")
 
         # Verify the update
-        verify_result = await self.tools.dispatch(
+        verify_result = await self._require_tools().dispatch(
             "task_get_checklist", {"task_id": self.test_task_id}
         )
         verify_payload = self._parse_result(verify_result)
@@ -221,7 +230,7 @@ class TestRunner:
                 {"url": "https://example.com/doc.pdf", "type": "file", "label": "Documentation"},
             ],
         }
-        result = await self.tools.dispatch("task_add_comment", arguments)
+        result = await self._require_tools().dispatch("task_add_comment", arguments)
         payload = self._parse_result(result)
 
         self.test_comment_id = str(payload.get("id", ""))
@@ -245,13 +254,15 @@ class TestRunner:
                 "label": "Test Screenshot",
             },
         }
-        result = await self.tools.dispatch("task_add_artifact", arguments)
+        result = await self._require_tools().dispatch("task_add_artifact", arguments)
         payload = self._parse_result(result)
 
         print(f"Add artifact result: {payload.get('ok')}")
 
         # Verify the artifact was added
-        verify_result = await self.tools.dispatch("task_get", {"task_id": self.test_task_id})
+        verify_result = await self._require_tools().dispatch(
+            "task_get", {"task_id": self.test_task_id}
+        )
         verify_payload = self._parse_result(verify_result)
 
         artifacts = verify_payload.get("artifacts", [])
@@ -275,13 +286,15 @@ class TestRunner:
             "task_id": self.test_task_id,
             "thread_id": fake_thread_id,
         }
-        result = await self.tools.dispatch("task_link_thread", arguments)
+        result = await self._require_tools().dispatch("task_link_thread", arguments)
         payload = self._parse_result(result)
 
         print(f"Link thread result: {payload.get('ok')}")
 
         # Verify the link
-        verify_result = await self.tools.dispatch("task_get", {"task_id": self.test_task_id})
+        verify_result = await self._require_tools().dispatch(
+            "task_get", {"task_id": self.test_task_id}
+        )
         verify_payload = self._parse_result(verify_result)
 
         print(f"Linked thread ID: {verify_payload.get('linked_thread_id')}")
@@ -294,20 +307,20 @@ class TestRunner:
 
         # Test 11a: Get non-existent task
         arguments = {"task_id": "00000000-0000-0000-0000-000000000000"}
-        result = await self.tools.dispatch("task_get", arguments)
+        result = await self._require_tools().dispatch("task_get", arguments)
         payload = self._parse_result(result)
 
         print(f"Non-existent task error: {payload.get('error', 'No error')}")
 
         # Test 11b: Missing required parameter
         arguments = {}
-        result = await self.tools.dispatch("task_create", arguments)
+        result = await self._require_tools().dispatch("task_create", arguments)
         payload = self._parse_result(result)
 
         print(f"Missing parameter error: {payload.get('error', 'No error')}")
 
         # Test 11c: Invalid tool name
-        result = await self.tools.dispatch("task_invalid_tool", {})
+        result = await self._require_tools().dispatch("task_invalid_tool", {})
         payload = self._parse_result(result)
 
         print(f"Invalid tool error: {payload.get('error', 'No error')}")
