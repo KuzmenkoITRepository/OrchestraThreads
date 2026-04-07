@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from agents.sgr.agent_runtime.sgr_tools import SGRInternalTools
 from agents.sgr.agent_runtime.support.settings import normalize_optional_str
 
 _STRING = "string"
@@ -42,7 +43,7 @@ def _enum_prop(values: list[str]) -> dict[str, Any]:
 
 def build_sgr_openai_tools() -> list[dict[str, Any]]:
     """Build the full list of OpenAI-compatible tool definitions."""
-    return [
+    return SGRInternalTools.build_openai_tools() + [
         _tool_entry(
             "thread_send",
             "Send a thread message using compact auto-routing based on the active invocation context.",
