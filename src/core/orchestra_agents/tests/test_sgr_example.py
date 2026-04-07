@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import tempfile
 import unittest
 from typing import Any
 
@@ -399,6 +400,7 @@ class _SGRMinimaxBackendBase(unittest.IsolatedAsyncioTestCase):
             "last_event_message_preview": "Please prepare the summary.",
         }
         self.omniroute = FakeOmniRoute()
+        self._working_dir_ctx = tempfile.TemporaryDirectory()
         await self.thread_service.start()
         await self.omniroute.start()
         os.environ["OMNIROUTE_URL"] = self.omniroute.base_url
@@ -406,7 +408,7 @@ class _SGRMinimaxBackendBase(unittest.IsolatedAsyncioTestCase):
         self.backend = SGRMinimaxBackend(
             agent_slug="sgr",
             backend_type="sgr_minimax",
-            working_dir="/workspace/agents/sgr",
+            working_dir=self._working_dir_ctx.name,
             config={
                 "route_policy": "minimax_only",
                 "model": "MiniMax-M2.7",
@@ -434,6 +436,7 @@ class _SGRMinimaxBackendBase(unittest.IsolatedAsyncioTestCase):
         await self.backend.on_shutdown()
         await self.omniroute.stop()
         await self.thread_service.stop()
+        self._working_dir_ctx.cleanup()
         for key, value in self.previous_env.items():
             if value is None:
                 os.environ.pop(key, None)

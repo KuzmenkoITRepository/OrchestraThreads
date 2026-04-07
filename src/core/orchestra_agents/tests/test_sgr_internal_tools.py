@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
 
 from agents.sgr.agent_runtime import event_loop as _event_loop
@@ -21,10 +22,11 @@ class SGRInternalToolsTests(unittest.IsolatedAsyncioTestCase):
         await self.omniroute.start()
         os.environ["OMNIROUTE_URL"] = self.omniroute.base_url
         os.environ["OMNIROUTE_API_KEY"] = "omniroute-test-key"
+        self._working_dir_ctx = tempfile.TemporaryDirectory()
         self.backend = SGRMinimaxBackend(
             agent_slug="sgr",
             backend_type="sgr_minimax",
-            working_dir="/workspace/agents/sgr",
+            working_dir=self._working_dir_ctx.name,
             config={
                 "route_policy": "minimax_only",
                 "model": "MiniMax-M2.7",
@@ -39,6 +41,7 @@ class SGRInternalToolsTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         await self.backend.on_shutdown()
         await self.omniroute.stop()
+        self._working_dir_ctx.cleanup()
         for key, prev_val in self.previous_env.items():
             if prev_val is None:
                 os.environ.pop(key, None)

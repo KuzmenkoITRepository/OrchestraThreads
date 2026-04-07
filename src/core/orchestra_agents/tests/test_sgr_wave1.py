@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 import os
+import tempfile
 from typing import Any
 from unittest import IsolatedAsyncioTestCase, main, mock
 
@@ -22,10 +22,11 @@ class SGRWave1Tests(IsolatedAsyncioTestCase):
         await self.omniroute.start()
         os.environ["OMNIROUTE_URL"] = self.omniroute.base_url
         os.environ["OMNIROUTE_API_KEY"] = "omniroute-test-key"
+        self._working_dir_ctx = tempfile.TemporaryDirectory()
         self.backend = SGRMinimaxBackend(
             agent_slug="sgr",
             backend_type="sgr_minimax",
-            working_dir="/workspace/agents/sgr",
+            working_dir=self._working_dir_ctx.name,
             config={
                 "route_policy": "minimax_only",
                 "model": "MiniMax-M2.7",
@@ -47,6 +48,7 @@ class SGRWave1Tests(IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         await self.backend.on_shutdown()
         await self.omniroute.stop()
+        self._working_dir_ctx.cleanup()
         for key, prev_val in self.previous_env.items():
             if prev_val is None:
                 os.environ.pop(key, None)
@@ -72,14 +74,7 @@ class SGRWave1Tests(IsolatedAsyncioTestCase):
 
         outcome = await execute_single(
             self.backend,
-            {
-                "id": "tool-error-1",
-                "type": "function",
-                "function": {
-                    "name": "bad_tool",
-                    "arguments": json.dumps({}, ensure_ascii=False),
-                },
-            },
+            _tool_call(name="bad_tool", arguments={}, call_id="tool-error-1"),
         )
 
         self.assertEqual(outcome.tool_name, "bad_tool")
@@ -99,10 +94,11 @@ class SGRMCPAndSessionTests(IsolatedAsyncioTestCase):
         await self.omniroute.start()
         os.environ["OMNIROUTE_URL"] = self.omniroute.base_url
         os.environ["OMNIROUTE_API_KEY"] = "omniroute-test-key"
+        self._working_dir_ctx = tempfile.TemporaryDirectory()
         self.backend = SGRMinimaxBackend(
             agent_slug="sgr",
             backend_type="sgr_minimax",
-            working_dir="/workspace/agents/sgr",
+            working_dir=self._working_dir_ctx.name,
             config={"max_reasoning_steps": 6, "max_direct_text_retries": 1},
             system_prompt="Use MCP tools.",
         )
@@ -111,6 +107,7 @@ class SGRMCPAndSessionTests(IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         await self.backend.on_shutdown()
         await self.omniroute.stop()
+        self._working_dir_ctx.cleanup()
         for key, prev_val in self.previous_env.items():
             if prev_val is None:
                 os.environ.pop(key, None)
@@ -180,10 +177,11 @@ class SGRSessionTurnCleanupTests(IsolatedAsyncioTestCase):
         await self.omniroute.start()
         os.environ["OMNIROUTE_URL"] = self.omniroute.base_url
         os.environ["OMNIROUTE_API_KEY"] = "omniroute-test-key"
+        self._working_dir_ctx = tempfile.TemporaryDirectory()
         self.backend = SGRMinimaxBackend(
             agent_slug="sgr",
             backend_type="sgr_minimax",
-            working_dir="/workspace/agents/sgr",
+            working_dir=self._working_dir_ctx.name,
             config={"max_reasoning_steps": 6, "max_direct_text_retries": 1},
             system_prompt="Use MCP tools.",
         )
@@ -192,6 +190,7 @@ class SGRSessionTurnCleanupTests(IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         await self.backend.on_shutdown()
         await self.omniroute.stop()
+        self._working_dir_ctx.cleanup()
         for key, prev_val in self.previous_env.items():
             if prev_val is None:
                 os.environ.pop(key, None)
@@ -274,3 +273,14 @@ def _message_delivery(delivery_id: str, event_id: str) -> EventDelivery:
             ],
         },
     )
+
+
+def _tool_call(name: str, arguments: dict[str, Any], call_id: str) -> dict[str, Any]:
+    return {
+        "id": call_id,
+        "type": "function",
+        "function": {
+            "name": name,
+            "arguments": "{}",
+        },
+    }
