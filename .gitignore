@@ -26,3 +26,8 @@ sessions/
 .venv/
 .omniroute/
 docker/opencode-bin/
+deploy/runtime_env/
+deploy/vault/bootstrap/.out/
+deploy/approvals/
+deploy/vault/local/
+environments/
