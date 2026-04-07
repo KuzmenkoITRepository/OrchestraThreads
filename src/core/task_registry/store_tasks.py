@@ -4,13 +4,13 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
-import asyncpg  # type: ignore[no-any-unimported]
+import asyncpg
 
-from core.task_registry.store_base import row_to_dict  # type: ignore[reportMissingImports]
+from core.task_registry.store_base import row_to_dict
 
 
 class TaskStoreTasks:
-    pool: asyncpg.Pool | None  # type: ignore[no-any-unimported]
+    pool: asyncpg.Pool | None
 
     async def create_task(  # noqa: WPS211  # create_task accepts the task fields plus optional metadata.
         self,

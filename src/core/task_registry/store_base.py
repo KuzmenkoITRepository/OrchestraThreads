@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import asyncpg  # type: ignore[no-any-unimported]
+import asyncpg
 
 SCHEMA_SQL = Path(__file__).with_name("schema.sql").read_text(encoding="utf-8")
 SCHEMA_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -59,7 +59,7 @@ def quote_ident(identifier: str) -> str:
     return f'"{identifier}"'
 
 
-async def init_connection(conn: asyncpg.Connection) -> None:  # type: ignore[no-any-unimported]
+async def init_connection(conn: asyncpg.Connection) -> None:
     await conn.set_type_codec(
         "json",
         schema="pg_catalog",
@@ -93,7 +93,7 @@ class TaskStoreBase:
         self.min_pool_size = max(1, int(min_pool_size))
         self.max_pool_size = max(self.min_pool_size, int(max_pool_size))
         self.command_timeout_seconds = max(1.0, float(command_timeout_seconds))
-        self.pool: asyncpg.Pool | None = None  # type: ignore[no-any-unimported]
+        self.pool: asyncpg.Pool | None = None
 
     async def start(self) -> None:
         if self.pool is not None:
@@ -130,7 +130,7 @@ class TaskStoreBase:
     async def drop_schema(self) -> None:
         if self.schema_name == "public":
             return
-        conn: asyncpg.Connection | None = None  # type: ignore[no-any-unimported]
+        conn: asyncpg.Connection | None = None
         try:
             conn = await asyncpg.connect(
                 dsn=self.database_url,
