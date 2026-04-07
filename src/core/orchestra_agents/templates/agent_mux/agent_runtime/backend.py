@@ -15,6 +15,8 @@ from core.orchestra_agents.templates.opencode.agent_runtime import (
 )
 from core.orchestra_thread.client import OrchestraThreadsClient
 
+ClearContextRequest = runtime_contract.ClearContextRequest
+
 
 @dataclass(frozen=True)
 class _LLMClientConfig:
