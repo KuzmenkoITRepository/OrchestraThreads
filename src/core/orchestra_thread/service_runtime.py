@@ -461,6 +461,27 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
             return metadata
         return {}
 
+    def _allowed_peers(self, *, agent: JsonDictOrNone, agent_slug: str) -> set[str]:
+        metadata = self._agent_context(agent=agent, agent_slug=agent_slug).get("metadata") or {}
+        raw = metadata.get("allowed_peer_agent_slugs")
+        if not isinstance(raw, list):
+            return set()
+        return {str(item).strip() for item in raw if str(item).strip()}
+
+    def _ensure_peer_allowed(
+        self,
+        *,
+        from_agent: JsonDictOrNone,
+        from_agent_slug: str,
+        to_agent_slug: str,
+    ) -> None:
+        allowed = self._allowed_peers(agent=from_agent, agent_slug=from_agent_slug)
+        if allowed and to_agent_slug not in allowed:
+            raise common.ServiceError(
+                403,
+                f"{from_agent_slug} is not allowed to contact {to_agent_slug}",
+            )
+
     def _agent_online(self, *, agent: JsonDictOrNone, payload: JsonDict) -> bool:
         if not agent:
             return False
@@ -729,8 +750,16 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
             return await self._send_message_with_lock_context(message_request_context)
 
     async def _send_message_with_lock_context(self, message_request_context: JsonDict) -> JsonDict:
+        from_agent_slug = str(message_request_context["from_agent_slug"])
+        to_agent_slug = str(message_request_context["to_agent_slug"])
+        from_agent = await self.store.get_agent(from_agent_slug)
+        self._ensure_peer_allowed(
+            from_agent=from_agent,
+            from_agent_slug=from_agent_slug,
+            to_agent_slug=to_agent_slug,
+        )
         cached = await self.store.get_idempotent_result(
-            from_agent_slug=str(message_request_context["from_agent_slug"]),
+            from_agent_slug=from_agent_slug,
             client_request_id=str(message_request_context["client_request_id"]),
         )
         if cached is not None:
@@ -972,12 +1001,14 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
     async def _send_notification_with_lock_context(
         self, notification_context: JsonDict
     ) -> JsonDict:
+        from_agent_slug = str(notification_context["from_agent_slug"])
         cached = await self.store.get_idempotent_result(
-            from_agent_slug=str(notification_context["from_agent_slug"]),
+            from_agent_slug=from_agent_slug,
             client_request_id=str(notification_context["client_request_id"]),
         )
         if cached is not None:
             return cached
+        await self._ensure_notification_sender_allowed(notification_context, from_agent_slug)
         thread = await self._notification_thread(notification_context)
         self._validate_notification_actor(thread=thread, notification_context=notification_context)
         response = await self._build_notification_response(notification_context)
@@ -988,6 +1019,18 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
             response_payload=response,
         )
         return response
+
+    async def _ensure_notification_sender_allowed(
+        self,
+        notification_context: JsonDict,
+        from_agent_slug: str,
+    ) -> None:
+        from_agent = await self.store.get_agent(from_agent_slug)
+        self._ensure_peer_allowed(
+            from_agent=from_agent,
+            from_agent_slug=from_agent_slug,
+            to_agent_slug=str(notification_context["to_agent_slug"]),
+        )
 
     async def _notification_thread(self, notification_context: JsonDict) -> JsonDict:
         thread = await self.store.get_thread(str(notification_context["thread_id"]))

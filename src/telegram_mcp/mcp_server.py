@@ -9,7 +9,7 @@ import sys
 from typing import Any, cast
 
 from telegram_mcp.config import TelegramMCPConfig, load_config
-from telegram_mcp.telegram_client import TelegramClient
+from telegram_mcp.telegram_client import TelegramHTTPClient
 
 logger = logging.getLogger(__name__)
 
@@ -49,17 +49,6 @@ class _ServerHelpers:
         if isinstance(arguments, dict):
             return arguments
         return {}
-
-    @staticmethod
-    async def send_tool_message(
-        ensure_client_started: Any,
-        client: TelegramClient,
-        *,
-        chat_id: int,
-        message: str,
-    ) -> JsonDict:
-        await ensure_client_started()
-        return await client.send_message(chat_id, message)
 
 
 class _ProtocolPayloads:
@@ -218,11 +207,7 @@ class _ProtocolIO:
 class TelegramMCPServer:
     def __init__(self, *, config: TelegramMCPConfig | None = None) -> None:
         self.config = config or load_config()
-        self.client = TelegramClient(
-            api_id=self.config.auth.api_id,
-            api_hash=self.config.auth.api_hash,
-            session_string=self.config.auth.session_string,
-        )
+        self.client = TelegramHTTPClient(self.config.telegram_events_url)
         self._client_started = False
 
     async def close(self) -> None:
@@ -248,16 +233,8 @@ class TelegramMCPServer:
         message = _ProtocolPayloads.ensure_text(arguments.get("message"), field_name="message")
         recipient = _ProtocolPayloads.normalize_optional_str(arguments.get("recipient"))
         chat_id = self.config.resolve_chat_id(recipient)
-        try:
-            send_result = await _ServerHelpers.send_tool_message(
-                self._ensure_client_started,
-                self.client,
-                chat_id=chat_id,
-                message=message,
-            )
-        except Exception as exc:
-            logger.error("Telegram tool failed: %s", exc, exc_info=True)
-            return _ProtocolPayloads.result({"ok": False, "error": str(exc)})
+        await self._ensure_client_started()
+        send_result = await self.client.send_message(chat_id, message)
 
         default_recipient = self.config.defaults.default_recipient
         if not send_result.get("ok"):
@@ -330,6 +307,11 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     asyncio.run(_ServerRuntime.main_async())
+
+
+def telegram_tool_definitions() -> list[JsonDict]:
+    """Return Telegram MCP tool definitions in MCP format."""
+    return list(_ProtocolPayloads.tools_result()["tools"])
 
 
 if __name__ == "__main__":

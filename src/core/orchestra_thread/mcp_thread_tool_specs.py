@@ -93,4 +93,12 @@ def list_thread_tools() -> list[JSON_MAP]:
                 },
             },
         ),
+        tool(
+            "thread_peers",
+            "List agents available for thread communication. Returns slug, display name, and online status.",
+            {
+                "type": "object",
+                "properties": {},
+            },
+        ),
     ]

@@ -134,7 +134,7 @@ class TelegramListener:
         self.client: Any | None = None
         self.on_message = on_message
 
-    async def start(self) -> None:
+    async def start_client(self) -> TelegramClient:
         session = _ListenerOps.build_session(self.session_string, self.session_file)
         client = TelegramClient(session, self.api_id, self.api_hash)
         self.client = client
@@ -144,9 +144,13 @@ class TelegramListener:
         me_name = _ListenerOps.extract_field(me, "first_name")
         me_id = _ListenerOps.extract_field(me, "id")
         logger.info("Logged in as: %s (ID: %s)", me_name, me_id)
-        self._maybe_log_session(client, session)
+        if not self.session_string and isinstance(session, str):
+            self._log_session_string(client)
         client.add_event_handler(self._handle_message, events.NewMessage(incoming=True))
-        client.add_event_handler(self._handle_message, events.NewMessage(outgoing=True))
+        return client
+
+    async def start_and_run(self) -> None:
+        client = await self.start_client()
         logger.info("Telegram listener started and waiting for messages...")
         await cast(Awaitable[None], client.run_until_disconnected())
 
@@ -163,12 +167,6 @@ class TelegramListener:
         except Exception as exc:
             logger.error("Authentication error: %s", exc, exc_info=True)
             raise
-
-    def _maybe_log_session(self, client: Any, session: str | Any) -> None:
-        if self.session_string:
-            return
-        if isinstance(session, str):
-            self._log_session_string(client)
 
     def _log_session_string(self, client: Any) -> None:
         try:
