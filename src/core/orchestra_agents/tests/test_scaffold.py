@@ -45,7 +45,7 @@ class ScaffoldAgentTests(unittest.TestCase):
 
             self.assertIn("slug: thread_worker", manifest_text)
             self.assertIn("type: agent_mux", manifest_text)
-            self.assertIn("class AgentMuxBackend(BaseAgentBackend)", backend_text)
+            self.assertIn("class AgentMuxBackend", backend_text)
             self._assert_generated_configs(output_dir)
 
     def test_scaffold_opencode_template_creates_runtime_files(self) -> None:

@@ -113,6 +113,8 @@ class SGRThreadOps:
         if self.mcp_server is not None:
             await self.mcp_server.close()
             self.mcp_server = None
+        if self.thread_client is not None:
+            await self.thread_client.close()
             self.thread_client = None
             return
         if self.thread_client is not None:

@@ -144,16 +144,17 @@ services:
     networks:
       - default
     ports:
-      - "${OT_PORT_OMNIROUTE:-20129}:20129"
+      - "${OT_PORT_OMNIROUTE:-20229}:20128"
     environment:
-      OMNIROUTE_PORT: 20129
+      PORT: 20128
+      HOSTNAME: 0.0.0.0
       INITIAL_PASSWORD: ${OMNIROUTE_INITIAL_PASSWORD:-CHANGEME}
     volumes:
       - ./.omniroute/data:/app/data
     restart: unless-stopped
 
   orchestra-wet:
-    image: ghcr.io/dzhng/wet:latest
+    image: wet-proxy:latest
     depends_on:
       orchestra-omniroute:
         condition: service_started
@@ -163,11 +164,15 @@ services:
       - "${OT_PORT_WET:-8100}:8100"
       - "${OT_PORT_WET_ADMIN:-8101}:8101"
     environment:
+      WET_MODE: auto
       WET_PORT: 8100
       WET_ADMIN_PORT: 8101
-      WET_UPSTREAM: http://orchestra-omniroute:20129
+      WET_UPSTREAM: http://orchestra-omniroute:20128
+      WET_OPENAI_UPSTREAM: http://orchestra-omniroute:20128
+      WET_CODEX_UPSTREAM: http://orchestra-omniroute:20128
     volumes:
-      - ./.omniroute/wet:/data
+      - ./.omniroute/wet:/root/.wet
+    command: serve --host 0.0.0.0 --port 8100 --mode auto --upstream http://orchestra-omniroute:20128
     restart: unless-stopped
 
   task-registry:

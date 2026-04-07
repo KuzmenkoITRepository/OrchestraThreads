@@ -123,6 +123,50 @@ class BaseAgentBackend(_BackendLifecycleOps, _BackendStatusOps, ABC):
     async def handle_events(self, delivery: EventDelivery) -> EventDeliveryResult:
         """Handle one delivery batch."""
 
+    async def reset_session(self, routing_key: str) -> dict[str, Any]:
+        """
+        Reset session for a routing key.
+
+        Default implementation rotates context (backward compat).
+        Subclasses should override for session-aware behavior.
+        """
+        previous = self.context.rotate()
+        self.delivery.reset()
+        return {
+            "success": True,
+            "routing_key": routing_key,
+            "context_generation": self.context.generation,
+            "context_id": self.context.current_id,
+            "previous_context_id": previous,
+        }
+
+    async def get_session_state(self, routing_key: str) -> dict[str, Any]:
+        """
+        Get session state for a routing key.
+
+        Default implementation returns basic backend state.
+        Subclasses should override for session-aware behavior.
+        """
+        return {
+            "routing_key": routing_key,
+            "lifecycle": "idle" if self.delivery.stop_reason is None else "stopped",
+            "context_id": self.context.current_id,
+            "last_delivery_id": self.delivery.last_delivery_id,
+        }
+
+    async def interrupt_session(self, routing_key: str) -> dict[str, Any]:
+        """
+        Interrupt session for a routing key.
+
+        Default implementation is a no-op.
+        Subclasses should override for session-aware behavior.
+        """
+        return {
+            "success": True,
+            "routing_key": routing_key,
+            "message": "interrupt not implemented in base backend",
+        }
+
 
 def _build_status_payload(backend: _BackendStatusOps) -> dict[str, Any]:
     return {

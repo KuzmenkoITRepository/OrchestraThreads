@@ -5,9 +5,10 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from core.orchestra_agents.agent_mux_runtime.backend_types import AgentMuxRunRequest
+from core.orchestra_agents.agent_mux_runtime.cli_adapter import NativeCliAdapter
 from core.orchestra_agents.agent_mux_runtime.codex_config import (
     RuntimeCodexConfigRequest,
     create_runtime_codex_request,
@@ -18,6 +19,7 @@ from core.orchestra_agents.agent_mux_runtime.dispatch_engine import (
     build_agent_mux_command,
     parse_agent_mux_result,
 )
+from core.orchestra_agents.agent_mux_runtime.session_types import SessionId
 
 
 @dataclass(frozen=True)
@@ -30,8 +32,18 @@ class _ProcessEnvContext:
     active_context_path: str
 
 
-async def run_agent_mux(request: AgentMuxRunRequest) -> dict[str, Any]:
+async def run_agent_mux(  # noqa: WPS210
+    request: AgentMuxRunRequest,
+    session_id: SessionId | None = None,
+) -> dict[str, Any]:
     settings = request.settings
+    cli_adapter = cast(NativeCliAdapter | None, getattr(settings, "cli_adapter", None))
+
+    if session_id is not None and cli_adapter is not None:
+        if cli_adapter.session_exists(session_id):
+            return cli_adapter.resume_session(session_id, request.event)
+        return cli_adapter.start_session(session_id, request.event)
+
     codex_home = Path(settings.state_root).expanduser().resolve() / "home"
     config_request = RuntimeCodexConfigRequest(
         codex_home=codex_home,

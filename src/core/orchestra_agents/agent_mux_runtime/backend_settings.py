@@ -1,3 +1,4 @@
+# flake8: noqa: WPS202
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -105,7 +106,8 @@ def _llm_runtime_settings(
         or "llm-proxy",
         "llm_route_policy": str(llm_route_policy or llm_config.route_policy or "codex_only").strip()
         or "codex_only",
-        "default_model": str(llm_model or llm_config.model or "gpt-5.4").strip() or "gpt-5.4",
+        "default_model": str(llm_model or llm_config.model or "cx/gpt-5.1-codex-mini").strip()
+        or "cx/gpt-5.1-codex-mini",
     }
 
 

@@ -43,7 +43,11 @@ class _RequestHandlers:
 
     async def clear_context(self, request: web.Request) -> web.Response:
         payload = await request.json()
-        cleared = await self.backend.clear_context(ClearContextRequest.from_dict(payload))
+        routing_key = payload.get("routing_key")
+        if routing_key:
+            cleared = await self.backend.reset_session(routing_key)
+        else:
+            cleared = await self.backend.clear_context(ClearContextRequest.from_dict(payload))
         return web.json_response(cleared)
 
 
