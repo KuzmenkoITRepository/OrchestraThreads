@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from core.task_registry.store import TaskStore
 
@@ -11,8 +13,20 @@ logger = logging.getLogger(__name__)
 JsonDict = dict[str, Any]
 
 
+def _json_default(obj: Any) -> Any:
+    if isinstance(obj, UUID):
+        return str(obj)
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
 def _text_result(payload: JsonDict) -> JsonDict:
-    return {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}]}
+    return {
+        "content": [
+            {"type": "text", "text": json.dumps(payload, ensure_ascii=False, default=_json_default)}
+        ]
+    }
 
 
 def _require(arguments: JsonDict, field: str) -> Any:  # noqa: ANN401  # MCP arguments are untyped dicts.
