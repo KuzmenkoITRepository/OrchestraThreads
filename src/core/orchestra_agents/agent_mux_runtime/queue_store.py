@@ -4,6 +4,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from core.orchestra_agents.agent_mux_runtime import session_resolver as _resolver_mod
+from core.orchestra_agents.agent_mux_runtime import session_state as _state_mod
+from core.orchestra_agents.agent_mux_runtime import session_store as _store_mod
+from core.orchestra_agents.agent_mux_runtime.event_types import NormalizedEvent
 from core.orchestra_agents.agent_mux_runtime.json_store import read_json_object, write_json_object
 from core.orchestra_agents.agent_mux_runtime.queue_mutations import QueueEntry, QueueMutationStore
 from core.orchestra_agents.agent_mux_runtime.state_paths import (
@@ -45,6 +49,8 @@ def _normalized_queue_id(payload: Payload, *, fallback: str) -> str:
 class _DeliveryQueueRecorder:
     def __init__(self, paths: RuntimeStatePaths) -> None:
         self._paths = paths
+        self._session_store = _store_mod.SessionStore(paths.root)
+        self._session_resolver = _resolver_mod.SessionResolver(self._session_store, paths.root)
         self._handled = read_json_object(paths.handled_file)
         self._queued_event_ids: list[str] = []
         self._duplicate_events = 0
@@ -70,6 +76,34 @@ class _DeliveryQueueRecorder:
         write_json_object(queue_path, payload)
         self._handled[event_id] = handled_entry
         self._queued_event_ids.append(event_id)
+        self._append_session_event(event=event, event_id=event_id)
+
+    def _append_session_event(self, *, event: Any, event_id: str) -> None:
+        raw_payload = event.raw_payload or {}
+        routing_key = str(raw_payload.get("processing_key") or "").strip()
+        if not routing_key:
+            return
+
+        routing = _resolver_mod.RoutingKey(routing_key)  # type: ignore[attr-defined]
+        session = self._session_resolver.resolve_or_create_session(routing)
+        normalized_event = NormalizedEvent(
+            event_id=event_id,
+            source=str(event.from_agent_slug or "agent_mux"),
+            routing_key=routing_key,
+            kind=str(event.event_kind or "message"),
+            payload=dict(raw_payload),
+            created_at=str(event.created_at or utc_now()),
+            interrupt=bool(event.interrupts_runtime),
+            priority=10,
+            metadata={
+                "delivery_id": event.raw_payload.get("delivery_id"),
+                "notification_status": event.notification_status,
+                "requires_response": event.requires_response,
+                "to_agent_slug": event.to_agent_slug,
+            },
+        )
+        session.append_event(normalized_event)
+        _state_mod.save_session_state(session, self._paths.root)
 
     def _queued_payload(
         self,
