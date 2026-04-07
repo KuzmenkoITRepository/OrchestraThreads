@@ -9,5 +9,6 @@ telethon>=1.36,<2
 pre-commit>=3.6,<4
 ruff>=0.3,<1
 mypy>=1.11,<2
+mempalace>=3,<4
 types-PyYAML
 types-requests
