@@ -85,9 +85,9 @@ def handle_direct_text_retry(
         {
             "role": "system",
             "content": (
-                "Direct assistant text helps you think, but it will not be forwarded to the peer. "
-                "If you want the peer to receive something, use OrchestraThreads MCP tools. "
-                "Use thread_send for replies and thread_status for progress or lifecycle updates."
+                "Direct assistant text helps you think, but it will not be forwarded externally. "
+                "If you want the peer to receive something, use an available MCP send tool. "
+                "Only MCP tool calls produce externally visible actions."
             ),
         }
     )

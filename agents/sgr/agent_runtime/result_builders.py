@@ -48,7 +48,7 @@ def duplicate_result(
         duplicate=True,
         details={
             "backend_type": backend.backend_type,
-            "thread_id": event.thread_id,
+            "event_kind": event.event_kind,
             "event_id": event_id,
         },
     )

@@ -37,7 +37,7 @@ async def process_tool_calls(
                 "role": "tool",
                 "tool_call_id": str(tool_call.get("id") or "").strip(),
                 "content": execution.result_text or "(empty tool result)",
-            }
+            },
         )
 
 
@@ -45,11 +45,11 @@ async def execute_single(
     backend: SGRMinimaxBackend,
     tool_call: dict[str, Any],
 ) -> _support.ToolExecutionOutcome:
-    """Execute a single tool call via MCP server."""
+    """Execute a single tool call via internal tools or injected MCP servers."""
     parsed = _support.parse_tool_call(tool_call)
     logger.info("Executing SGR tool call %s", parsed.tool_name)
     if parsed.tool_name in SGRInternalTools.names:
-        return await _internal_tools.execute_internal_tool(backend, parsed)
+        return _internal_tools.execute_internal_tool(backend, parsed)
     try:
         mcp_result = await _execute_mcp_tool(backend, parsed)
     except Exception as exc:
@@ -58,7 +58,12 @@ async def execute_single(
     result_text = _tool_result.result_text(mcp_result)
     structured = _tool_result.structured_content(mcp_result)
     if mcp_result.get("isError") or not structured.get("ok", True):
-        return _support.ToolExecutionOutcome(tool_name=parsed.tool_name, result_text=result_text)
+        error_msg = str(structured.get("error") or "tool returned ok=false")
+        return _support.ToolExecutionOutcome(
+            tool_name=parsed.tool_name,
+            result_text=result_text,
+            error=error_msg,
+        )
     return _build_tool_outcome(parsed, structured, result_text)
 
 
@@ -66,9 +71,13 @@ async def _execute_mcp_tool(
     backend: SGRMinimaxBackend,
     parsed: _support.ParsedToolCall,
 ) -> dict[str, Any]:
-    return await backend._thread_ops.ensure_mcp_server().handle_tools_call(
+    """Route a tool call to the appropriate injected MCP server."""
+    server = backend._mcp_servers.get(parsed.tool_name)
+    if server is None:
+        raise RuntimeError(f"No MCP server registered for tool: {parsed.tool_name}")
+    return await server.handle_tools_call(
         name=parsed.tool_name,
-        arguments=parsed.arguments,
+        arguments=dict(parsed.arguments),
     )
 
 
@@ -76,10 +85,10 @@ def _build_error_outcome(
     tool_name: str,
     error: Exception,
 ) -> _support.ToolExecutionOutcome:
-    error_text = f"Error: {error}"
+    """Build a tool execution outcome for an error."""
     return _support.ToolExecutionOutcome(
         tool_name=tool_name,
-        result_text=error_text,
+        result_text=f"Error: {error}",
         error=str(error),
     )
 
@@ -89,23 +98,19 @@ def _build_tool_outcome(
     structured: dict[str, Any],
     result_text: str,
 ) -> _support.ToolExecutionOutcome:
+    """Build a tool execution outcome from MCP result."""
     outcome = _support.ToolExecutionOutcome(tool_name=parsed.tool_name, result_text=result_text)
-    if parsed.tool_name == "thread_send":
+    msg_text = str(parsed.arguments.get("message") or "")
+    if "send" in parsed.tool_name and structured.get("ok", False):
         outcome.emitted_message = True
-        outcome.message_preview = _mux_rt.message_preview(
-            str(parsed.arguments.get("message") or ""),
-            limit=160,
-        )
-        outcome.route = _support.normalize_optional_str(structured.get("route"))
-        return outcome
-    if parsed.tool_name == "thread_status":
+        outcome.message_preview = _mux_rt.message_preview(msg_text, limit=160)
+    if "status" in parsed.tool_name and (
+        structured.get("published_status") or structured.get("ok")
+    ):
         outcome.published_status = _support.normalize_optional_str(
-            structured.get("published_status")
+            structured.get("published_status"),
         ) or _support.normalize_optional_str(parsed.arguments.get("status"))
-        outcome.message_preview = _mux_rt.message_preview(
-            str(parsed.arguments.get("message") or ""),
-            limit=160,
-        )
+        outcome.message_preview = _mux_rt.message_preview(msg_text, limit=160)
     return outcome
 
 
@@ -113,6 +118,7 @@ def _apply_execution(
     execution: _support.ToolExecutionOutcome,
     outcome: _support.AgentTurnOutcome,
 ) -> None:
+    """Apply a single tool execution result to the turn outcome."""
     if execution.error:
         outcome.tool_errors += 1
     if execution.emitted_message:

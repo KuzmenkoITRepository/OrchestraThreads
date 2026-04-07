@@ -1,1 +1,1 @@
-"""Runtime package for the agent_mux Orchestra agent template."""
+"""Runtime package for the sgr_minimax secretary agent."""
