@@ -1,6 +1,6 @@
 x-agent-common: &agent-common
   build: .
-  image: orchestra-threads:local
+  image: orchestra-threads:${OT_TAG:-local}
   depends_on:
     orchestra-threads:
       condition: service_healthy
@@ -16,7 +16,6 @@ x-agent-common: &agent-common
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: orchestra-threads-postgres
     environment:
       POSTGRES_DB: orchestra_threads
       POSTGRES_USER: orchestra
@@ -35,7 +34,6 @@ services:
 
   langfuse-postgres:
     image: postgres:16-alpine
-    container_name: langfuse-postgres
     environment:
       POSTGRES_DB: ${LANGFUSE_DB_NAME:-langfuse}
       POSTGRES_USER: ${LANGFUSE_DB_USER:-langfuse}
@@ -54,12 +52,11 @@ services:
 
   langfuse:
     image: langfuse/langfuse:2
-    container_name: langfuse
     depends_on:
       langfuse-postgres:
         condition: service_healthy
     ports:
-      - "${LANGFUSE_PORT:-3000}:3000"
+      - "${OT_PORT_LANGFUSE:-3000}:3000"
     environment:
       DATABASE_URL: postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-langfuse}@langfuse-postgres:5432/${LANGFUSE_DB_NAME:-langfuse}
       NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
@@ -81,13 +78,12 @@ services:
 
   orchestra-threads:
     build: .
-    image: orchestra-threads:local
-    container_name: orchestra-threads
+    image: orchestra-threads:${OT_TAG:-local}
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "8788:8788"
+      - "${OT_PORT_THREADS:-8788}:8788"
     environment:
       ORCHESTRA_THREADS_HOST: 0.0.0.0
       ORCHESTRA_THREADS_PORT: 8788
@@ -109,17 +105,16 @@ services:
 
   orchestra-agents:
     build: .
-    image: orchestra-threads:local
-    container_name: orchestra-agents
+    image: orchestra-threads:${OT_TAG:-local}
     user: root
     ports:
-      - "8790:8790"
+      - "${OT_PORT_AGENTS:-8790}:8790"
     environment:
       PYTHONPATH: /app/src
       ORCHESTRA_AGENTS_HOST: 0.0.0.0
       ORCHESTRA_AGENTS_PORT: 8790
       ORCHESTRA_AGENTS_MANIFESTS_DIR: ${PWD}/agents
-      ORCHESTRA_AGENTS_DOCKER_NETWORK: orchestrathreads_default
+      ORCHESTRA_AGENTS_DOCKER_NETWORK: ${COMPOSE_PROJECT_NAME:-orchestrathreads}_default
       TELEGRAM_API_ID: ${TELEGRAM_API_ID}
       TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
       TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING}
@@ -145,11 +140,10 @@ services:
 
   orchestra-omniroute:
     image: diegosouzapw/omniroute:latest
-    container_name: orchestra-omniroute
     networks:
       - default
     ports:
-      - "20129:20129"
+      - "${OT_PORT_OMNIROUTE:-20129}:20129"
     environment:
       OMNIROUTE_PORT: 20129
       INITIAL_PASSWORD: ${OMNIROUTE_INITIAL_PASSWORD:-CHANGEME}
@@ -159,15 +153,14 @@ services:
 
   orchestra-wet:
     image: ghcr.io/dzhng/wet:latest
-    container_name: orchestra-wet
     depends_on:
       orchestra-omniroute:
         condition: service_started
     networks:
       - default
     ports:
-      - "8100:8100"
-      - "8101:8101"
+      - "${OT_PORT_WET:-8100}:8100"
+      - "${OT_PORT_WET_ADMIN:-8101}:8101"
     environment:
       WET_PORT: 8100
       WET_ADMIN_PORT: 8101
@@ -178,13 +171,12 @@ services:
 
   task-registry:
     build: .
-    image: orchestra-threads:local
-    container_name: task-registry
+    image: orchestra-threads:${OT_TAG:-local}
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "8791:8791"
+      - "${OT_PORT_TASK_REGISTRY:-8791}:8791"
     environment:
       PYTHONPATH: /app/src
       TASK_REGISTRY_HOST: 0.0.0.0
@@ -207,15 +199,45 @@ services:
       - core.task_registry.service_main
     restart: unless-stopped
 
+  scheduler-cron:
+    build: .
+    image: orchestra-threads:${OT_TAG:-local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${OT_PORT_SCHEDULER:-8792}:8792"
+    environment:
+      PYTHONPATH: /app/src
+      SCHEDULER_CRON_HOST: 0.0.0.0
+      SCHEDULER_CRON_PORT: 8792
+      SCHEDULER_CRON_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
+      SCHEDULER_CRON_DB_SCHEMA: public
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8792/healthz').status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command:
+      - python
+      - -m
+      - core.scheduler_cron.service_main
+    restart: unless-stopped
+
   events-engine:
     build: .
-    image: orchestra-threads:local
-    container_name: events-engine
+    image: orchestra-threads:${OT_TAG:-local}
     depends_on:
       orchestra-agents:
         condition: service_healthy
     ports:
-      - "8789:8789"
+      - "${OT_PORT_EVENTS:-8789}:8789"
     networks:
       - default
     environment:
@@ -243,8 +265,7 @@ services:
 
   telegram-events:
     build: .
-    image: orchestra-threads:local
-    container_name: telegram-events
+    image: orchestra-threads:${OT_TAG:-local}
     depends_on:
       events-engine:
         condition: service_healthy
@@ -270,8 +291,7 @@ services:
 
   telegram-mcp:
     build: .
-    image: orchestra-threads:local
-    container_name: telegram-mcp
+    image: orchestra-threads:${OT_TAG:-local}
     networks:
       - default
     environment:
@@ -327,7 +347,7 @@ services:
 
   test:
     build: .
-    image: orchestra-threads:local
+    image: orchestra-threads:${OT_TAG:-local}
     depends_on:
       postgres:
         condition: service_healthy
