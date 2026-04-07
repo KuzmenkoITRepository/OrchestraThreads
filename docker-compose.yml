@@ -32,50 +32,6 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
-  langfuse-postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: ${LANGFUSE_DB_NAME:-langfuse}
-      POSTGRES_USER: ${LANGFUSE_DB_USER:-langfuse}
-      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-langfuse}
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 5s
-    restart: unless-stopped
-    volumes:
-      - langfuse-postgres-data:/var/lib/postgresql/data
-
-  langfuse:
-    image: langfuse/langfuse:2
-    depends_on:
-      langfuse-postgres:
-        condition: service_healthy
-    ports:
-      - "${OT_PORT_LANGFUSE:-3000}:3000"
-    environment:
-      DATABASE_URL: postgresql://${LANGFUSE_DB_USER:-langfuse}:${LANGFUSE_DB_PASSWORD:-langfuse}@langfuse-postgres:5432/${LANGFUSE_DB_NAME:-langfuse}
-      NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
-      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-changeme-generate-a-secure-secret}
-      SALT: ${LANGFUSE_SALT:-changeme-generate-a-secure-salt}
-      TELEMETRY_ENABLED: ${LANGFUSE_TELEMETRY_ENABLED:-false}
-    healthcheck:
-      test:
-        - CMD
-        - wget
-        - --spider
-        - --quiet
-        - http://localhost:3000/api/public/health
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
-
   orchestra-threads:
     build: .
     image: orchestra-threads:${OT_TAG:-local}
@@ -103,6 +59,36 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  orchestra-memory:
+    build: .
+    image: orchestra-threads:${OT_TAG:-local}
+    user: root
+    ports:
+      - "${OT_PORT_MEMORY:-8793}:8793"
+    environment:
+      PYTHONPATH: /app/src
+      ORCHESTRA_MEMORY_HOST: 0.0.0.0
+      ORCHESTRA_MEMORY_PORT: 8793
+      ORCHESTRA_MEMORY_STORAGE_PATH: /var/lib/orchestra_memory/palace
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - orchestra-memory-data:/var/lib/orchestra_memory
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8793/healthz').status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command:
+      - python
+      - -m
+      - core.orchestra_memory.service_main
+    restart: unless-stopped
+
   orchestra-agents:
     build: .
     image: orchestra-threads:${OT_TAG:-local}
@@ -123,6 +109,13 @@ services:
     volumes:
       - .:${PWD}
       - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      orchestra-threads:
+        condition: service_healthy
+      orchestra-memory:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     healthcheck:
       test:
         - CMD
@@ -409,14 +402,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      langfuse:
+      orchestra-memory:
         condition: service_healthy
     environment:
       PYTHONPATH: /app/src
       ORCHESTRA_THREADS_TEST_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
-      LANGFUSE_BASE_URL: http://langfuse:3000
     command:
       - python
       - -m
@@ -435,6 +425,8 @@ services:
       - core.orchestra_agents.tests.test_sgr_internal_tools
       - core.orchestra_agents.tests.test_sgr_status_and_config
       - core.orchestra_agents.tests.test_service
+      - core.orchestra_memory.tests.test_memory_service
+      - core.orchestra_memory.tests.test_memory_mcp_server
       - core.telegram_bot_listener.tests.test_service_integration
       - telegram_bot_mcp.tests.test_mcp_server
       - core.scheduler_cron.tests.test_config
@@ -453,4 +445,4 @@ services:
 
 volumes:
   postgres-data:
-  langfuse-postgres-data:
+  orchestra-memory-data:
