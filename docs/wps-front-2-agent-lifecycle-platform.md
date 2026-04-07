@@ -2,7 +2,7 @@
 
 ## Front mission
 
-**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
+**Historical note:** legacy proxy routing has been replaced by `omniroute` + `wet`.
 
 This front reduces active WPS debt in the non-thread `orchestra_agents`
 platform surface: manifests, registry, lifecycle routes, runtime contract, and

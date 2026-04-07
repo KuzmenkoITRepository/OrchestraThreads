@@ -2,7 +2,7 @@
 
 ## Overview
 
-OrchestraThreads uses **OmniRoute** + **WET** for LLM inference routing. This replaces the deprecated `llm-proxy` service.
+OrchestraThreads uses **OmniRoute** + **WET** for LLM inference routing.
 
 - **OmniRoute**: Provider management, OAuth, API key storage, model routing
 - **WET**: OpenAI-compatible proxy that routes requests through OmniRoute
@@ -55,8 +55,8 @@ In your agent's `manifest.yaml`:
 ```yaml
 runtime:
   env:
-    LLM_PROXY_URL: http://orchestra-wet:8100
-    LLM_PROXY_ENABLED: "true"
+    OMNIROUTE_URL: http://orchestra-omniroute:20128
+    OMNIROUTE_API_KEY: ${OMNIROUTE_API_KEY}
 ```
 
 ### Model Selection
@@ -167,17 +167,18 @@ orchestra-wet:
     WET_UPSTREAM: http://orchestra-omniroute:20129
 ```
 
-## Migration from llm-proxy
+## Migration to OmniRoute defaults
 
-If migrating from the old `llm-proxy`:
+If updating existing agents:
 
 1. Update agent manifests:
    ```yaml
-   # Old
-   LLM_PROXY_URL: http://orchestra-wet:8100
+   # Previous runtime contract
+   WET-compatible endpoint via legacy naming
 
-   # New
-   LLM_PROXY_URL: http://orchestra-wet:8100
+   # Current runtime contract
+   OMNIROUTE_URL: http://orchestra-omniroute:20128
+   OMNIROUTE_API_KEY: ${OMNIROUTE_API_KEY}
    ```
 
 2. Configure providers in OmniRoute UI
