@@ -24,3 +24,5 @@ sessions/
 .shared_codex/
 .codex
 .venv/
+.omniroute/
+docker/opencode-bin/

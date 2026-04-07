@@ -1,0 +1,53 @@
+slug: opencode-example
+display_name: Opencode Example
+status: active
+
+agent:
+  working_dir: /workspace/agents/opencode-example
+  http_endpoint: http://{container_name}:8787
+  system_prompt_file: system_prompt.md
+
+runtime:
+  driver: docker
+  image: orchestra-opencode-runtime:latest
+  command:
+    - python
+    - -m
+    - agent_runtime.main
+  mounts:
+    - type: bind
+      source: ../../
+      target: /workspace
+      mode: rw
+  env:
+    AGENT_HTTP_HOST: 0.0.0.0
+    AGENT_HTTP_PORT: "8787"
+    OPENCODE_RUNTIME_STATE_ROOT: /tmp/opencode-runtime/opencode-example
+    PYTHONPATH: /workspace/src:/workspace/agents/opencode-example
+    ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
+    LLM_PROXY_URL: http://host.docker.internal:8100
+    LOG_LEVEL: INFO
+  env_passthrough:
+    - ORCHESTRA_THREADS_URL
+    - LLM_PROXY_URL
+    - OMNIROUTE_API_KEY
+    - OPENCODE_RUNTIME_STATE_ROOT
+    - LOG_LEVEL
+
+backend:
+  type: opencode_omo
+  config:
+    model: cx/gpt-5.4-mini
+    opencode_serve_port: 4096
+    dispatch_timeout_seconds: 120
+    startup_timeout_seconds: 20
+    mcp_servers:
+      - name: orchestra_threads
+        command: python
+        args:
+          - -m
+          - core.orchestra_thread.mcp_server
+        env:
+          ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
+          ORCHESTRA_THREADS_AGENT_SLUG: opencode-example
+          PYTHONPATH: /workspace/src:/workspace/agents/opencode-example

@@ -120,6 +120,20 @@ def _assert_build_commands(commands: list[list[str]], root: Path) -> None:
     assert run_cmd[:3] == ["docker", "run", "-d"]
 
 
+def _assert_build_commands_for_image(
+    commands: list[list[str]],
+    root: Path,
+    dockerfile_name: str,
+) -> None:
+    inspect_cmd = commands[0]
+    build_cmd = commands[1]
+    run_cmd = commands[2]
+    assert inspect_cmd[:3] == ["docker", "image", "inspect"]
+    assert build_cmd[:2] == ["docker", "build"]
+    assert str(root / dockerfile_name) in build_cmd
+    assert run_cmd[:3] == ["docker", "run", "-d"]
+
+
 class DockerDriverTests(unittest.TestCase):
     def test_build_run_cmd_env_mounts(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -173,6 +187,33 @@ class DockerDriverTests(unittest.TestCase):
             result, commands, root = self._run_build_scenario(tmpdir)
             self.assertTrue(result["exists"])
             _assert_build_commands(commands, root)
+
+    def test_start_builds_missing_local_opencode_image(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            agents_root = root / "agents"
+            agents_root.mkdir()
+            (root / "Dockerfile.opencode_runtime").write_text("FROM scratch\n", encoding="utf-8")
+            manifest = _create_manifest(agents_root, image="orchestra-opencode-runtime:latest")
+            driver = DockerDriver(manifests_root=agents_root, build_context_root=root)
+            recorder = _DockerRunSideEffect()
+
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(driver, "_container_exists", return_value=False))
+                stack.enter_context(
+                    patch.object(
+                        driver,
+                        "status",
+                        return_value={"exists": True, "running": True, "healthy": False},
+                    )
+                )
+                stack.enter_context(
+                    patch("core.orchestra_agents.docker_driver._run", side_effect=recorder)
+                )
+                result = driver.start(manifest)
+
+            self.assertTrue(result["exists"])
+            _assert_build_commands_for_image(recorder.commands, root, "Dockerfile.opencode_runtime")
 
     def _build_driver_case(self, root: Path) -> tuple[DockerDriver, AgentManifest]:
         agents_root = root / "agents"

@@ -19,6 +19,7 @@ _LOCAL_RUNTIME_IMAGE_DOCKERFILES = MappingProxyType(
     {
         "orchestra-agent-runtime:latest": "Dockerfile.agent_runtime",
         "orchestra-agent-mux-runtime:latest": "Dockerfile.agent_mux_runtime",
+        "orchestra-opencode-runtime:latest": "Dockerfile.opencode_runtime",
     }
 )
 

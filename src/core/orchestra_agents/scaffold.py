@@ -89,7 +89,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--template",
         default=DEFAULT_TEMPLATE_NAME,
-        choices=["agent", "agent_mux"],
+        choices=["agent", "agent_mux", "opencode"],
         help="Template root under src/core/orchestra_agents/templates.",
     )
     parser.add_argument(
