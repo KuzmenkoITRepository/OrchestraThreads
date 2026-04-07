@@ -62,7 +62,27 @@ def _build_backend(
                     "ORCHESTRA_THREADS_ACTIVE_CONTEXT_PATH": "{active_context_path}",
                     "PYTHONPATH": "{pythonpath}",
                 },
-            }
+            },
+            {
+                "name": "orchestra_memory",
+                "command": "python",
+                "args": ["-m", "core.orchestra_memory.mcp_server"],
+                "cwd": "{working_dir}",
+                "startup_timeout_sec": 15,
+                "required": False,
+                "enabled": True,
+                "enabled_tools": [
+                    "memory_remember",
+                    "memory_search",
+                    "memory_delete",
+                    "memory_clear",
+                ],
+                "env": {
+                    "ORCHESTRA_AGENT_SLUG": "{agent_slug}",
+                    "ORCHESTRA_MEMORY_URL": "http://127.0.0.1:8793",
+                    "PYTHONPATH": "{pythonpath}",
+                },
+            },
         ]
     return fixture.backend_class(
         agent_slug="generic_worker",

@@ -429,6 +429,25 @@ class SchedulerEngineTests(unittest.TestCase):
         self.assertIsNone(engine._scheduler)
         self.assertIsNone(engine._sync_task)
 
+    def test_stop_waits_for_running_jobs_to_finish(self) -> None:
+        store = FakeStore([])
+        executor = FakeExecutor()
+        engine = SchedulerEngine(store, "postgres://unused", executor)
+        fake_scheduler = FakeScheduler()
+        engine._scheduler = fake_scheduler
+
+        async def finish_job() -> None:
+            await asyncio.sleep(0.01)
+            engine._running_jobs.pop("job-1", None)
+
+        engine._running_jobs["job-1"] = "run-1"
+        self.loop.create_task(finish_job())
+
+        self.run_async(engine.stop())
+
+        self.assertEqual(fake_scheduler.shutdown_calls, [True])
+        self.assertEqual(engine._running_jobs, {})
+
 
 if __name__ == "__main__":
     unittest.main()

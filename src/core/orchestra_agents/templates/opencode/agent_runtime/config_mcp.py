@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
-from core.orchestra_agents.templates.opencode.agent_runtime.config_threads import (
-    build_threads_block,
+from core.orchestra_agents.templates.opencode.agent_runtime.config_mcp_render import (
+    render_server_config,
 )
 
 
@@ -14,24 +14,27 @@ def build_mcp_block(
     agent_slug: str,
     working_dir: str,
 ) -> dict[str, Any]:
-    server = _find_threads_server(cfg)
-    if server is None:
-        return {}
-    return {"orchestra_threads": build_threads_block(config_dir, server, agent_slug, working_dir)}
+    servers = _mcp_servers(cfg)
+    rendered: dict[str, Any] = {}
+    for server in servers:
+        name = str(server.get("name") or "").strip()
+        if not name:
+            continue
+        rendered[name] = render_server_config(
+            config_dir=config_dir,
+            server=server,
+            agent_slug=agent_slug,
+            working_dir=working_dir,
+        )
+    return rendered
 
 
-def _find_threads_server(cfg: dict[str, Any]) -> dict[str, Any] | None:
+def _mcp_servers(cfg: dict[str, Any]) -> list[dict[str, Any]]:
     servers = cfg.get("mcp_servers")
     if not isinstance(servers, list):
-        return None
+        return []
+    normalized: list[dict[str, Any]] = []
     for server_item in servers:
-        if _is_threads_server(server_item):
-            return cast(dict[str, Any], server_item)
-    return None
-
-
-def _is_threads_server(server_item: object) -> bool:
-    if not isinstance(server_item, dict):
-        return False
-    server_name = str(server_item.get("name") or "").strip()
-    return server_name == "orchestra_threads"
+        if isinstance(server_item, dict):
+            normalized.append(server_item)
+    return normalized

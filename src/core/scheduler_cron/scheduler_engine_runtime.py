@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable, Coroutine
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
 
@@ -20,6 +21,9 @@ from core.scheduler_cron.scheduler_engine_support import (
 
 logger = logging.getLogger(__name__)
 SYNC_INTERVAL_SECONDS = 60
+STOP_WAIT_TIMEOUT_SECONDS = 5.0
+STOP_WAIT_POLL_SECONDS = 0.05
+ZERO_SECONDS = 0
 
 
 class _SchedulerStoreProtocol(Protocol):
@@ -64,6 +68,13 @@ class _ApschedulerProtocol(Protocol):
     def resume_job(self, job_id: str) -> None: ...
 
 
+@dataclass(frozen=True)
+class _SuccessPayload:
+    job_id: str
+    started_at: datetime
+    result: dict[str, object]
+
+
 class SchedulerEngine:
     def __init__(
         self,
@@ -89,6 +100,7 @@ class SchedulerEngine:
 
     async def stop(self) -> None:
         await self._stop_sync_task()
+        await self._wait_running_jobs()
         scheduler = self._scheduler
         if scheduler is None:
             return
@@ -117,6 +129,11 @@ class SchedulerEngine:
             return
         finally:
             self._sync_task = None
+
+    async def _wait_running_jobs(self) -> None:
+        deadline = asyncio.get_running_loop().time() + STOP_WAIT_TIMEOUT_SECONDS
+        while self._running_jobs and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(STOP_WAIT_POLL_SECONDS)
 
     async def _sync_loop(self) -> None:
         while True:
@@ -176,23 +193,61 @@ class SchedulerEngine:
         result: dict[str, object],
         auto_delete: bool,
     ) -> None:
+        job = await self._store.get_job_by_id(job_id)
+        if job is None:
+            await self._mark_run_success(run_id, started_at, result)
+            return
+        await self._finish_successful_job(
+            run_id=run_id,
+            job=job,
+            success=_SuccessPayload(
+                job_id=job_id,
+                started_at=started_at,
+                result=result,
+            ),
+            auto_delete=auto_delete,
+        )
+
+    async def _finish_successful_job(
+        self,
+        *,
+        run_id: str,
+        job: dict[str, object],
+        success: _SuccessPayload,
+        auto_delete: bool,
+    ) -> None:
+        await self._update_job_success(job, success.started_at)
+        await self._mark_run_success(run_id, success.started_at, success.result)
+        if auto_delete:
+            await self._delete_completed_job(success.job_id, str(job["name"]))
+
+    async def _update_job_success(
+        self,
+        job: dict[str, object],
+        started_at: datetime,
+    ) -> None:
+        await self._store.update_job(
+            str(job["name"]),
+            last_run_at=started_at,
+            run_count=coerce_int(job.get("run_count")) + 1,
+        )
+
+    async def _mark_run_success(
+        self,
+        run_id: str,
+        started_at: datetime,
+        result: dict[str, object],
+    ) -> None:
         await self._store.complete_run(
             run_id,
             status=SUCCESS,
             result=result,
             duration_ms=duration_ms(started_at),
         )
-        job = await self._store.get_job_by_id(job_id)
-        if job is None:
-            return
-        await self._store.update_job(
-            str(job["name"]),
-            last_run_at=started_at,
-            run_count=coerce_int(job.get("run_count")) + 1,
-        )
-        if auto_delete:
-            await self.remove_job(job_id)
-            await self._store.delete_job(str(job["name"]))
+
+    async def _delete_completed_job(self, job_id: str, job_name: str) -> None:
+        await self.remove_job(job_id)
+        await self._store.delete_job(job_name)
 
     async def _complete_failure(
         self,

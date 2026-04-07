@@ -38,6 +38,9 @@ def _assert_direct_capture(
         'model_provider = "omniroute"',
         "[mcp_servers.orchestra_threads]",
         "ORCHESTRA_THREADS_ACTIVE_CONTEXT_PATH",
+        "[mcp_servers.orchestra_memory]",
+        "ORCHESTRA_AGENT_SLUG",
+        "ORCHESTRA_MEMORY_URL",
     ):
         test_case.assertIn(expected_text, codex_config)
 

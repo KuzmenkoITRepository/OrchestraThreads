@@ -165,10 +165,20 @@ class TestSchedulerCronServiceE2E(unittest.TestCase):  # noqa: WPS214
         self.assertEqual(run["status"], "success")
         self.assertIsNotNone(run["finished_at"])
 
-        job = await store.get_job_by_name(job_name)
-        if job is not None:
-            run_count = int(job.get("run_count") or 0)
-            self.assertGreaterEqual(run_count, 1)
+        await self._assert_run_count(store, job_name)
+
+    async def _assert_run_count(self, store: Any, job_name: str) -> None:
+        elapsed = 0.0
+        run_count = 0
+        while elapsed < _MAX_WAIT_SECONDS:
+            job = await store.get_job_by_name(job_name)
+            if job is not None:
+                run_count = int(job.get("run_count") or 0)
+                if run_count >= 1:
+                    break
+            await asyncio.sleep(_POLL_INTERVAL)
+            elapsed += _POLL_INTERVAL
+        self.assertGreaterEqual(run_count, 1)
 
     async def _drop_schema(self) -> None:
         import asyncpg  # noqa: WPS433
