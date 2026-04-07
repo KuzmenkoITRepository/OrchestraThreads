@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
@@ -28,7 +27,7 @@ class TaskStoreTasks:
         artifacts: Sequence[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         assert self.pool is not None
-        payload = json.dumps(list(artifacts or []))
+        artifacts_list = list(artifacts or [])
         blocked_values = [str(value) for value in blocked_by or []]
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -67,7 +66,7 @@ class TaskStoreTasks:
                 acceptance_criteria,
                 linked_thread_id,
                 blocked_values,
-                payload,
+                artifacts_list,
             )
         return row_to_dict(row) or {}
 
@@ -166,7 +165,6 @@ class TaskStoreTasks:
 
     async def add_artifact(self, task_id: str, artifact: dict[str, Any]) -> bool:
         assert self.pool is not None
-        artifact_payload = json.dumps(artifact)
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -177,6 +175,6 @@ class TaskStoreTasks:
                 RETURNING 1
                 """,
                 task_id,
-                artifact_payload,
+                artifact,
             )
         return row is not None

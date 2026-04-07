@@ -7,7 +7,6 @@ import unittest
 import uuid
 from typing import Any, cast
 
-from core.task_registry import mcp_tools as mcp_tools_module  # type: ignore[reportMissingImports]
 from core.task_registry.mcp_tools import TaskRegistryTools  # type: ignore[reportMissingImports]
 from core.task_registry.store import TaskStore  # type: ignore[reportMissingImports]
 
@@ -35,24 +34,21 @@ def _parse_content(result: JsonDict) -> JsonDict:
     return parsed
 
 
+def _artifact_from_payload(payload: JsonDict) -> JsonDict:
+    artifacts = cast(list[object], payload["artifacts"])
+    artifact = artifacts[-1]
+    if not isinstance(artifact, dict):
+        raise AssertionError(f"Expected artifact object, got: {type(artifact).__name__}")
+    return cast(JsonDict, artifact)
+
+
 class TestTaskRegistryIntegration(unittest.TestCase):  # noqa: WPS214
     loop: asyncio.AbstractEventLoop
     store: TaskStore
     tools: TaskRegistryTools
-    original_text_result: Any
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.original_text_result = mcp_tools_module._text_result
-
-        def _patched_text_result(payload: JsonDict) -> JsonDict:  # noqa: WPS430
-            return {
-                "content": [
-                    {"type": "text", "text": json.dumps(payload, ensure_ascii=False, default=str)},
-                ],
-            }
-
-        mcp_tools_module._text_result = _patched_text_result  # type: ignore[assignment]
         cls.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(cls.loop)
         cls.store = TaskStore(_default_database_url())
@@ -62,7 +58,6 @@ class TestTaskRegistryIntegration(unittest.TestCase):  # noqa: WPS214
     @classmethod
     def tearDownClass(cls) -> None:
         cls.loop.run_until_complete(cls.store.close())
-        mcp_tools_module._text_result = cls.original_text_result  # type: ignore[assignment]
         cls.loop.close()
         asyncio.set_event_loop(None)
 
@@ -122,6 +117,25 @@ class TestTaskRegistryIntegration(unittest.TestCase):  # noqa: WPS214
         )
         self.assertEqual(payload["title"], title)
         self.assertEqual(payload["created_by"], CREATED_BY)
+
+    def test_task_create_with_artifacts(self) -> None:
+        payload = self._run(
+            self._create_task(
+                title=f"create-artifacts-{uuid.uuid4().hex}",
+                description="Create tool artifact test",
+                created_by=CREATED_BY,
+                artifacts=[
+                    {
+                        "url": "file:///tmp/create-output.txt",
+                        "type": "file",
+                        "label": "create-output",
+                    },
+                ],
+            ),
+        )
+        artifact = _artifact_from_payload(payload)
+        self.assertEqual(artifact["url"], "file:///tmp/create-output.txt")
+        self.assertEqual(artifact["type"], "file")
 
     def test_task_get(self) -> None:
         created = self._run(self._create_sample_task("get"))
@@ -239,10 +253,7 @@ class TestTaskRegistryIntegration(unittest.TestCase):  # noqa: WPS214
         )
         self.assertTrue(ok["ok"])
         payload = _parse_content(self._run(self.tools.dispatch("task_get", {"task_id": task_id})))
-        artifacts = cast(list[JsonDict], payload["artifacts"])
-        artifact = artifacts[-1]
-        if isinstance(artifact, str):
-            artifact = cast(JsonDict, json.loads(artifact))
+        artifact = _artifact_from_payload(payload)
         self.assertEqual(artifact["url"], "file:///tmp/output.txt")
 
     def test_task_link_thread(self) -> None:
@@ -258,6 +269,17 @@ class TestTaskRegistryIntegration(unittest.TestCase):  # noqa: WPS214
         )
         self.assertTrue(ok["ok"])
         payload = _parse_content(self._run(self.tools.dispatch("task_get", {"task_id": task_id})))
+        self.assertEqual(payload["linked_thread_id"], thread_id)
+
+    def test_task_get_serializes_uuid_fields(self) -> None:
+        created = self._run(self._create_sample_task("uuid"))
+        task_id = created["id"]
+        thread_id = str(uuid.uuid4())
+        self._run(
+            self.tools.dispatch("task_link_thread", {"task_id": task_id, "thread_id": thread_id})
+        )
+        payload = _parse_content(self._run(self.tools.dispatch("task_get", {"task_id": task_id})))
+        self.assertEqual(str(uuid.UUID(payload["id"])), task_id)
         self.assertEqual(payload["linked_thread_id"], thread_id)
 
     def test_task_get_checklist(self) -> None:
