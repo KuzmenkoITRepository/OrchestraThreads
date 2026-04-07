@@ -6,8 +6,10 @@ from collections import deque
 from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from agents.sgr.agent_runtime.chat_history import ChatTurn
+if TYPE_CHECKING:
+    from agents.sgr.agent_runtime.chat_history import ChatTurn
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,8 @@ def load_file_payload(fpath: Path) -> list[object] | None:
 
 
 def build_session(raw: Iterable[object], max_turns: int) -> deque[ChatTurn]:
+    from agents.sgr.agent_runtime.chat_history import ChatTurn
+
     session: deque[ChatTurn] = deque(maxlen=max_turns)
     entries = list(raw)[-max_turns:]
     for entry in entries:
