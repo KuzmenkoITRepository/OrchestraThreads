@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
+from agents.sgr.agent_runtime import internal_tools as _internal_tools
 from agents.sgr.agent_runtime import support as _support
+from agents.sgr.agent_runtime import tool_result as _tool_result
+from agents.sgr.agent_runtime.sgr_tools import SGRInternalTools
 from core.orchestra_agents import agent_mux_runtime as _mux_rt
 
 if TYPE_CHECKING:
     from agents.sgr.agent_runtime.backend import SGRMinimaxBackend
+
+logger = logging.getLogger(__name__)
 
 
 async def process_tool_calls(
@@ -41,21 +47,41 @@ async def execute_single(
 ) -> _support.ToolExecutionOutcome:
     """Execute a single tool call via MCP server."""
     parsed = _support.parse_tool_call(tool_call)
-    mcp_result = await backend._thread_ops.ensure_mcp_server().handle_tools_call(
-        name=parsed.tool_name,
-        arguments=parsed.arguments,
-    )
-    result_text = _flatten_content(mcp_result.get("content"))
-    if not result_text:
-        import json
-
-        result_text = json.dumps(mcp_result, ensure_ascii=False)
-    structured = mcp_result.get("structuredContent")
-    if not isinstance(structured, dict):
-        structured = {}
+    logger.info("Executing SGR tool call %s", parsed.tool_name)
+    if parsed.tool_name in SGRInternalTools.names:
+        return await _internal_tools.execute_internal_tool(backend, parsed)
+    try:
+        mcp_result = await _execute_mcp_tool(backend, parsed)
+    except Exception as exc:
+        logger.error("SGR tool call failed for %s: %s", parsed.tool_name, exc)
+        return _build_error_outcome(parsed.tool_name, exc)
+    result_text = _tool_result.result_text(mcp_result)
+    structured = _tool_result.structured_content(mcp_result)
     if mcp_result.get("isError") or not structured.get("ok", True):
         return _support.ToolExecutionOutcome(tool_name=parsed.tool_name, result_text=result_text)
     return _build_tool_outcome(parsed, structured, result_text)
+
+
+async def _execute_mcp_tool(
+    backend: SGRMinimaxBackend,
+    parsed: _support.ParsedToolCall,
+) -> dict[str, Any]:
+    return await backend._thread_ops.ensure_mcp_server().handle_tools_call(
+        name=parsed.tool_name,
+        arguments=parsed.arguments,
+    )
+
+
+def _build_error_outcome(
+    tool_name: str,
+    error: Exception,
+) -> _support.ToolExecutionOutcome:
+    error_text = f"Error: {error}"
+    return _support.ToolExecutionOutcome(
+        tool_name=tool_name,
+        result_text=error_text,
+        error=str(error),
+    )
 
 
 def _build_tool_outcome(
@@ -83,32 +109,12 @@ def _build_tool_outcome(
     return outcome
 
 
-def _flatten_content(content: Any) -> str:
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, dict):
-                text = item.get("text")
-                if text is not None:
-                    parts.append(str(text))
-                    continue
-            parts.append(str(item))
-        return "".join(parts)
-    if isinstance(content, dict):
-        text = content.get("text")
-        if text is not None:
-            return str(text)
-    return str(content)
-
-
 def _apply_execution(
     execution: _support.ToolExecutionOutcome,
     outcome: _support.AgentTurnOutcome,
 ) -> None:
+    if execution.error:
+        outcome.tool_errors += 1
     if execution.emitted_message:
         outcome.messages_sent += 1
         outcome.last_reply_preview = execution.message_preview

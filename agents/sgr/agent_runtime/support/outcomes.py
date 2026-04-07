@@ -18,6 +18,7 @@ class ToolExecutionOutcome:
     published_status: str | None = None
     message_preview: str | None = None
     route: str | None = None
+    error: str | None = None
 
 
 @dataclass
@@ -26,12 +27,15 @@ class AgentTurnOutcome:
     tool_calls: int = 0
     messages_sent: int = 0
     statuses_published: int = 0
+    tool_errors: int = 0
     used_tools: list[str] = field(default_factory=list)
     direct_text_ignored: bool = False
     ignored_text_preview: str | None = None
     last_reply_preview: str | None = None
     last_status_preview: str | None = None
     last_published_status: str | None = None
+    no_action_warning: bool = False
+    event_metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def action_emitted(self) -> bool:
@@ -81,9 +85,9 @@ def handle_direct_text_retry(
         {
             "role": "system",
             "content": (
-                "Direct assistant text is never delivered to the peer. "
-                "Emit the next action only through OrchestraThreads MCP tools. "
-                "Use thread_send for any reply and thread_status for progress or lifecycle updates."
+                "Direct assistant text helps you think, but it will not be forwarded to the peer. "
+                "If you want the peer to receive something, use OrchestraThreads MCP tools. "
+                "Use thread_send for replies and thread_status for progress or lifecycle updates."
             ),
         }
     )
