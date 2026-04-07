@@ -74,6 +74,24 @@ backend:
           ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
           ORCHESTRA_THREADS_ACTIVE_CONTEXT_PATH: "{active_context_path}"
           PYTHONPATH: "{pythonpath}"
+      - name: orchestra_memory
+        command: python
+        args:
+          - -m
+          - core.orchestra_memory.mcp_server
+        cwd: "{working_dir}"
+        startup_timeout_sec: 15
+        required: false
+        enabled: true
+        enabled_tools:
+          - memory_remember
+          - memory_search
+          - memory_delete
+          - memory_clear
+        env:
+          ORCHESTRA_AGENT_SLUG: "{agent_slug}"
+          ORCHESTRA_MEMORY_URL: http://orchestra-memory:8793
+          PYTHONPATH: "{pythonpath}"
       - name: telegram
         command: python
         args:
