@@ -74,6 +74,27 @@ class AgentMuxTemplateDispatchTests(AgentMuxTemplateBase):
         capture = _read_capture(self.fixture.capture_path)
         self.assertNotIn("[mcp_servers.", cast(str, capture["codex_config"]))
 
+    async def test_memory_mcp_server_rendered_into_codex_config(self) -> None:
+        os.environ["FAKE_AGENT_MUX_MODE"] = "tool_call"
+        backend = cast(
+            Any,
+            await _start_backend(
+                self,
+                self.fixture,
+                include_mcp_server=True,
+            ),
+        )
+        await _dispatch_and_assert_completed(
+            self,
+            backend,
+            _delivery(),
+        )
+        capture = _read_capture(self.fixture.capture_path)
+        codex_config = cast(str, capture["codex_config"])
+        self.assertIn("[mcp_servers.orchestra_memory]", codex_config)
+        self.assertIn("ORCHESTRA_AGENT_SLUG", codex_config)
+        self.assertIn("ORCHESTRA_MEMORY_URL", codex_config)
+
     async def test_sanitize_reply_text_strips_think_blocks(self) -> None:
         backend_module = cast(Any, self.fixture.backend_module)
         self.assertEqual(
