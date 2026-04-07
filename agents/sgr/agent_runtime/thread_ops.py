@@ -106,13 +106,15 @@ class SGRThreadOps:
             self._heartbeat_task.cancel()
             try:
                 await self._heartbeat_task
-            except asyncio.CancelledError:
-                return
+            except asyncio.CancelledError:  # noqa: WPS420
+                pass  # noqa: WPS420
             finally:
                 self._heartbeat_task = None
         if self.mcp_server is not None:
             await self.mcp_server.close()
             self.mcp_server = None
+        if self.thread_client is not None:
+            await self.thread_client.close()
             self.thread_client = None
 
     async def _heartbeat_loop(self) -> None:

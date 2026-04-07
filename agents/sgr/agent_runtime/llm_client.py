@@ -20,8 +20,13 @@ def _chat_completions_url(route_policy: str) -> str:
 
 
 def _build_llm_proxy_openai_base_url(route_policy: str) -> str:
-    _ = route_policy
-    return f"{os.getenv('LLM_PROXY_URL', 'http://orchestra-wet:8100').rstrip('/')}/v1"
+    base_url = os.getenv("LLM_PROXY_URL", "http://orchestra-wet:8100").rstrip("/")
+    normalized = str(route_policy or "").strip().lower()
+    if normalized == "minimax_only":
+        return f"{base_url}/minimax/v1"
+    if normalized in {"codex_only", "managed_auto", "fallback", "fallback_only"}:
+        return f"{base_url}/v1"
+    return f"{base_url}/v1"
 
 
 def _resolve_llm_proxy_api_key() -> str | None:
@@ -32,7 +37,7 @@ def _resolve_llm_proxy_api_key() -> str | None:
     return text or None
 
 
-def _openai_chat_payload_to_codex_response(
+def _openai_chat_payload_to_codex_response(  # noqa: WPS210,WPS234
     payload: dict[str, Any],
 ) -> tuple[str | None, str, list[dict[str, Any]]]:
     model = payload.get("model")
@@ -55,7 +60,9 @@ def _openai_chat_payload_to_codex_response(
     )
 
 
-def _tool_calls_to_openai(tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _tool_calls_to_openai(  # noqa: WPS221
+    tool_calls: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     return list(tool_calls)
 
 
