@@ -373,6 +373,9 @@ services:
       - core.orchestra_agents.tests.test_scaffold
       - core.orchestra_agents.tests.test_agent_mux_template
       - core.orchestra_agents.tests.test_sgr_example
+      - core.orchestra_agents.tests.test_sgr_wave1
+      - core.orchestra_agents.tests.test_sgr_internal_tools
+      - core.orchestra_agents.tests.test_sgr_status_and_config
       - core.orchestra_agents.tests.test_service
       - core.scheduler_cron.tests.test_config
       - core.scheduler_cron.tests.test_executor_helpers
