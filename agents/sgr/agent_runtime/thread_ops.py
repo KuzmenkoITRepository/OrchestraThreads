@@ -107,12 +107,16 @@ class SGRThreadOps:
             try:
                 await self._heartbeat_task
             except asyncio.CancelledError:
-                return
+                logger.debug("heartbeat task cancelled for %s", self.agent_slug)
             finally:
                 self._heartbeat_task = None
         if self.mcp_server is not None:
             await self.mcp_server.close()
             self.mcp_server = None
+            self.thread_client = None
+            return
+        if self.thread_client is not None:
+            await self.thread_client.close()
             self.thread_client = None
 
     async def _heartbeat_loop(self) -> None:
