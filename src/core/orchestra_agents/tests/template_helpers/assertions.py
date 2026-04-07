@@ -35,7 +35,7 @@ def _assert_direct_capture(
     )
     codex_config = cast(str, capture["codex_config"])
     for expected_text in (
-        'model_provider = "llm_proxy"',
+        'model_provider = "omniroute"',
         "[mcp_servers.orchestra_threads]",
         "ORCHESTRA_THREADS_ACTIVE_CONTEXT_PATH",
     ):

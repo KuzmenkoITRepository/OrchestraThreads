@@ -72,7 +72,7 @@ def _build_backend(
             "llm_proxy_url": f"http://127.0.0.1:{_free_port()}",
             "llm_proxy_api_key": "llm-proxy-key",
             "llm_route_policy": "codex_only",
-            "model": "gpt-5.4",
+            "model": "cx/gpt-5.1-codex-mini",
             "agent_mux_binary": str(fixture.agent_mux_binary),
             "state_root": str(fixture.root / "runtime_state"),
             "max_attempts": max_attempts,
