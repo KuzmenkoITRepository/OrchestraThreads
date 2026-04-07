@@ -14,12 +14,29 @@ x-agent-common: &agent-common
     - agents
 
 services:
+  vault:
+    image: hashicorp/vault:1.16
+    ports:
+      - "127.0.0.1:${OT_PORT_VAULT:-8200}:8200"
+    cap_add:
+      - IPC_LOCK
+    command:
+      - vault
+      - server
+      - -config=/vault/config/vault-config.hcl
+    volumes:
+      - ./deploy/vault/vault-config.hcl:/vault/config/vault-config.hcl:ro
+      - vault-data:/vault/file
+    profiles:
+      - vault
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: orchestra_threads
-      POSTGRES_USER: orchestra
-      POSTGRES_PASSWORD: orchestra
+      POSTGRES_DB: ${POSTGRES_DB:-orchestra_threads}
+      POSTGRES_USER: ${POSTGRES_USER:-orchestra}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orchestra}
     healthcheck:
       test:
         - CMD-SHELL
@@ -85,12 +102,19 @@ services:
     ports:
       - "${OT_PORT_THREADS:-8788}:8788"
     environment:
-      ORCHESTRA_THREADS_HOST: 0.0.0.0
-      ORCHESTRA_THREADS_PORT: 8788
-      ORCHESTRA_THREADS_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
-      ORCHESTRA_THREADS_DB_SCHEMA: public
-      ORCHESTRA_THREADS_DB_MIN_POOL_SIZE: 5
-      ORCHESTRA_THREADS_DB_MAX_POOL_SIZE: 20
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ORCHESTRA_THREADS_HOST: ${ORCHESTRA_THREADS_HOST:-0.0.0.0}
+      ORCHESTRA_THREADS_PORT: ${ORCHESTRA_THREADS_PORT:-8788}
+      ORCHESTRA_THREADS_DATABASE_URL: ${ORCHESTRA_THREADS_DATABASE_URL:-postgresql://orchestra:orchestra@postgres:5432/orchestra_threads}
+      ORCHESTRA_THREADS_DB_SCHEMA: ${ORCHESTRA_THREADS_DB_SCHEMA:-public}
+      ORCHESTRA_THREADS_DB_MIN_POOL_SIZE: ${ORCHESTRA_THREADS_DB_MIN_POOL_SIZE:-5}
+      ORCHESTRA_THREADS_DB_MAX_POOL_SIZE: ${ORCHESTRA_THREADS_DB_MAX_POOL_SIZE:-20}
+      ORCHESTRA_THREADS_DB_COMMAND_TIMEOUT_SECONDS: ${ORCHESTRA_THREADS_DB_COMMAND_TIMEOUT_SECONDS:-10}
+      ORCHESTRA_THREADS_AGENT_LEASE_SECONDS: ${ORCHESTRA_THREADS_AGENT_LEASE_SECONDS:-30}
+      ORCHESTRA_THREADS_DELIVERY_POLL_INTERVAL_SECONDS: ${ORCHESTRA_THREADS_DELIVERY_POLL_INTERVAL_SECONDS:-1}
+      ORCHESTRA_THREADS_INACTIVITY_TIMEOUT_SECONDS: ${ORCHESTRA_THREADS_INACTIVITY_TIMEOUT_SECONDS:-60}
+      ORCHESTRA_THREADS_RETRY_BASE_SECONDS: ${ORCHESTRA_THREADS_RETRY_BASE_SECONDS:-2}
+      ORCHESTRA_THREADS_RETRY_MAX_SECONDS: ${ORCHESTRA_THREADS_RETRY_MAX_SECONDS:-30}
     healthcheck:
       test:
         - CMD
@@ -110,10 +134,11 @@ services:
     ports:
       - "${OT_PORT_AGENTS:-8790}:8790"
     environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       PYTHONPATH: /app/src
       ORCHESTRA_AGENTS_HOST: 0.0.0.0
       ORCHESTRA_AGENTS_PORT: 8790
-      ORCHESTRA_AGENTS_MANIFESTS_DIR: ${PWD}/agents
+      ORCHESTRA_AGENTS_MANIFESTS_DIR: ${OT_WORKSPACE_DIR:-.}/agents
       ORCHESTRA_AGENTS_DOCKER_NETWORK: ${COMPOSE_PROJECT_NAME:-orchestrathreads}_default
       OMNIROUTE_API_KEY: ${OMNIROUTE_API_KEY:-}
       TELEGRAM_API_ID: ${TELEGRAM_API_ID}
@@ -121,7 +146,7 @@ services:
       TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING}
       TELEGRAM_CHAT_ID_IVAN: ${TELEGRAM_CHAT_ID_IVAN}
     volumes:
-      - .:${PWD}
+      - ${OT_WORKSPACE_DIR:-.}:${OT_WORKSPACE_MOUNT:-${PWD}}
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test:
@@ -150,7 +175,7 @@ services:
       HOSTNAME: 0.0.0.0
       INITIAL_PASSWORD: ${OMNIROUTE_INITIAL_PASSWORD:-CHANGEME}
     volumes:
-      - ./.omniroute/data:/app/data
+      - ${OT_OMNIROUTE_DATA_DIR:-./runtime_state/orchestrathreads/omniroute-data}:/app/data
     restart: unless-stopped
 
   orchestra-wet:
@@ -171,7 +196,7 @@ services:
       WET_OPENAI_UPSTREAM: http://orchestra-omniroute:20128
       WET_CODEX_UPSTREAM: http://orchestra-omniroute:20128
     volumes:
-      - ./.omniroute/wet:/root/.wet
+      - ${OT_OMNIROUTE_WET_DIR:-./runtime_state/orchestrathreads/omniroute-wet}:/root/.wet
     command: serve --host 0.0.0.0 --port 8100 --mode auto --upstream http://orchestra-omniroute:20128
     restart: unless-stopped
 
@@ -185,9 +210,9 @@ services:
       - "${OT_PORT_TASK_REGISTRY:-8791}:8791"
     environment:
       PYTHONPATH: /app/src
-      TASK_REGISTRY_HOST: 0.0.0.0
-      TASK_REGISTRY_PORT: 8791
-      TASK_REGISTRY_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
+      TASK_REGISTRY_HOST: ${TASK_REGISTRY_HOST:-0.0.0.0}
+      TASK_REGISTRY_PORT: ${TASK_REGISTRY_PORT:-8791}
+      TASK_REGISTRY_DATABASE_URL: ${TASK_REGISTRY_DATABASE_URL:-postgresql://orchestra:orchestra@postgres:5432/orchestra_threads}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     healthcheck:
       test:
@@ -215,10 +240,10 @@ services:
       - "${OT_PORT_SCHEDULER:-8792}:8792"
     environment:
       PYTHONPATH: /app/src
-      SCHEDULER_CRON_HOST: 0.0.0.0
-      SCHEDULER_CRON_PORT: 8792
-      SCHEDULER_CRON_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
-      SCHEDULER_CRON_DB_SCHEMA: public
+      SCHEDULER_CRON_HOST: ${SCHEDULER_CRON_HOST:-0.0.0.0}
+      SCHEDULER_CRON_PORT: ${SCHEDULER_CRON_PORT:-8792}
+      SCHEDULER_CRON_DATABASE_URL: ${SCHEDULER_CRON_DATABASE_URL:-postgresql://orchestra:orchestra@postgres:5432/orchestra_threads}
+      SCHEDULER_CRON_DB_SCHEMA: ${SCHEDULER_CRON_DB_SCHEMA:-public}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     healthcheck:
       test:
@@ -288,7 +313,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,postgres,langfuse-postgres,langfuse
     volumes:
-      - ./sessions:/app/sessions
+      - ${OT_SESSIONS_DIR:-./runtime_state/orchestrathreads/sessions}:/app/sessions
     command:
       - python
       - -m
@@ -398,5 +423,6 @@ services:
       - test
 
 volumes:
+  vault-data:
   postgres-data:
   langfuse-postgres-data:
