@@ -66,11 +66,16 @@ def success_result(
         "tool_calls": outcome.tool_calls,
         "messages_sent": outcome.messages_sent,
         "statuses_published": outcome.statuses_published,
+        "tool_errors": outcome.tool_errors,
         "used_tools": list(outcome.used_tools[-_MAX_TOOL_ACTION_LOG:]),
         "direct_text_ignored": outcome.direct_text_ignored,
     }
+    if outcome.event_metadata:
+        details["event_metadata"] = dict(outcome.event_metadata)
     if outcome.last_published_status:
         details["published_status"] = outcome.last_published_status
+    if outcome.no_action_warning:
+        details["no_action_warning"] = True
     if not outcome.action_emitted:
         details["reason"] = "no_tool_action_emitted"
     return _rt.EventDeliveryResult(

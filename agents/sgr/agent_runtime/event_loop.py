@@ -109,6 +109,11 @@ def _build_messages(
     )
     if notes:
         messages.append({"role": "system", "content": notes})
+    memory_block = _support.context_memory_block(
+        backend._context_memory.recent_entries(primary_event.thread_id)
+    )
+    if memory_block:
+        messages.append({"role": "system", "content": memory_block})
     messages.append(
         {
             "role": "user",

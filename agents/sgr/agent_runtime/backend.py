@@ -3,15 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import os
-from typing import Any
 
-from agents.sgr.agent_runtime import config_builder as _cfg
 from agents.sgr.agent_runtime import event_routing as _routing
-from agents.sgr.agent_runtime import llm_client as _llm_mod
-from agents.sgr.agent_runtime import status_tracking as _status_mod
-from agents.sgr.agent_runtime import thread_ops as _thread_mod
-from agents.sgr.agent_runtime import tool_definitions as _tool_defs
 from core.orchestra_agents import runtime as _rt
 from core.orchestra_thread import active_context as _active_ctx
 
@@ -25,7 +18,7 @@ class SGRMinimaxBackend(_rt.BaseAgentBackend):
         agent_slug: str,
         backend_type: str,
         working_dir: str,
-        config: dict[str, Any] | None = None,
+        config: dict[str, object] | None = None,
         system_prompt: str = "",
     ) -> None:
         super().__init__(
@@ -34,6 +27,13 @@ class SGRMinimaxBackend(_rt.BaseAgentBackend):
             working_dir=working_dir,
             config=config,
         )
+        from agents.sgr.agent_runtime import config_builder as _cfg
+        from agents.sgr.agent_runtime import context_memory as _memory
+        from agents.sgr.agent_runtime import llm_client as _llm_mod
+        from agents.sgr.agent_runtime import status_tracking as _status_mod
+        from agents.sgr.agent_runtime import thread_ops as _thread_mod
+        from agents.sgr.agent_runtime import tool_definitions as _tool_defs
+
         self.system_prompt = str(system_prompt or "").strip()
         raw = dict(config or {})
         self.llm_config = _cfg.build_llm_config(raw)
@@ -55,6 +55,7 @@ class SGRMinimaxBackend(_rt.BaseAgentBackend):
         )
         self._openai_tools = _tool_defs.build_sgr_openai_tools()
         self._status = _status_mod.SGRBackendStatus()
+        self._context_memory = _memory.ContextMemory()
         self._turn_lock = asyncio.Lock()
         self.handled_event_ids: set[str] = set()
         self.handled_event_order: list[str] = []
@@ -67,6 +68,7 @@ class SGRMinimaxBackend(_rt.BaseAgentBackend):
     async def on_shutdown(self) -> None:
         await self._thread_ops.shutdown()
         await self._llm.close()
+        self._context_memory.clear()
         _active_ctx.clear_active_context()
 
     async def handle_events(
@@ -76,10 +78,11 @@ class SGRMinimaxBackend(_rt.BaseAgentBackend):
         is_interrupt: bool = False,
     ) -> _rt.EventDeliveryResult:
         async with self._turn_lock:
-            _ = is_interrupt
+            if is_interrupt:
+                _active_ctx.clear_active_context()
             return await _routing.handle_events(self, delivery)
 
-    async def last_status(self) -> dict[str, Any]:
+    async def last_status(self) -> dict[str, object]:
         payload = await super().last_status()
         payload["threads_url"] = self.settings.threads_url
         payload["http_endpoint"] = self.settings.http_endpoint
@@ -89,9 +92,10 @@ class SGRMinimaxBackend(_rt.BaseAgentBackend):
         payload.update(self._status.to_dict())
         return payload
 
-    async def clear_context(self, request: _rt.ClearContextRequest) -> dict[str, Any]:
+    async def clear_context(self, request: _rt.ClearContextRequest) -> dict[str, object]:
         payload = await super().clear_context(request)
         self._status.reset()
+        self._context_memory.clear()
         self.handled_event_ids.clear()
         self.handled_event_order.clear()
         _active_ctx.clear_active_context()
@@ -99,6 +103,8 @@ class SGRMinimaxBackend(_rt.BaseAgentBackend):
 
 
 def _llm_proxy_enabled() -> bool:
+    import os
+
     value = os.getenv("LLM_PROXY_ENABLED")
     if value is None:
         return True

@@ -19,6 +19,11 @@ class SGRBackendStatus:
     delivery_duplicate: bool = False
     action_emitted: bool = False
     tool_actions: list[str] = field(default_factory=list)
+    total_turns: int = 0
+    total_tool_calls: int = 0
+    total_tool_errors: int = 0
+    total_messages_sent: int = 0
+    total_statuses_published: int = 0
 
     def reset(self) -> None:
         self.thread_id = None
@@ -31,6 +36,11 @@ class SGRBackendStatus:
         self.delivery_duplicate = False
         self.action_emitted = False
         self.tool_actions = []
+        self.total_turns = 0
+        self.total_tool_calls = 0
+        self.total_tool_errors = 0
+        self.total_messages_sent = 0
+        self.total_statuses_published = 0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -43,4 +53,9 @@ class SGRBackendStatus:
             "last_delivery_duplicate": self.delivery_duplicate,
             "last_action_emitted": self.action_emitted,
             "last_tool_actions": list(self.tool_actions),
+            "total_turns": self.total_turns,
+            "total_tool_calls": self.total_tool_calls,
+            "total_tool_errors": self.total_tool_errors,
+            "total_messages_sent": self.total_messages_sent,
+            "total_statuses_published": self.total_statuses_published,
         }
