@@ -452,7 +452,7 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
             if isinstance(message, dict) and message.get("role") == "system"
         ]
         self.assertTrue(
-            any("Direct assistant text is never delivered" in item for item in reminder_messages)
+            any("Direct assistant text helps you think" in item for item in reminder_messages)
         )
         self.assertTrue(result.details["direct_text_ignored"])
 
@@ -560,7 +560,9 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.thread_service.message_calls), 1)
         self.assertEqual(len(self.llm_proxy.chat_requests), 3)
 
-    async def test_notification_event_skipped(self) -> None:
+    async def test_notification_event_processed(self) -> None:
+        self.llm_proxy.enqueue(_text_response("Noted. I will keep that in mind."))
+        self.llm_proxy.enqueue(_text_response("Nothing else to send right now."))
         delivery = EventDelivery.from_dict(
             {
                 "delivery_id": "delivery-3",
@@ -583,10 +585,11 @@ class SGRMinimaxBackendTests(unittest.IsolatedAsyncioTestCase):
         result = await self.backend.handle_events(delivery)
 
         self.assertTrue(result.accepted)
-        self.assertEqual(result.details["reason"], "no_actionable_events")
+        self.assertEqual(result.details["reason"], "no_tool_action_emitted")
+        self.assertNotIn("event_metadata", result.details)
         self.assertEqual(len(self.thread_service.message_calls), 0)
         self.assertEqual(len(self.thread_service.notification_calls), 0)
-        self.assertEqual(len(self.llm_proxy.chat_requests), 0)
+        self.assertEqual(len(self.llm_proxy.chat_requests), 2)
 
 
 if __name__ == "__main__":
