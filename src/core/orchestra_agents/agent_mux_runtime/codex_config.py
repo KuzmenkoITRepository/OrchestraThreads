@@ -1,30 +1,16 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from core.orchestra_agents.agent_mux_runtime.codex_config_helpers import (
+    base_config_lines,
+    build_openai_base_url,
+    collect_allowed_env_values,
+)
 from core.orchestra_agents.agent_mux_runtime.codex_config_servers import render_server_block
-from core.orchestra_agents.agent_mux_runtime.toml_rendering import toml_quote
-
-
-def _build_openai_base_url(route_policy: str, *, proxy_url: str) -> str:
-    """Build OpenAI-compatible base URL for the given route policy."""
-    base = proxy_url.rstrip("/")
-    prefix = _route_policy_path_prefix(route_policy)
-    return f"{base}{prefix}/v1"
-
-
-def _route_policy_path_prefix(route_policy: str) -> str:
-    """Return URL path prefix for the given route policy."""
-    normalized = route_policy.strip().lower().replace("-", "_")
-    if normalized in {"codex", "codex_only"}:
-        return "/codex"
-    if normalized in {"minimax", "minimax_only", "fallback", "fallback_only"}:
-        return "/minimax"
-    return ""
 
 
 @dataclass(frozen=True)
@@ -51,8 +37,8 @@ def _build_request_variables(
         "agent_working_dir": str(agent_working_dir),
         "working_dir": str(agent_working_dir),
     }
-    for key, value in os.environ.items():
-        variables[f"env.{key}"] = str(value)
+    for key, value in collect_allowed_env_values().items():
+        variables[f"env.{key}"] = value
     return variables
 
 
@@ -84,9 +70,9 @@ def write_runtime_codex_config(
 ) -> Path:
     config_path = request.codex_home / ".codex" / "config.toml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    lines = _base_config_lines(
+    lines = base_config_lines(
         model=request.model,
-        base_url=_build_openai_base_url(
+        base_url=build_openai_base_url(
             request.route_policy,
             proxy_url=request.llm_proxy_url,
         ),
@@ -99,18 +85,3 @@ def write_runtime_codex_config(
         lines.extend(rendered)
     config_path.write_text("\n".join(lines), encoding="utf-8")
     return config_path
-
-
-def _base_config_lines(*, model: str, base_url: str) -> list[str]:
-    return [
-        f"model = {toml_quote(model)}",
-        'model_provider = "omniroute"',
-        "",
-        "[model_providers.omniroute]",
-        'name = "OmniRoute/WET"',
-        f"base_url = {toml_quote(base_url)}",
-        'env_key = "LLM_PROXY_API_KEY"',
-        'wire_api = "responses"',
-        'env_http_headers = { "X-Orchestra-Agent-Slug" = "ORCHESTRA_AGENT_SLUG", "X-Orchestra-Context-Id" = "ORCHESTRA_CONTEXT_ID", "X-Orchestra-Langfuse-Session-Id" = "ORCHESTRA_CONTEXT_ID" }',
-        "",
-    ]
