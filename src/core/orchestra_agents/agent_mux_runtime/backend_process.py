@@ -134,4 +134,8 @@ async def collect_agent_mux_result(
 
 
 def _stdin_payload(spec: AgentMuxDispatchSpec) -> bytes:
-    return json.dumps(spec.to_stdin_payload(), ensure_ascii=False).encode("utf-8")
+    payload = spec.to_stdin_payload()
+    if str(spec.engine or "").strip().lower() == "codex":
+        payload.pop("role", None)
+        payload.pop("model", None)
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8")

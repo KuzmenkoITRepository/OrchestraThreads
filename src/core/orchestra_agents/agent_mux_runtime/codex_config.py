@@ -22,8 +22,6 @@ def _route_policy_path_prefix(route_policy: str) -> str:
     normalized = route_policy.strip().lower().replace("-", "_")
     if normalized in {"codex", "codex_only"}:
         return "/codex"
-    if normalized in {"minimax", "minimax_only", "fallback", "fallback_only"}:
-        return "/minimax"
     return ""
 
 
