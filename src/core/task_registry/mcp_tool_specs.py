@@ -68,6 +68,11 @@ def tool_specs() -> list[JsonDict]:  # noqa: WPS213  # All 10 specs belong in on
                         "items": _CHECKLIST_ITEM_SCHEMA,
                         "description": "Initial checklist items",
                     },
+                    "artifacts": {
+                        "type": "array",
+                        "items": _ARTIFACT_SCHEMA,
+                        "description": "Initial artifacts attached to the task",
+                    },
                 },
                 required=["title", "created_by"],
             ),

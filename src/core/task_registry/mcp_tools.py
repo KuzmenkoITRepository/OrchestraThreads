@@ -84,6 +84,7 @@ class TaskRegistryTools:  # noqa: WPS214  # Tool dispatch needs a handler per MC
     ) -> JsonDict:
         title = str(_require(arguments, "title"))
         created_by = str(_require(arguments, "created_by"))
+        artifacts = arguments.get("artifacts")
         task = await self._store.create_task(
             title=title,
             description=arguments.get("description"),
@@ -92,6 +93,7 @@ class TaskRegistryTools:  # noqa: WPS214  # Tool dispatch needs a handler per MC
             assignee=arguments.get("assignee"),
             priority=str(arguments.get("priority") or "normal"),
             acceptance_criteria=arguments.get("acceptance_criteria"),
+            artifacts=list(artifacts) if isinstance(artifacts, list) else None,
         )
         checklist = arguments.get("checklist")
         if isinstance(checklist, list) and checklist:
