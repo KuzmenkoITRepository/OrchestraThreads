@@ -1,4 +1,5 @@
 aiohttp>=3.9,<4
+apscheduler>=3.10,<4
 asyncpg>=0.29,<1
 httpx>=0.27,<1
 langfuse>=2,<3

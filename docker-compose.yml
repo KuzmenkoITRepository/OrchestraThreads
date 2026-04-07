@@ -374,6 +374,15 @@ services:
       - core.orchestra_agents.tests.test_agent_mux_template
       - core.orchestra_agents.tests.test_sgr_example
       - core.orchestra_agents.tests.test_service
+      - core.scheduler_cron.tests.test_config
+      - core.scheduler_cron.tests.test_executor_helpers
+      - core.scheduler_cron.tests.test_scheduler_support
+      - core.scheduler_cron.tests.test_store
+      - core.scheduler_cron.tests.test_bootstrap
+      - core.scheduler_cron.tests.test_service_integration
+      - core.scheduler_cron.tests.test_executor_runtime
+      - core.scheduler_cron.tests.test_scheduler_engine
+      - core.scheduler_cron.tests.test_e2e_acceptance
     init: true
     restart: "no"
     profiles:
