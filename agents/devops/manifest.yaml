@@ -1,6 +1,7 @@
 slug: devops
 display_name: DevOps
 status: active
+auto_start: true
 
 agent:
   working_dir: /workspace/agents/devops

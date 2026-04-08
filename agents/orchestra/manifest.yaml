@@ -1,6 +1,7 @@
 slug: orchestra
 display_name: Orchestra Agent Mux
 status: active
+auto_start: true
 
 agent:
   working_dir: /workspace/agents/orchestra

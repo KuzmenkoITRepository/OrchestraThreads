@@ -1,6 +1,7 @@
 slug: dev
 display_name: Dev
 status: active
+auto_start: true
 
 agent:
   working_dir: /workspace/agents/dev
