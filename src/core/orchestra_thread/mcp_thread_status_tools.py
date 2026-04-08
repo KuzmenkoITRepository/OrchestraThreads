@@ -56,3 +56,21 @@ async def thread_status(server: Any, arguments: JSON_MAP) -> JSON_MAP:
         client_request_id=normalize_optional_str(arguments.get("client_request_id")),
     )
     return result(_thread_status_result(payload, lower_status, target_agent_slug))
+
+
+def _agent_status_result(payload: JSON_MAP) -> JSON_MAP:
+    return {
+        "ok": True,
+        "operation": "agent_status",
+        "agent_slug": payload.get("agent_slug"),
+        "online": bool(payload.get("online")),
+        "busy": bool(payload.get("busy")),
+        "status": payload.get("status"),
+        "current_thread_id": payload.get("current_thread_id"),
+    }
+
+
+async def agent_status(server: Any, arguments: JSON_MAP) -> JSON_MAP:
+    agent_slug = ensure_text(arguments.get("agent_slug"), field_name="agent_slug")
+    payload = await server.client.get_agent_status(agent_slug=agent_slug)
+    return result(_agent_status_result(payload))

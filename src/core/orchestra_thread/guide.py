@@ -16,7 +16,8 @@ _FULL_GUIDE: Final[Mapping[str, Any]] = MappingProxyType(
         "version": GUIDE_VERSION,
         "summary": (
             "Use thread_current to inspect active work, thread_send to reply or delegate, "
-            "thread_status for lifecycle updates, and thread_expand only when compact state "
+            "thread_status for lifecycle updates, agent_status for non-intrusive busy checks, "
+            "and thread_expand only when compact state "
             "is insufficient."
         ),
         "workflow": (
@@ -25,6 +26,7 @@ _FULL_GUIDE: Final[Mapping[str, Any]] = MappingProxyType(
             "Sending to a different target creates or reuses a child thread.",
             "Outside an active thread, thread_send creates or reuses the root pair thread.",
             "Use thread_status for in_progress, review, done, or closed updates.",
+            "Use agent_status before probing another agent when you need a non-intrusive busy check.",
             "Use thread_expand only when compact state is insufficient.",
         ),
         "routing_rules": (
@@ -49,6 +51,7 @@ _FULL_GUIDE: Final[Mapping[str, Any]] = MappingProxyType(
             "Call thread_current when you need to understand the active thread.",
             "Use thread_send to reply in the current thread or delegate.",
             "Use thread_status to publish progress, review, done, or closed.",
+            "Use agent_status to check whether another agent is busy before polling it.",
             "Use thread_expand only for details not in compact state.",
             "Use thread_guide when you need to refresh the service rules.",
         ),
@@ -56,6 +59,7 @@ _FULL_GUIDE: Final[Mapping[str, Any]] = MappingProxyType(
             "thread_current: fetch compact current-thread state from active context.",
             "thread_send: reply in the current thread or route to a root or child thread.",
             "thread_status: publish in_progress, review, done, or closed.",
+            "agent_status: fetch online/busy state for a target agent without waking it.",
             "thread_expand: inspect latest, tail, related, or full thread data on demand.",
             "thread_guide: fetch the canonical OrchestraThreads workflow and rules.",
         ),

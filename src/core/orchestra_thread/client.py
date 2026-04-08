@@ -93,7 +93,7 @@ class _ThreadsTransport:
             ) from None
 
 
-class _ThreadsApi:
+class _ThreadsApi:  # noqa: WPS214  # HTTP API client needs one method per service endpoint.
     def __init__(self, *, transport: _ThreadsTransport) -> None:
         self._transport = transport
 
@@ -106,6 +106,15 @@ class _ThreadsApi:
 
     async def list_agents(self) -> dict[str, Any]:
         return await self._transport.request(method="GET", path="/agents")
+
+    async def get_agent_status(self, *, agent_slug: str) -> dict[str, Any]:
+        normalized_slug = str(agent_slug).strip()
+        if not normalized_slug:
+            raise RuntimeError("agent_slug is required")
+        return await self._transport.request(
+            method="GET",
+            path=f"/agents/{normalized_slug}/status",
+        )
 
     async def get_thread(self, *, thread_id: str, limit: int | None = None) -> dict[str, Any]:
         suffix = ""
@@ -241,6 +250,7 @@ class OrchestraThreadsClient:
         if name in {
             "heartbeat",
             "list_agents",
+            "get_agent_status",
             "get_thread",
             "get_thread_compact",
             "get_instruction",

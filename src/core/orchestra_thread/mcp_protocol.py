@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from core.orchestra_thread.mcp_thread_send_tools import thread_send
-from core.orchestra_thread.mcp_thread_status_tools import thread_status
+from core.orchestra_thread.mcp_thread_status_tools import agent_status, thread_status
 from core.orchestra_thread.mcp_thread_tool_specs import list_thread_tools
 from core.orchestra_thread.mcp_thread_view_tools import (
     thread_current,
@@ -15,6 +15,7 @@ from core.orchestra_thread.mcp_tools_common import JSON_MAP
 TOOL_HANDLER_ITEMS = (
     ("thread_send", thread_send),
     ("thread_status", thread_status),
+    ("agent_status", agent_status),
     ("thread_current", thread_current),
     ("thread_expand", thread_expand),
     ("thread_guide", thread_guide),

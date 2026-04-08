@@ -93,4 +93,15 @@ def list_thread_tools() -> list[JSON_MAP]:
                 },
             },
         ),
+        tool(
+            "agent_status",
+            "Fetch busy and online status for an agent without disturbing its active work.",
+            {
+                "type": "object",
+                "properties": {
+                    "agent_slug": schema,
+                },
+                "required": ["agent_slug"],
+            },
+        ),
     ]
