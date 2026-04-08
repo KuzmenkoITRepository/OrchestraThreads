@@ -39,10 +39,19 @@ class _InitOptions(TypedDict, total=False):
     health_timeout_seconds: float | None
     build_context_root: str | Path | None
     auto_build_local_images: bool | None
+    compose_project_name: str | None
+    compose_runtime_dir: str | Path | None
 
 
 _JSON = dict[str, Any]
 _HealthResult = tuple[_JSON | None, bool, str | None, bool]
+_LabelMap = dict[str, str]
+_COMPOSE_SERVICE_PREFIX = "agent-"
+_COMPOSE_RUNTIME_DIRNAME = ".orchestra_agents_compose"
+_COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
+_COMPOSE_SERVICE_LABEL = "com.docker.compose.service"
+_COMPOSE_RUNTIME_DIR_MODE = 0o777
+_COMPOSE_RUNTIME_FILE_MODE = 0o666
 
 
 def _run(cmd: list[str], *, timeout: int = 120) -> subprocess.CompletedProcess[str]:
@@ -106,6 +115,8 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             .expanduser()
             .resolve()
         )
+        self.compose_project_name = self._resolve_compose_project_name(options)
+        self._compose_runtime_dir = self._resolve_compose_runtime_dir(options)
 
     def container_name(self, slug: str) -> str:
         return f"{self.container_name_prefix}{str(slug).strip()}"
@@ -113,40 +124,38 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
     def start(self, manifest: AgentManifest) -> dict[str, Any]:
         self._ensure_startable(manifest)
         container_name = self.container_name(manifest.slug)
+        if self._compose_enabled():
+            return self._start_with_compose(manifest, container_name=container_name)
         if self._container_exists(container_name):
             return self._start_existing(manifest, container_name=container_name)
         return self._start_new(manifest, container_name=container_name)
 
     def stop(self, slug: str, *, remove: bool = False) -> dict[str, Any]:
         container_name = self.container_name(slug)
+        if self._compose_enabled():
+            return self._stop_compose_service(slug, container_name=container_name, remove=remove)
         if not self._container_exists(container_name):
-            return {
-                "slug": slug,
-                "container_name": container_name,
-                "exists": False,
-                "running": False,
-                "removed": False,
-            }
-        result = _run(["docker", "stop", container_name], timeout=120)
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip() or f"failed to stop {container_name}")
+            return self._stop_result(slug, container_name=container_name, removed=False)
+        self._run_checked(
+            ["docker", "stop", container_name],
+            timeout=120,
+            error_message=f"failed to stop {container_name}",
+        )
         removed = False
         if remove:
-            rm_result = _run(["docker", "rm", "-f", container_name], timeout=120)
-            if rm_result.returncode != 0:
-                raise RuntimeError(rm_result.stderr.strip() or f"failed to remove {container_name}")
+            self._run_checked(
+                ["docker", "rm", "-f", container_name],
+                timeout=120,
+                error_message=f"failed to remove {container_name}",
+            )
             removed = True
-        return {
-            "slug": slug,
-            "container_name": container_name,
-            "exists": not removed,
-            "running": False,
-            "removed": removed,
-        }
+        return self._stop_result(slug, container_name=container_name, removed=removed)
 
     def restart(self, manifest: AgentManifest) -> dict[str, Any]:
         self._ensure_startable(manifest)
         container_name = self.container_name(manifest.slug)
+        if self._compose_enabled():
+            return self._restart_with_compose(manifest, container_name=container_name)
         if not self._container_exists(container_name):
             return self.start(manifest)
         self.stop(manifest.slug, remove=True)
@@ -348,6 +357,280 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         command.extend(manifest.runtime.command)
         return command
 
+    def _resolve_compose_project_name(self, options: _InitOptions) -> str | None:
+        project_name = str(
+            options.get("compose_project_name")
+            or os.getenv("ORCHESTRA_AGENTS_COMPOSE_PROJECT_NAME")
+            or ""
+        ).strip()
+        return project_name or None
+
+    def _resolve_compose_runtime_dir(self, options: _InitOptions) -> Path:
+        runtime_dir = Path(
+            options.get("compose_runtime_dir")
+            or os.getenv("ORCHESTRA_AGENTS_COMPOSE_RUNTIME_DIR")
+            or self.manifests_root.parent / _COMPOSE_RUNTIME_DIRNAME
+        )
+        return runtime_dir.expanduser().resolve()
+
+    def _compose_enabled(self) -> bool:
+        return self.compose_project_name is not None
+
+    def _compose_service_name(self, slug: str) -> str:
+        normalized_slug = str(slug).strip().replace("_", "-")
+        return f"{_COMPOSE_SERVICE_PREFIX}{normalized_slug}"
+
+    def _compose_file_path(self, slug: str) -> Path:
+        return self._compose_runtime_dir / f"{slug}.yaml"
+
+    def _compose_command(self, compose_file: Path, *args: str) -> list[str]:
+        assert self.compose_project_name is not None
+        return [
+            "docker",
+            "compose",
+            "-p",
+            self.compose_project_name,
+            "-f",
+            str(compose_file),
+            *args,
+        ]
+
+    def _start_with_compose(
+        self, manifest: AgentManifest, *, container_name: str
+    ) -> dict[str, Any]:
+        self._ensure_image_available(manifest.runtime.image)
+        compose_file = self._write_compose_file(manifest, container_name=container_name)
+        self._remove_legacy_container_if_needed(manifest, container_name=container_name)
+        self._run_checked(
+            self._compose_command(
+                compose_file,
+                "up",
+                "-d",
+                "--no-deps",
+                self._compose_service_name(manifest.slug),
+            ),
+            timeout=300,
+            error_message=f"failed to start {manifest.slug}",
+        )
+        status = self.status(manifest)
+        status["message"] = "compose service ensured"
+        return status
+
+    def _restart_with_compose(
+        self, manifest: AgentManifest, *, container_name: str
+    ) -> dict[str, Any]:
+        self._ensure_image_available(manifest.runtime.image)
+        compose_file = self._write_compose_file(manifest, container_name=container_name)
+        self._remove_legacy_container_if_needed(manifest, container_name=container_name)
+        self._run_checked(
+            self._compose_command(
+                compose_file,
+                "up",
+                "-d",
+                "--force-recreate",
+                "--no-deps",
+                self._compose_service_name(manifest.slug),
+            ),
+            timeout=300,
+            error_message=f"failed to restart {manifest.slug}",
+        )
+        status = self.status(manifest)
+        status["message"] = "compose service recreated"
+        return status
+
+    def _stop_compose_service(
+        self,
+        slug: str,
+        *,
+        container_name: str,
+        remove: bool,
+    ) -> dict[str, Any]:
+        compose_file = self._compose_file_path(slug)
+        container_exists = self._container_exists(container_name)
+        self._ensure_compose_metadata(
+            slug, compose_file, container_exists=container_exists, remove=remove
+        )
+        if not container_exists:
+            return self._stop_result(slug, container_name=container_name, removed=False)
+        self._run_checked(
+            self._compose_stop_command(slug, compose_file, remove=remove),
+            timeout=120,
+            error_message=f"failed to stop {container_name}",
+        )
+        self._cleanup_compose_file(compose_file, remove=remove)
+        return self._stop_result(slug, container_name=container_name, removed=remove)
+
+    def _ensure_compose_metadata(
+        self,
+        slug: str,
+        compose_file: Path,
+        *,
+        container_exists: bool,
+        remove: bool,
+    ) -> None:
+        if compose_file.exists():
+            return
+        if remove and not container_exists:
+            return
+        raise RuntimeError(
+            f"compose metadata missing for compose-managed agent {slug}: {compose_file}"
+        )
+
+    def _compose_stop_command(self, slug: str, compose_file: Path, *, remove: bool) -> list[str]:
+        service_name = self._compose_service_name(slug)
+        command = ["rm", "-sf", service_name] if remove else ["stop", service_name]
+        return self._compose_command(compose_file, *command)
+
+    def _cleanup_compose_file(self, compose_file: Path, *, remove: bool) -> None:
+        if remove and compose_file.exists():
+            compose_file.unlink()
+
+    def _stop_result(self, slug: str, *, container_name: str, removed: bool) -> dict[str, Any]:
+        return {
+            "slug": slug,
+            "container_name": container_name,
+            "exists": not removed,
+            "running": False,
+            "removed": removed,
+        }
+
+    def _stop_with_docker(self, slug: str, *, container_name: str, remove: bool) -> dict[str, Any]:
+        self._run_checked(
+            ["docker", "stop", container_name],
+            timeout=120,
+            error_message=f"failed to stop {container_name}",
+        )
+        removed = False
+        if remove:
+            self._run_checked(
+                ["docker", "rm", "-f", container_name],
+                timeout=120,
+                error_message=f"failed to remove {container_name}",
+            )
+            removed = True
+        return self._stop_result(slug, container_name=container_name, removed=removed)
+
+    def _write_compose_file(self, manifest: AgentManifest, *, container_name: str) -> Path:
+        compose_file = self._compose_file_path(manifest.slug)
+        compose_file.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+            mode=_COMPOSE_RUNTIME_DIR_MODE,
+        )
+        os.chmod(compose_file.parent, _COMPOSE_RUNTIME_DIR_MODE)
+        payload = self._compose_payload(manifest, container_name=container_name)
+        compose_file.write_text(
+            json.dumps(payload, indent=2),
+            encoding="utf-8",
+        )
+        os.chmod(compose_file, _COMPOSE_RUNTIME_FILE_MODE)
+        return compose_file
+
+    def _compose_payload(self, manifest: AgentManifest, *, container_name: str) -> dict[str, Any]:
+        service_name = self._compose_service_name(manifest.slug)
+        service: dict[str, Any] = {
+            "image": manifest.runtime.image,
+            "container_name": container_name,
+            "restart": "no",
+            "working_dir": manifest.agent.working_dir,
+            "labels": self._orchestra_labels(manifest),
+            "environment": self._compose_environment(manifest, container_name=container_name),
+            "healthcheck": self._compose_healthcheck(manifest, container_name=container_name),
+            "volumes": self._compose_volumes(manifest, container_name=container_name),
+            "command": list(manifest.runtime.command),
+        }
+        if manifest.runtime.entrypoint:
+            service["entrypoint"] = manifest.runtime.entrypoint
+        return {"services": {service_name: service}}
+
+    def _orchestra_labels(self, manifest: AgentManifest) -> dict[str, str]:
+        return {
+            "orchestra.agent_slug": manifest.slug,
+            "orchestra.backend_type": manifest.backend.type,
+        }
+
+    def _compose_environment(
+        self, manifest: AgentManifest, *, container_name: str
+    ) -> dict[str, str]:
+        environment = {
+            "ORCHESTRA_AGENT_SLUG": manifest.slug,
+            "ORCHESTRA_AGENT_BACKEND_TYPE": manifest.backend.type,
+            "ORCHESTRA_AGENT_HTTP_ENDPOINT": manifest.resolve_http_endpoint(
+                container_name=container_name
+            ),
+            "ORCHESTRA_AGENT_WORKING_DIR": manifest.agent.working_dir,
+            "ORCHESTRA_AGENT_ALLOWED_PEER_AGENT_SLUGS": ",".join(
+                manifest.agent.allowed_peer_agent_slugs
+            ),
+            "ORCHESTRA_AGENT_MANIFESTS_DIR": self.manifest_mount_path,
+            "ORCHESTRA_AGENT_MANIFEST": self._container_manifest_path(manifest),
+        }
+        if manifest.agent.system_prompt_file:
+            environment["ORCHESTRA_AGENT_SYSTEM_PROMPT_FILE"] = manifest.agent.system_prompt_file
+        environment.update(self._render_env(manifest, container_name=container_name))
+        return environment
+
+    def _compose_healthcheck(
+        self, manifest: AgentManifest, *, container_name: str
+    ) -> dict[str, Any]:
+        return {
+            "test": [
+                "CMD-SHELL",
+                self._healthcheck_command(manifest, container_name=container_name),
+            ],
+            "interval": "30s",
+            "timeout": "5s",
+            "start_period": "10s",
+            "retries": 3,
+        }
+
+    def _compose_volumes(self, manifest: AgentManifest, *, container_name: str) -> list[str]:
+        volumes = [f"{self.manifests_root}:{self.manifest_mount_path}:ro"]
+        for mount in manifest.runtime.mounts:
+            volumes.append(self._render_mount_spec(manifest, mount, container_name=container_name))
+        return volumes
+
+    def _remove_legacy_container_if_needed(
+        self,
+        manifest: AgentManifest,
+        *,
+        container_name: str,
+    ) -> None:
+        if not self._container_exists(container_name):
+            return
+        if self._container_matches_compose_service(manifest, container_name=container_name):
+            return
+        self._run_checked(
+            ["docker", "rm", "-f", container_name],
+            timeout=120,
+            error_message=f"failed to replace {container_name}",
+        )
+
+    def _container_matches_compose_service(
+        self,
+        manifest: AgentManifest,
+        *,
+        container_name: str,
+    ) -> bool:
+        labels = self._container_labels(container_name)
+        if not labels:
+            return False
+        return labels.get(_COMPOSE_PROJECT_LABEL) == self.compose_project_name and labels.get(
+            _COMPOSE_SERVICE_LABEL
+        ) == self._compose_service_name(manifest.slug)
+
+    def _container_labels(self, container_name: str) -> _LabelMap:
+        result = _run(
+            ["docker", "inspect", container_name, "--format", "{{json .Config.Labels}}"],
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return {}
+        raw_labels = json.loads(result.stdout.strip() or "{}")
+        if not isinstance(raw_labels, dict):
+            return {}
+        return {str(key): str(value) for key, value in raw_labels.items()}
+
     def _healthcheck_command(self, manifest: AgentManifest, *, container_name: str) -> str:
         health_url = self._internal_health_url(manifest, container_name=container_name)
         return (
@@ -458,7 +741,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             raise RuntimeError(
                 f"docker image {normalized} is missing and build dockerfile was not found: {dockerfile_path}"
             )
-        result = _run(
+        self._run_checked(
             [
                 "docker",
                 "build",
@@ -469,11 +752,8 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
                 str(self._build_context_root),
             ],
             timeout=1800,
+            error_message=f"failed to build local runtime image {normalized}",
         )
-        if result.returncode != 0:
-            raise RuntimeError(
-                result.stderr.strip() or f"failed to build local runtime image {normalized}"
-            )
 
     def _container_running(self, container_name: str) -> bool:
         result = _run(
@@ -528,18 +808,34 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
 
     def _start_existing(self, manifest: AgentManifest, *, container_name: str) -> dict[str, Any]:
         if not self._container_running(container_name):
-            result = _run(["docker", "start", container_name], timeout=120)
-            if result.returncode != 0:
-                raise RuntimeError(result.stderr.strip() or f"failed to start {container_name}")
+            self._run_checked(
+                ["docker", "start", container_name],
+                timeout=120,
+                error_message=f"failed to start {container_name}",
+            )
         status = self.status(manifest)
         status["message"] = "container already exists"
         return status
 
     def _start_new(self, manifest: AgentManifest, *, container_name: str) -> dict[str, Any]:
         self._ensure_image_available(manifest.runtime.image)
-        result = _run(self._build_run_command(manifest, container_name=container_name), timeout=300)
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip() or f"failed to start {manifest.slug}")
+        result = self._run_checked(
+            self._build_run_command(manifest, container_name=container_name),
+            timeout=300,
+            error_message=f"failed to start {manifest.slug}",
+        )
         status = self.status(manifest)
         status["container_id"] = result.stdout.strip()
         return status
+
+    def _run_checked(
+        self,
+        command: list[str],
+        *,
+        timeout: int,
+        error_message: str,
+    ) -> subprocess.CompletedProcess[str]:
+        result = _run(command, timeout=timeout)
+        if result.returncode == 0:
+            return result
+        raise RuntimeError(result.stderr.strip() or error_message)
