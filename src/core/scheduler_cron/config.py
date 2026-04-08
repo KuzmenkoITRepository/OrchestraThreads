@@ -13,10 +13,10 @@ class SchedulerCronConfig:
 
 
 def _require_env(key: str) -> str:
-    value = os.getenv(key)
-    if value is None or not value.strip():
+    raw_value = os.getenv(key)
+    if raw_value is None or not raw_value.strip():
         raise ValueError(f"Missing required environment variable: {key}")
-    return value.strip()
+    return raw_value.strip()
 
 
 def load_config() -> SchedulerCronConfig:

@@ -11,7 +11,7 @@ from core.scheduler_cron.store import SchedulerCronStore
 
 _TEST_SCHEMA_PREFIX = "scheduler_boot_"
 
-EXPECTED_JOB_NAMES = frozenset({"overdue-check", "health-check", "weekly-summary"})
+EXPECTED_JOB_NAMES = frozenset(("overdue-check", "health-check", "weekly-summary"))
 EXPECTED_JOB_COUNT = 3
 
 
@@ -33,6 +33,20 @@ class _FakeEngine:
 
     async def add_job(self, job: dict[str, object]) -> None:
         self.added_jobs.append(job)
+
+
+async def _drop_test_schema(store: Any, schema: str) -> None:
+    pool = store.pool
+    if pool is None:
+        return
+    async with pool.acquire() as conn:
+        await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+
+
+async def _delete_all_jobs(store: Any) -> None:
+    jobs = await store.list_jobs()
+    for job in jobs:
+        await store.delete_job(str(job["name"]))  # noqa: WPS476 - sequential tearDown cleanup
 
 
 class TestBootstrapData(unittest.TestCase):
@@ -68,7 +82,7 @@ class TestBootstrapData(unittest.TestCase):
             self.assertIn(defn["action_type"], valid)
 
 
-class TestBootstrapOps(unittest.TestCase):  # noqa: WPS214
+class TestBootstrapOps(unittest.TestCase):  # noqa: WPS214 - integration coverage keeps bootstrap lifecycle checks in one fixture class
     """Test bootstrap_jobs against real Postgres with fake engine."""
 
     loop: asyncio.AbstractEventLoop
@@ -88,37 +102,16 @@ class TestBootstrapOps(unittest.TestCase):  # noqa: WPS214
 
     @classmethod
     def tearDownClass(cls) -> None:
-        cls.loop.run_until_complete(cls._drop_schema())
+        cls.loop.run_until_complete(_drop_test_schema(cls.store, cls.test_schema))
         cls.loop.run_until_complete(cls.store.close())
         cls.loop.close()
         asyncio.set_event_loop(None)
-
-    @classmethod
-    async def _drop_schema(cls) -> None:
-        pool = cls.store.pool
-        if pool is None:
-            return
-        async with pool.acquire() as conn:
-            await conn.execute(f'DROP SCHEMA IF EXISTS "{cls.test_schema}" CASCADE')
 
     def setUp(self) -> None:
         self._engine = _FakeEngine()
 
     def tearDown(self) -> None:
-        self.loop.run_until_complete(self._delete_all_jobs())
-
-    async def _delete_all_jobs(self) -> None:
-        jobs = await self.store.list_jobs()
-        for job in jobs:
-            await self.store.delete_job(str(job["name"]))
-
-    def _run(self, awaitable: Any) -> Any:
-        return self.loop.run_until_complete(awaitable)
-
-    def _bootstrap(self) -> list[str]:
-        from core.scheduler_cron.bootstrap_ops import bootstrap_jobs  # noqa: WPS433
-
-        return self._run(bootstrap_jobs(self.store, self._engine))  # type: ignore[no-any-return]  # _run returns Any from run_until_complete
+        self.loop.run_until_complete(_delete_all_jobs(self.store))
 
     def test_creates_jobs_on_empty_db(self) -> None:
         created = self._bootstrap()
@@ -160,3 +153,13 @@ class TestBootstrapOps(unittest.TestCase):  # noqa: WPS214
         self._engine = second_engine
         self._bootstrap()
         self.assertEqual(len(second_engine.added_jobs), EXPECTED_JOB_COUNT)
+
+    def _run(self, awaitable: Any) -> Any:
+        return self.loop.run_until_complete(awaitable)
+
+    def _bootstrap(self) -> list[str]:
+        from core.scheduler_cron.bootstrap_ops import (
+            bootstrap_jobs,  # noqa: WPS433 - local import avoids importing bootstrap side effects before test setup
+        )
+
+        return self._run(bootstrap_jobs(self.store, self._engine))  # type: ignore[no-any-return]  # _run returns Any from run_until_complete

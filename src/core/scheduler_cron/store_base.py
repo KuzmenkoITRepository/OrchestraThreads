@@ -18,21 +18,30 @@ def quote_ident(identifier: str) -> str:
     return f'"{identifier}"'
 
 
-def normalize_value(value: object) -> object:
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            return value.replace(tzinfo=UTC).isoformat()
-        return value.astimezone(UTC).isoformat()
-    return value
+def normalize_value(raw_value: object) -> object:
+    if isinstance(raw_value, datetime):
+        if raw_value.tzinfo is None:
+            return raw_value.replace(tzinfo=UTC).isoformat()
+        return raw_value.astimezone(UTC).isoformat()
+    return raw_value
 
 
 def row_to_dict(row: asyncpg.Record | None) -> dict[str, object] | None:  # type: ignore[no-any-unimported]  # asyncpg stub
     if row is None:
         return None
     payload = dict(row)
-    for key, value in list(payload.items()):
-        payload[key] = normalize_value(value)
+    for key, raw_value in list(payload.items()):
+        payload[key] = normalize_value(raw_value)
     return payload
+
+
+def rows_to_dicts(rows: list[asyncpg.Record]) -> list[dict[str, object]]:  # type: ignore[no-any-unimported]  # asyncpg stub
+    payloads: list[dict[str, object]] = []
+    for row in rows:
+        payload = row_to_dict(row)
+        if payload is not None:
+            payloads.append(payload)
+    return payloads
 
 
 async def init_connection(conn: asyncpg.Connection) -> None:  # type: ignore[no-any-unimported]  # asyncpg stub

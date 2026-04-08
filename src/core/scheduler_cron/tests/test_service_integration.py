@@ -16,6 +16,8 @@ _TEST_SCHEMA_PREFIX = "scheduler_svc_"
 _BOOTSTRAP_PATH = "core.scheduler_cron.service_runtime.bootstrap_jobs"
 _EXECUTOR_PATH = "core.scheduler_cron.service_runtime.JobExecutor"
 _ENGINE_PATH = "core.scheduler_cron.service_runtime.SchedulerEngine"
+_HTTP_OK = 200
+_HTTP_UNAVAILABLE = 503
 
 
 def _database_url() -> str:
@@ -49,10 +51,10 @@ def _start_service_mocked(service: Any, run: Any) -> None:
 
 
 async def _drop_schema_by_name(schema: str) -> None:
-    import asyncpg  # noqa: WPS433
+    import asyncpg  # noqa: WPS433 - local import keeps DB dependency scoped to schema teardown helper
 
     conn = await asyncpg.connect(_database_url())
-    try:
+    try:  # noqa: WPS501 - finally-only is correct here: connection must close regardless
         await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
     finally:
         await conn.close()
@@ -81,25 +83,25 @@ class TestHealthzEndpoint(AioHTTPTestCase):
         await self._service.stop()
         await _drop_schema_by_name(self.test_schema)
 
-    async def test_healthz_returns_200(self) -> None:
+    async def test_healthz_ok(self) -> None:
         resp = await self.client.request("GET", "/healthz")
-        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.status, _HTTP_OK)
 
-    async def test_healthz_returns_json(self) -> None:
+    async def test_healthz_json(self) -> None:
         resp = await self.client.request("GET", "/healthz")
         body = await resp.json()
         self.assertEqual(body["status"], "ok")
 
-    async def test_healthz_returns_503_when_unhealthy(self) -> None:
+    async def test_healthz_unhealthy(self) -> None:
         original_ping = self._service.store.ping
         self._service.store.ping = AsyncMock(return_value=False)
-        try:
+        try:  # noqa: WPS501 - finally-only restores mock; no exception handling needed
             resp = await self.client.request("GET", "/healthz")
-            self.assertEqual(resp.status, 503)
-            body = await resp.json()
-            self.assertEqual(body["status"], "error")
         finally:
             self._service.store.ping = original_ping
+        self.assertEqual(resp.status, _HTTP_UNAVAILABLE)
+        body = await resp.json()
+        self.assertEqual(body["status"], "error")
 
 
 class TestServiceLifecycle(unittest.TestCase):
@@ -119,11 +121,8 @@ class TestServiceLifecycle(unittest.TestCase):
         cls.loop.close()
         asyncio.set_event_loop(None)
 
-    def _run(self, awaitable: Any) -> Any:
-        return self.loop.run_until_complete(awaitable)
-
     def test_start_and_stop(self) -> None:
-        schema = self.test_schema + "a"
+        schema = f"{self.test_schema}a"
         config: Any = _TestConfig(schema)
         service: Any = SchedulerCronService(config)
 
@@ -135,7 +134,7 @@ class TestServiceLifecycle(unittest.TestCase):
         self._run(_drop_schema_by_name(schema))
 
     def test_double_start_is_noop(self) -> None:
-        schema = self.test_schema + "b"
+        schema = f"{self.test_schema}b"
         config: Any = _TestConfig(schema)
         service: Any = SchedulerCronService(config)
 
@@ -152,13 +151,13 @@ class TestServiceLifecycle(unittest.TestCase):
         self._run(_drop_schema_by_name(schema))
 
     def test_stop_without_start_is_noop(self) -> None:
-        config: Any = _TestConfig(self.test_schema + "c")
+        config: Any = _TestConfig(f"{self.test_schema}c")
         service: Any = SchedulerCronService(config)
         self._run(service.stop())
         self.assertFalse(service._started)
 
     def test_is_healthy_after_start(self) -> None:
-        schema = self.test_schema + "d"
+        schema = f"{self.test_schema}d"
         config: Any = _TestConfig(schema)
         service: Any = SchedulerCronService(config)
 
@@ -168,3 +167,6 @@ class TestServiceLifecycle(unittest.TestCase):
         self.assertTrue(healthy)
         self._run(service.stop())
         self._run(_drop_schema_by_name(schema))
+
+    def _run(self, awaitable: Any) -> Any:
+        return self.loop.run_until_complete(awaitable)
