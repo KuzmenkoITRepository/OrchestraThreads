@@ -21,11 +21,14 @@ Agent → WET (port 8100) → OmniRoute (port 20129) → LLM Provider
 docker compose up -d orchestra-omniroute orchestra-wet
 ```
 
-### 2. Configure Providers
+### 2. Log In and Configure Providers
 
 Open OmniRoute UI: http://localhost:20129
 
-Default password: `CHANGEME`
+Use the `OMNIROUTE_INITIAL_PASSWORD` value printed by the deploy/provision scripts.
+
+The OrchestraThreads deploy flow now auto-creates the runtime API key and stores it as `OMNIROUTE_API_KEY` in Vault.
+You do **not** need to create the runtime API key manually anymore.
 
 Add your providers:
 - **Codex**: OAuth or API key

@@ -13,6 +13,7 @@ This folder provides practical HashiCorp Vault scaffolding for one-server, multi
   - `kv/data/orchestrathreads/stg/runtime`
   - `kv/data/orchestrathreads/prod/runtime`
 - Use separate AppRole per environment.
+- Use a second constrained writer AppRole per environment for deploy-time runtime-key persistence.
 
 ### Layout
 
@@ -38,6 +39,13 @@ Bootstrap prints generated role IDs and initial secret IDs to:
 - `deploy/vault/bootstrap/.out/prod.env`
 
 Treat these files as sensitive bootstrap artifacts.
+
+Each generated env file now includes two AppRoles per environment:
+
+- `orchestrathreads-<env>-runtime` — read-only access to runtime secrets
+- `orchestrathreads-<env>-runtime-writer` — read/update access only to `kv/orchestrathreads/<env>/runtime`
+
+The writer role is used by `deploy-env.sh` to persist the OmniRoute runtime API key after automatic bootstrap.
 
 Bootstrap does **not** seed placeholder runtime secrets. It only ensures KV/AppRole/policies and prints the runtime paths you must populate explicitly.
 

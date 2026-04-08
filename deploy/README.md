@@ -10,8 +10,8 @@ docker compose --profile vault up -d vault
 UNSEAL_KEY=$(cat deploy/vault/local/unseal-key)
 docker exec -e VAULT_ADDR=http://127.0.0.1:8200 ot-dev3-vault-1 vault operator unseal "$UNSEAL_KEY"
 
-# Provision a new environment (clones secrets from dev)
-bash deploy/provision-environment.sh my-feature dev
+# Provision a new environment (clones secrets from a base env)
+bash deploy/provision-environment.sh my-feature prod
 
 # List all environments
 bash deploy/list-environments.sh
@@ -24,7 +24,7 @@ bash deploy/teardown-environment.sh my-feature
 
 ### provision-environment.sh
 
-Creates a fully isolated environment with its own workspace, Docker containers, ports, Vault secrets, and runtime state.
+Creates a fully isolated environment with its own workspace, Docker containers, ports, Vault secrets, runtime state, and OmniRoute runtime API key.
 
 ```bash
 bash deploy/provision-environment.sh <env-name> [base-env]
@@ -39,7 +39,8 @@ What it does:
 3. Allocates 10 unique host ports (range 30000-39999)
 4. Creates a git worktree (detached HEAD from current master)
 5. Provisions Vault secrets (cloned from base env with isolated passwords)
-6. Deploys the full Docker Compose stack
+6. Starts OmniRoute + WET and auto-creates the runtime API key
+7. Deploys the full Docker Compose stack
 
 ### teardown-environment.sh
 
@@ -75,6 +76,19 @@ bash deploy/deploy-env.sh <env-name> [--pull]
 ```
 
 Supports both standard environments (dev/stg/prod) and provisioned environments. For provisioned environments, automatically detects the workspace directory and allocated ports.
+
+`deploy-env.sh` now bootstraps OmniRoute access automatically:
+
+1. Starts OmniRoute + WET first
+2. Logs into OmniRoute with `OMNIROUTE_INITIAL_PASSWORD`
+3. Creates the runtime API key `orchestrathreads-<env>-runtime`
+4. Stores it back into Vault as `OMNIROUTE_API_KEY`
+5. Starts the rest of the stack
+
+The only remaining manual step is adding/logging into providers in the OmniRoute UI.
+
+For production-ready deploys, the OmniRoute runtime key is persisted with a constrained
+writer AppRole (`orchestrathreads-<env>-runtime-writer`) instead of the Vault root token.
 
 ## Environment Structure
 
