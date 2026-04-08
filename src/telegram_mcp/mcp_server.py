@@ -1,317 +1,304 @@
+"""Thin MCP server dispatcher for Telegram messaging."""
+
 from __future__ import annotations
 
-# pyright: reportMissingImports=false
 import asyncio
-import json
 import logging
 import os
 import sys
-from typing import Any, cast
 
+from telegram_mcp import (
+    batch_send_handler,
+    chat_info,
+    edit_delete_handlers,
+    message_store,
+    receipt_state,
+    send_dispatch,
+)
 from telegram_mcp.config import TelegramMCPConfig, load_config
-from telegram_mcp.telegram_client import TelegramHTTPClient
+from telegram_mcp.mcp_protocol import (
+    JsonDict,
+    Payloads,
+    ServerHelpers,
+    ensure_text,
+    normalize_optional_str,
+)
+from telegram_mcp.mcp_transport import encode_message, read_message
+from telegram_mcp.rate_limit_state import RateLimitState
+from telegram_mcp.recipient_registry import RecipientRegistry, load_recipients_from_env
+from telegram_mcp.telegram_client import TelegramClient
 
 logger = logging.getLogger(__name__)
 
-PROTOCOL_VERSION = "2024-11-05"
-
-JsonDict = dict[str, Any]
-
-
-class _ServerHelpers:
-    @staticmethod
-    def jsonrpc_result(request_id: Any, result: JsonDict) -> JsonDict:
-        return {"jsonrpc": "2.0", "id": request_id, "result": result}
-
-    @staticmethod
-    def jsonrpc_error(request_id: Any, code: int, message: str) -> JsonDict:
-        return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
-
-    @staticmethod
-    def initialize_result() -> JsonDict:
-        return {
-            "protocolVersion": PROTOCOL_VERSION,
-            "capabilities": {"tools": {}, "resources": {}},
-            "serverInfo": {"name": "telegram-mcp", "version": "0.1.0"},
-        }
-
-    @staticmethod
-    def resources_result() -> JsonDict:
-        return {"resources": []}
-
-    @staticmethod
-    def resource_templates_result() -> JsonDict:
-        return {"resourceTemplates": []}
-
-    @staticmethod
-    def request_arguments(params: Any) -> JsonDict:
-        arguments = params.get("arguments") if isinstance(params, dict) else None
-        if isinstance(arguments, dict):
-            return arguments
-        return {}
-
-
-class _ProtocolPayloads:
-    @staticmethod
-    def normalize_optional_str(value: Any) -> str | None:
-        normalized = str(value or "").strip()
-        return normalized or None
-
-    @staticmethod
-    def ensure_text(value: Any, *, field_name: str) -> str:
-        normalized = str(value or "").strip()
-        if not normalized:
-            raise RuntimeError(f"{field_name} is required")
-        return normalized
-
-    @staticmethod
-    def tool(name: str, description: str, input_schema: JsonDict) -> JsonDict:
-        return {
-            "name": name,
-            "description": description,
-            "inputSchema": input_schema,
-        }
-
-    @staticmethod
-    def result(payload: JsonDict, *, text: str | None = None) -> JsonDict:
-        rendered_text = text or json.dumps(payload, ensure_ascii=False)
-        return {
-            "structuredContent": payload,
-            "content": [{"type": "text", "text": rendered_text}],
-        }
-
-    @staticmethod
-    def tools_result() -> JsonDict:
-        tool_schema = {
-            "type": "object",
-            "properties": {"message": {"type": "string"}, "recipient": {"type": "string"}},
-            "required": ["message"],
-        }
-        return {
-            "tools": [
-                _ProtocolPayloads.tool(
-                    "send_telegram_message",
-                    "Send a Telegram message to a configured recipient alias.",
-                    tool_schema,
-                )
-            ]
-        }
-
-    @staticmethod
-    def send_failure_result(
-        send_result: JsonDict,
-        *,
-        chat_id: int,
-        recipient: str | None,
-        default_recipient: str,
-    ) -> JsonDict:
-        return _ProtocolPayloads.result(
-            {
-                "ok": False,
-                "error": str(send_result.get("error") or "Telegram send failed"),
-                "error_code": int(send_result.get("error_code") or 500),
-                "chat_id": chat_id,
-                "recipient": recipient or default_recipient,
-            }
-        )
-
-    @staticmethod
-    def send_success_result(
-        send_result: JsonDict,
-        *,
-        chat_id: int,
-        recipient: str | None,
-        default_recipient: str,
-    ) -> JsonDict:
-        return _ProtocolPayloads.result(
-            {
-                "ok": True,
-                "message_id": int(send_result.get("message_id") or 0),
-                "chat_id": chat_id,
-                "recipient": recipient or default_recipient,
-            }
-        )
-
-
-class _ProtocolIO:
-    @staticmethod
-    def encode_message(payload: JsonDict, *, framing: str) -> bytes:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        if framing == "content_length":
-            header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
-            return header + body
-        return b"".join((body, b"\n"))
-
-    @staticmethod
-    async def read_message(
-        reader: Any,
-        *,
-        framing_hint: str | None = None,
-    ) -> tuple[JsonDict | None, str | None]:
-        if framing_hint == "content_length":
-            return await _ProtocolIO._read_content_length_message(reader), "content_length"
-        if framing_hint == "newline":
-            return await _ProtocolIO._read_newline_message(reader), "newline"
-
-        first_byte = await asyncio.to_thread(reader.read, 1)
-        if not first_byte:
-            return None, None
-        if first_byte in b"{[":
-            return await _ProtocolIO._read_newline_message(
-                reader, first_chunk=first_byte
-            ), "newline"
-        return (
-            await _ProtocolIO._read_content_length_message(reader, first_chunk=first_byte),
-            "content_length",
-        )
-
-    @staticmethod
-    async def _read_newline_message(
-        reader: Any,
-        *,
-        first_chunk: bytes = b"",
-    ) -> JsonDict | None:
-        line = first_chunk + await asyncio.to_thread(reader.readline)
-        if not line:
-            return None
-        decoded_line = line.decode("utf-8").strip()
-        return cast(JsonDict, json.loads(decoded_line))
-
-    @staticmethod
-    async def _read_content_length_message(
-        reader: Any,
-        *,
-        first_chunk: bytes = b"",
-    ) -> JsonDict | None:
-        header_bytes = bytes(first_chunk)
-        while not header_bytes.endswith(b"\r\n\r\n"):
-            chunk = await asyncio.to_thread(reader.read, 1)
-            if not chunk:
-                return None
-            header_bytes += chunk
-        content_length = _ProtocolIO._content_length(header_bytes)
-        body = await asyncio.to_thread(reader.read, content_length)
-        if not body:
-            return None
-        decoded_body = body.decode("utf-8")
-        return cast(JsonDict, json.loads(decoded_body))
-
-    @staticmethod
-    def _content_length(header_bytes: bytes) -> int:
-        for raw_line in header_bytes.decode("ascii").split("\r\n"):
-            if raw_line.lower().startswith("content-length:"):
-                return int(raw_line.split(":", 1)[1].strip())
-        raise RuntimeError("Missing Content-Length header")
-
 
 class TelegramMCPServer:
-    def __init__(self, *, config: TelegramMCPConfig | None = None) -> None:
+    """MCP server: dispatches JSON-RPC requests to tools and resources."""
+
+    def __init__(
+        self,
+        *,
+        config: TelegramMCPConfig | None = None,
+        registry: RecipientRegistry | None = None,
+        store: message_store.MessageStore | None = None,
+    ) -> None:
         self.config = config or load_config()
-        self.client = TelegramHTTPClient(self.config.telegram_events_url)
+        self.registry = registry or load_recipients_from_env()
+        self.rate_limits = RateLimitState()
+        self.chat_cache = chat_info.ChatInfoCache()
+        self.store = store or message_store.MessageStore(message_store.default_db_path())
+        self.client = TelegramClient(
+            api_id=self.config.auth.api_id,
+            api_hash=self.config.auth.api_hash,
+            session_string=self.config.auth.session_string,
+            max_retries=self.config.defaults.max_retries,
+            timeout_seconds=self.config.defaults.timeout_seconds,
+        )
         self._client_started = False
 
     async def close(self) -> None:
+        """Shut down the Telegram client and store."""
         await self.client.close()
+        self.store.close()
         self._client_started = False
 
     async def handle_request(self, request: JsonDict) -> JsonDict | None:
+        """Route a single JSON-RPC request to the correct handler."""
         request_id = request.get("id")
         if request_id is None:
             return None
         try:
-            return await self._dispatch_request(request, request_id)
+            return await self._dispatch(request, request_id)
         except Exception as exc:
             logger.error("MCP request failed: %s", exc, exc_info=True)
-            return _ServerHelpers.jsonrpc_error(request_id, -32000, str(exc))
+            return ServerHelpers.jsonrpc_error(request_id, -32000, str(exc))
 
     async def handle_tools_call(self, name: str, arguments: JsonDict) -> JsonDict:
+        """Dispatch a tools/call by name."""
         if name == "send_telegram_message":
-            return await self._handle_send_telegram_message(arguments)
-        return _ProtocolPayloads.result({"ok": False, "error": f"Unknown tool: {name}"})
-
-    async def _handle_send_telegram_message(self, arguments: JsonDict) -> JsonDict:
-        message = _ProtocolPayloads.ensure_text(arguments.get("message"), field_name="message")
-        recipient = _ProtocolPayloads.normalize_optional_str(arguments.get("recipient"))
-        chat_id = self.config.resolve_chat_id(recipient)
-        await self._ensure_client_started()
-        send_result = await self.client.send_message(chat_id, message)
-
-        default_recipient = self.config.defaults.default_recipient
-        if not send_result.get("ok"):
-            return _ProtocolPayloads.send_failure_result(
-                send_result,
-                chat_id=chat_id,
-                recipient=recipient,
-                default_recipient=default_recipient,
+            return await _handle_send(self, arguments)
+        if name == "send_telegram_message_batch":
+            return await batch_send_handler.handle_batch_send(
+                lambda args: _handle_send(self, args),
+                arguments,
             )
-        return _ProtocolPayloads.send_success_result(
-            send_result,
-            chat_id=chat_id,
-            recipient=recipient,
-            default_recipient=default_recipient,
-        )
-
-    async def _dispatch_request(self, request: JsonDict, request_id: Any) -> JsonDict:
-        method = request.get("method")
-        params = request.get("params", {})
-        simple_handlers = {
-            "initialize": _ServerHelpers.initialize_result,
-            "resources/list": _ServerHelpers.resources_result,
-            "resources/templates/list": _ServerHelpers.resource_templates_result,
-            "tools/list": _ProtocolPayloads.tools_result,
-        }
-        handler = simple_handlers.get(str(method))
-        if handler is not None:
-            return _ServerHelpers.jsonrpc_result(request_id, handler())
-        if method == "tools/call":
-            result = await self.handle_tools_call(
-                name=str(params.get("name") or ""),
-                arguments=_ServerHelpers.request_arguments(params),
+        if name == "upsert_recipient":
+            alias = ensure_text(arguments.get("alias"), field_name="alias")
+            raw_cid = arguments.get("chat_id")
+            if raw_cid is None or str(raw_cid).strip() == "":
+                raise RuntimeError("chat_id is required and must be a non-zero integer")
+            self.registry.register(alias, int(raw_cid))
+            return Payloads.result({"ok": True, "recipients": self.registry.list_entries()})
+        if name == "remove_recipient":
+            removed = self.registry.unregister(
+                ensure_text(arguments.get("alias"), field_name="alias")
             )
-            return _ServerHelpers.jsonrpc_result(request_id, result)
-        return _ServerHelpers.jsonrpc_error(request_id, -32601, f"Method not found: {method}")
+            return Payloads.result({"ok": True, "removed": removed})
+        raw = await self.client.require_client()
+        return await _dispatch_raw_tool(self, name, arguments, raw)
 
-    async def _ensure_client_started(self) -> None:
+    async def handle_resource_read(self, uri: str) -> JsonDict:
+        """Read a resource by URI."""
+        if uri.startswith("telegram://thread/") or uri.startswith("telegram://chat/"):
+            return await _read_template_resource(self, uri)
+        if uri == "telegram://recipients":
+            return Payloads.result({"ok": True, "recipients": self.registry.list_entries()})
+        if uri == "telegram://rate_limits":
+            return Payloads.result({"ok": True, **self.rate_limits.snapshot()})
+        return Payloads.result({"ok": False, "error": f"Unknown resource: {uri}"})
+
+    async def ensure_client_started(self) -> None:
+        """Start the Telegram client if not already started."""
         if self._client_started:
             return
         await self.client.start()
         self._client_started = True
 
+    async def _dispatch(self, request: JsonDict, request_id: object) -> JsonDict:
+        method = request.get("method")
+        params = request.get("params", {})
+        simple = {
+            "initialize": ServerHelpers.initialize_result,
+            "resources/list": Payloads.resources_result,
+            "resources/templates/list": Payloads.resource_templates_result,
+            "tools/list": Payloads.tools_result,
+        }
+        handler = simple.get(str(method))
+        if handler is not None:
+            return ServerHelpers.jsonrpc_result(request_id, handler())
+        safe_params = params if isinstance(params, dict) else {}
+        if method == "tools/call":
+            return ServerHelpers.jsonrpc_result(
+                request_id,
+                await self.handle_tools_call(
+                    name=str(safe_params.get("name") or ""),
+                    arguments=ServerHelpers.request_arguments(safe_params),
+                ),
+            )
+        if method == "resources/read":
+            return ServerHelpers.jsonrpc_result(
+                request_id,
+                await self.handle_resource_read(str(safe_params.get("uri") or "")),
+            )
+        return ServerHelpers.jsonrpc_error(
+            request_id,
+            -32601,
+            f"Method not found: {method}",
+        )
 
-class _ServerRuntime:
-    @staticmethod
-    async def main_async() -> None:
-        server = TelegramMCPServer()
-        framing: str | None = None
-        try:
-            while True:
-                request, framing = await _ProtocolIO.read_message(
-                    sys.stdin.buffer,
-                    framing_hint=framing,
-                )
-                if request is None:
-                    break
-                response = await server.handle_request(request)
-                if response is None:
-                    continue
-                payload = _ProtocolIO.encode_message(response, framing=framing or "newline")
-                sys.stdout.buffer.write(payload)
-                sys.stdout.buffer.flush()
-        finally:
-            await server.close()
+
+async def _read_template_resource(server: TelegramMCPServer, uri: str) -> JsonDict:
+    """Handle parameterized resource URIs."""
+    if uri.endswith("/messages"):
+        thread_id = uri.removeprefix("telegram://thread/").removesuffix("/messages")
+        records = server.store.list_by_thread(thread_id)
+        return Payloads.result(
+            {"ok": True, "thread_id": thread_id, "messages": [r.to_dict() for r in records]}
+        )
+    chat_id = server.registry.resolve(
+        uri.removeprefix("telegram://chat/").removesuffix("/info") or None,
+    )
+    cached = server.chat_cache.get(chat_id)
+    if cached is None:
+        raw = await server.client.require_client()
+        cached = await chat_info.fetch_chat_info(raw, chat_id)
+        server.chat_cache.put(cached)
+    return Payloads.result({"ok": True, **cached.to_dict()})
+
+
+async def _dispatch_raw_tool(
+    server: TelegramMCPServer,
+    name: str,
+    arguments: JsonDict,
+    raw_client: object,
+) -> JsonDict:
+    """Route tools that need the raw Telethon client."""
+    chat_id = server.registry.resolve(normalize_optional_str(arguments.get("recipient")))
+    if name == "edit_telegram_message":
+        msg_id, new_text = edit_delete_handlers.parse_edit_args(arguments)
+        return await edit_delete_handlers.handle_edit(
+            raw_client,
+            server.store,
+            chat_id,
+            msg_id,
+            new_text,
+        )
+    if name == "delete_telegram_message":
+        msg_id = edit_delete_handlers.parse_delete_args(arguments)
+        return await edit_delete_handlers.handle_delete(
+            raw_client,
+            server.store,
+            chat_id,
+            msg_id,
+        )
+    if name == "get_telegram_chat_info":
+        cached = server.chat_cache.get(chat_id)
+        if cached is None:
+            cached = await chat_info.fetch_chat_info(raw_client, chat_id)
+            server.chat_cache.put(cached)
+        return Payloads.result({"ok": True, **cached.to_dict()})
+    if name == "check_telegram_read_receipt":
+        if arguments.get("message_id") is None:
+            raise RuntimeError("message_id is required")
+        hint = await receipt_state.check_read_receipt(
+            raw_client,
+            chat_id,
+            int(arguments["message_id"]),
+        )
+        return Payloads.result({"ok": True, **hint.to_dict()})
+    return Payloads.result({"ok": False, "error": f"Unknown tool: {name}"})
+
+
+async def _handle_send(server: TelegramMCPServer, arguments: JsonDict) -> JsonDict:
+    message = ensure_text(arguments.get("message"), field_name="message")
+    recipient = normalize_optional_str(arguments.get("recipient"))
+    chat_id = server.registry.resolve(recipient)
+    server.rate_limits.record_request()
+    await server.ensure_client_started()
+    send_result = await _try_send(server, chat_id, message, arguments)
+    alias = recipient or server.registry.default_alias
+    if not send_result.get("ok"):
+        return Payloads.result(
+            {
+                "ok": False,
+                "error": str(send_result.get("error") or "Telegram send failed"),
+                "error_code": int(send_result.get("error_code") or 500),
+                "chat_id": chat_id,
+                "recipient": alias,
+            }
+        )
+    server.store.record_send(
+        message_store.SendInput(
+            telegram_message_id=int(send_result.get("message_id") or 0),
+            chat_id=chat_id,
+            recipient_alias=alias,
+            text=message,
+            parse_mode=str(arguments.get("parse_mode") or "").strip() or None,
+            reply_to_message_id=int(arguments["reply_to_message_id"])
+            if arguments.get("reply_to_message_id")
+            else None,
+            thread_id=normalize_optional_str(arguments.get("thread_id")),
+        )
+    )
+    return Payloads.result(
+        {
+            "ok": True,
+            "message_id": int(send_result.get("message_id") or 0),
+            "chat_id": chat_id,
+            "recipient": alias,
+        }
+    )
+
+
+async def _try_send(
+    server: TelegramMCPServer,
+    chat_id: int,
+    message: str,
+    arguments: JsonDict,
+) -> JsonDict:
+    """Execute text or rich send, catching errors into a result dict."""
+    request = send_dispatch.parse_send_request(arguments, message)
+    if send_dispatch.is_rich_request(request):
+        coro = server.client.send_rich(
+            chat_id,
+            request,
+            on_flood_wait=server.rate_limits.record_flood_wait,
+        )
+    else:
+        coro = server.client.send_message(chat_id, message)
+    try:
+        return await coro
+    except Exception as exc:
+        logger.error("Telegram tool failed: %s", exc, exc_info=True)
+        return {"ok": False, "message_id": 0, "error": str(exc)}
 
 
 def main() -> None:
+    """Entry point for the telegram-mcp MCP server."""
     logging.basicConfig(
         level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    asyncio.run(_ServerRuntime.main_async())
+    asyncio.run(_main_async())
 
 
-def telegram_tool_definitions() -> list[JsonDict]:
-    """Return Telegram MCP tool definitions in MCP format."""
-    return list(_ProtocolPayloads.tools_result()["tools"])
+async def _main_async() -> None:
+    server = TelegramMCPServer()
+    framing: str | None = None
+    try:  # noqa: WPS501 - runtime must always close the MCP client on exit.
+        while True:
+            request, framing = await read_message(
+                sys.stdin.buffer,
+                framing_hint=framing,
+            )
+            if request is None:
+                break
+            response = await server.handle_request(request)
+            if response is None:
+                continue
+            sys.stdout.buffer.write(encode_message(response, framing=framing or "newline"))
+            sys.stdout.buffer.flush()
+    finally:
+        await server.close()
 
 
 if __name__ == "__main__":
