@@ -89,6 +89,54 @@ get_repo_root() {
   printf '%s\n' "${ROOT_DIR}"
 }
 
+get_agent_compose_runtime_dir() {
+  local workspace_dir
+
+  workspace_dir="${1:-}"
+  printf '%s\n' "${workspace_dir}/.orchestra_agents_compose"
+}
+
+compose_service_name_for_slug() {
+  local slug
+
+  slug="${1:-}"
+  printf 'agent-%s\n' "${slug//_/-}"
+}
+
+remove_env_agent_compose_services() {
+  local compose_project_name
+  local workspace_dir
+  local remove_runtime_dir
+  local compose_dir
+  local compose_file
+  local compose_files
+  local service_name
+  local slug
+
+  compose_project_name="${1:-}"
+  workspace_dir="${2:-}"
+  remove_runtime_dir="${3:-0}"
+  compose_dir="$(get_agent_compose_runtime_dir "${workspace_dir}")"
+
+  if [[ ! -d "${compose_dir}" ]]; then
+    return 0
+  fi
+
+  shopt -s nullglob
+  compose_files=("${compose_dir}"/*.yaml)
+  shopt -u nullglob
+
+  for compose_file in "${compose_files[@]}"; do
+    slug="$(basename "${compose_file}" .yaml)"
+    service_name="$(compose_service_name_for_slug "${slug}")"
+    docker compose -p "${compose_project_name}" -f "${compose_file}" rm -sf "${service_name}" >/dev/null 2>&1 || true
+  done
+
+  if [[ "${remove_runtime_dir}" == "1" ]]; then
+    rm -rf "${compose_dir}"
+  fi
+}
+
 require_cmd() {
   local cmd_name
 

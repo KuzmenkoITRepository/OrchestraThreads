@@ -21,8 +21,6 @@ main() {
   local ports_file
   local root_token_file
   local compose_project_name
-  local agent_prefix
-  local agent_container_ids
 
   if [[ -z "${env_name}" ]]; then
     usage
@@ -57,7 +55,6 @@ main() {
   ports_file="${env_dir}/ports.env"
   root_token_file="${ROOT_DIR}/deploy/vault/local/root-token"
   compose_project_name="orchestrathreads-${env_name}"
-  agent_prefix="${compose_project_name}-agent-"
 
   if [[ ! -d "${env_dir}" ]]; then
     die "Environment directory not found: ${env_dir}"
@@ -74,11 +71,8 @@ main() {
   fi
 
   export COMPOSE_PROJECT_NAME="${compose_project_name}"
+  remove_env_agent_compose_services "${compose_project_name}" "${workspace_dir}" 1
   docker compose -p "${compose_project_name}" down --volumes --remove-orphans 2>/dev/null || true
-  agent_container_ids="$(docker ps -aq --filter "name=${agent_prefix}")"
-  if [[ -n "${agent_container_ids}" ]]; then
-    docker rm -f ${agent_container_ids} >/dev/null 2>&1 || true
-  fi
   docker rm -f "${compose_project_name}-vault-1" 2>/dev/null || true
   docker network rm "${compose_project_name}_default" 2>/dev/null || true
 

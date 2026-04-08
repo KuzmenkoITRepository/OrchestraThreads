@@ -12,10 +12,8 @@ usage() {
 main() {
   local env_name="${1:-}"
   local compose_project_name
-  local agent_prefix
   local env_dir
   local workspace_dir
-  local container_ids
 
   if [[ -z "${env_name}" ]]; then
     usage
@@ -25,7 +23,6 @@ main() {
   fi
 
   compose_project_name="orchestrathreads-${env_name}"
-  agent_prefix="${compose_project_name}-agent-"
   env_dir="$(get_envs_root)/${env_name}"
   workspace_dir="${env_dir}/workspace"
 
@@ -33,12 +30,8 @@ main() {
     export OT_WORKSPACE_DIR="${workspace_dir}"
   fi
 
+  remove_env_agent_compose_services "${compose_project_name}" "${workspace_dir}" 0
   docker compose -p "${compose_project_name}" down --remove-orphans 2>/dev/null || true
-
-  container_ids="$(docker ps -aq --filter "name=${agent_prefix}")"
-  if [[ -n "${container_ids}" ]]; then
-    docker rm -f ${container_ids} >/dev/null
-  fi
 
   docker rm -f "${compose_project_name}-vault-1" 2>/dev/null || true
   docker network rm "${compose_project_name}_default" 2>/dev/null || true
