@@ -4,10 +4,14 @@ set -euo pipefail
 
 # Source common.sh for git-aware ROOT_DIR resolution (works from worktrees too)
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/worktree-manager.sh"
 RUNTIME_ENV_DIR="${ROOT_DIR}/deploy/runtime_env"
 APPROVAL_DIR="${ROOT_DIR}/deploy/approvals"
 DEFAULT_TEMPLATE="${ROOT_DIR}/deploy/vault/bootstrap/templates/runtime.env.tpl"
 VAULT_SECRET_PREFIX="kv/data/orchestrathreads"
+VAULT_LOCAL_DIR="${ROOT_DIR}/deploy/vault/local"
+BOOTSTRAP_OUT_DIR="${ROOT_DIR}/deploy/vault/bootstrap/.out"
+OMNIROUTE_BOOTSTRAP_SCRIPT="${ROOT_DIR}/deploy/bootstrap-omniroute.sh"
 
 _usage() {
   printf 'Usage: %s <environment> [--pull]\n' "$(basename "$0")" >&2
@@ -30,28 +34,155 @@ _require_env() {
   fi
 }
 
+_vault_container_name() {
+  env -u COMPOSE_PROJECT_NAME docker compose --profile vault ps -q vault 2>/dev/null | head -1
+}
+
+_ensure_vault() {
+  local unseal_key_file="${VAULT_LOCAL_DIR}/unseal-key"
+  local container_id
+
+  # Start vault container if not running
+  container_id="$(_vault_container_name)"
+  if [[ -z "${container_id}" ]]; then
+    printf 'Starting Vault container...\n' >&2
+    env -u COMPOSE_PROJECT_NAME docker compose --profile vault up -d vault >&2
+    sleep 2
+    container_id="$(_vault_container_name)"
+  fi
+
+  if [[ -z "${container_id}" ]]; then
+    printf 'Failed to start Vault container\n' >&2
+    exit 1
+  fi
+
+  # Check seal status and unseal if needed
+  local sealed
+  sealed="$(curl -fsS "${VAULT_ADDR}/v1/sys/seal-status" 2>/dev/null | jq -r '.sealed' 2>/dev/null || echo 'unknown')"
+
+  if [[ "${sealed}" == "true" ]]; then
+    if [[ ! -f "${unseal_key_file}" ]]; then
+      printf 'Vault is sealed and no unseal key found at %s\n' "${unseal_key_file}" >&2
+      exit 1
+    fi
+    printf 'Unsealing Vault...\n' >&2
+    curl -fsS \
+      -H 'Content-Type: application/json' \
+      -X POST \
+      -d "$(jq -cn --arg key "$(cat "${unseal_key_file}")" '{key: $key}')" \
+      "${VAULT_ADDR}/v1/sys/unseal" >/dev/null
+  fi
+}
+
+_read_local_root_token() {
+  local root_token_file="${VAULT_LOCAL_DIR}/root-token"
+  if [[ ! -f "${root_token_file}" ]]; then
+    return 0
+  fi
+  cat "${root_token_file}"
+}
+
+_ensure_env_workspace() {
+  local environment="$1"
+  local envs_root
+  local env_dir
+  local workspace_dir
+
+  envs_root="$(get_envs_root)"
+  env_dir="${envs_root}/${environment}"
+  workspace_dir="${env_dir}/workspace"
+
+  # Skip if workspace already exists (provisioned or previously bootstrapped)
+  if [[ -d "${workspace_dir}" ]]; then
+    return 0
+  fi
+
+  # Skip if OT_WORKSPACE_DIR is already set externally
+  if [[ -n "${OT_WORKSPACE_DIR:-}" ]]; then
+    return 0
+  fi
+
+  printf 'Bootstrapping workspace for %s...\n' "${environment}" >&2
+  mkdir -p "${env_dir}"
+  create_worktree "${workspace_dir}"
+
+  # Create writable runtime_state dirs for agents that need persistent state.
+  # These directories are written by agent containers running as non-root
+  # (appuser uid 10001), so they require world-writable permissions.
+  local agent_dir
+  for agent_dir in "${workspace_dir}"/agents/*/; do
+    if [[ -d "${agent_dir}" ]]; then
+      mkdir -p "${agent_dir}/runtime_state"
+      chmod 777 "${agent_dir}/runtime_state"
+    fi
+  done
+
+  printf 'Workspace created at %s\n' "${workspace_dir}" >&2
+}
+
+_load_bootstrap_approle() {
+  local environment="$1"
+  local bootstrap_file="${BOOTSTRAP_OUT_DIR}/${environment}.env"
+
+  if [[ ! -f "${bootstrap_file}" ]]; then
+    return 1
+  fi
+  eval "$(_load_env_from_file "${bootstrap_file}")"
+}
+
+_json_get_value() {
+  local runtime_json="$1"
+  local key_name="$2"
+  python3 - "$runtime_json" "$key_name" <<'PY'
+from __future__ import annotations
+
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+value = payload.get(sys.argv[2], "")
+print(value if isinstance(value, str) else str(value))
+PY
+}
+
+_json_set_value() {
+  local runtime_json="$1"
+  local key_name="$2"
+  local key_value="$3"
+  python3 - "$runtime_json" "$key_name" "$key_value" <<'PY'
+from __future__ import annotations
+
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+payload[sys.argv[2]] = sys.argv[3]
+print(json.dumps(payload))
+PY
+}
+
 _secret_ref_for_env() {
   local environment="$1"
   local approle_file="${ROOT_DIR}/deploy/vault/local/${environment}-approle.env"
+  local env_var_suffix="${environment^^}"
+  env_var_suffix="${env_var_suffix//-/_}"
+  local role_var="VAULT_ROLE_ID_${env_var_suffix}"
+  local secret_var="VAULT_SECRET_ID_${env_var_suffix}"
 
-  case "${environment}" in
-    dev)
-      printf '%s' 'VAULT_ROLE_ID_DEV VAULT_SECRET_ID_DEV'
-      ;;
-    stg)
-      printf '%s' 'VAULT_ROLE_ID_STG VAULT_SECRET_ID_STG'
-      ;;
-    prod)
-      printf '%s' 'VAULT_ROLE_ID_PROD VAULT_SECRET_ID_PROD'
-      ;;
-    *)
-      if [[ -f "${approle_file}" ]]; then
-        printf '%s' "${approle_file}"
-        return
-      fi
-      _usage
-      ;;
-  esac
+  # If env vars already set (from bootstrap auto-load or manual export)
+  if [[ -n "${!role_var:-}" && -n "${!secret_var:-}" ]]; then
+    printf '%s' "${role_var} ${secret_var}"
+    return
+  fi
+
+  # Try per-env approle file
+  if [[ -f "${approle_file}" ]]; then
+    printf '%s' "${approle_file}"
+    return
+  fi
+
+  # Fallback: return var names (will fail at _require_env if not set)
+  printf '%s' "${role_var} ${secret_var}"
 }
 
 _load_env_from_file() {
@@ -200,6 +331,8 @@ main() {
   local approle_file
   local role_id_var
   local secret_id_var
+  local writer_role_id_var
+  local writer_secret_id_var
   local template_path
   local vault_token
   local runtime_json
@@ -208,6 +341,13 @@ main() {
   local project_name
   local env_dir
   local env_ports_file
+  local omniroute_password
+  local omniroute_api_key
+  local omniroute_bootstrap_json
+  local omniroute_bootstrap_status
+  local omniroute_api_key_name
+  local omniroute_write_token
+  local omniroute_base_url
 
   if [[ -z "${environment}" ]]; then
     _usage
@@ -220,7 +360,12 @@ main() {
   _require_cmd curl
   _require_cmd docker
   : "${VAULT_ADDR:=http://127.0.0.1:8200}"
-  _require_env VAULT_ADDR
+  export VAULT_ADDR
+
+  _ensure_vault
+
+  # Bootstrap workspace for base environments that lack a provisioned worktree
+  _ensure_env_workspace "${environment}"
 
   # Auto-detect provisioned environment workspace and ports
   env_dir="$(get_envs_root)/${environment}"
@@ -242,6 +387,8 @@ main() {
       env_var_suffix_auto="${env_var_suffix_auto//-/_}"
       role_id_var="VAULT_ROLE_ID_${env_var_suffix_auto}"
       secret_id_var="VAULT_SECRET_ID_${env_var_suffix_auto}"
+      writer_role_id_var="VAULT_WRITER_ROLE_ID_${env_var_suffix_auto}"
+      writer_secret_id_var="VAULT_WRITER_SECRET_ID_${env_var_suffix_auto}"
     fi
   fi
 
@@ -251,6 +398,12 @@ main() {
 
   # Resolve AppRole credentials (skip if already loaded from per-env approle)
   if [[ -z "${role_id_var:-}" || -z "${secret_id_var:-}" ]]; then
+    # Try bootstrap output file first (auto-load without manual export)
+    local bootstrap_file="${BOOTSTRAP_OUT_DIR}/${environment}.env"
+    if [[ -f "${bootstrap_file}" ]]; then
+      eval "$(_load_env_from_file "${bootstrap_file}")"
+    fi
+
     role_pair="$(_secret_ref_for_env "${environment}")"
     if [[ "${role_pair}" == *.env ]]; then
       approle_file="${role_pair}"
@@ -259,6 +412,8 @@ main() {
       env_var_suffix="${env_var_suffix//-/_}"
       role_id_var="VAULT_ROLE_ID_${env_var_suffix}"
       secret_id_var="VAULT_SECRET_ID_${env_var_suffix}"
+      writer_role_id_var="VAULT_WRITER_ROLE_ID_${env_var_suffix}"
+      writer_secret_id_var="VAULT_WRITER_SECRET_ID_${env_var_suffix}"
     else
       role_id_var="${role_pair%% *}"
       secret_id_var="${role_pair##* }"
@@ -283,10 +438,39 @@ main() {
   project_name="${project_prefix}-${environment}"
   export COMPOSE_PROJECT_NAME="${project_name}"
   export OT_RUNTIME_ENV_FILE="${output_env_file}"
+  omniroute_password="$(_json_get_value "${runtime_json}" "OMNIROUTE_INITIAL_PASSWORD")"
+  omniroute_api_key="$(_json_get_value "${runtime_json}" "OMNIROUTE_API_KEY")"
+  omniroute_api_key_name="orchestrathreads-${environment}-runtime"
+  omniroute_base_url="http://127.0.0.1:${OT_PORT_OMNIROUTE:-20229}"
+  omniroute_write_token=""
+  if [[ -n "${writer_role_id_var:-}" && -n "${writer_secret_id_var:-}" ]]; then
+    if _require_env "${writer_role_id_var}" >/dev/null 2>&1 && _require_env "${writer_secret_id_var}" >/dev/null 2>&1; then
+      omniroute_write_token="$(_vault_login_approle "${writer_role_id_var}" "${writer_secret_id_var}")"
+    fi
+  fi
+  if [[ -z "${omniroute_write_token}" ]]; then
+    omniroute_write_token="$(_read_local_root_token)"
+  fi
 
   if [[ "${pull_flag}" == "--pull" ]]; then
     docker compose --env-file "${output_env_file}" pull
   fi
+  docker compose --env-file "${output_env_file}" up -d orchestra-omniroute orchestra-wet
+
+  omniroute_bootstrap_json="$(bash "${OMNIROUTE_BOOTSTRAP_SCRIPT}" \
+    --base-url "${omniroute_base_url}" \
+    --initial-password "${omniroute_password}" \
+    --api-key-name "${omniroute_api_key_name}" \
+    --existing-api-key "${omniroute_api_key}" \
+    --vault-addr "${VAULT_ADDR}" \
+    --vault-token "${omniroute_write_token}" \
+    --vault-path "${VAULT_SECRET_PREFIX}/${environment}/runtime")"
+  omniroute_api_key="$(_json_get_value "${omniroute_bootstrap_json}" "api_key")"
+  omniroute_bootstrap_status="$(_json_get_value "${omniroute_bootstrap_json}" "status")"
+  runtime_json="$(_json_set_value "${runtime_json}" "OMNIROUTE_API_KEY" "${omniroute_api_key}")"
+  _render_runtime_env_file "${template_path}" "${runtime_json}" "${output_env_file}"
+  chmod 600 "${output_env_file}"
+
   docker compose --env-file "${output_env_file}" up -d
 
   if [[ "${OT_KEEP_RUNTIME_ENV_FILE:-0}" != "1" ]]; then
@@ -294,6 +478,11 @@ main() {
   fi
 
   printf 'Deployed environment %s with project name %s\n' "${environment}" "${project_name}"
+  printf 'OmniRoute bootstrap status: %s\n' "${omniroute_bootstrap_status}"
+  printf 'OmniRoute UI: %s\n' "${omniroute_base_url}"
+  printf 'OmniRoute password: %s\n' "${omniroute_password}"
+  printf 'OmniRoute runtime key name: %s\n' "${omniroute_api_key_name}"
+  printf 'Manual step remaining: log into OmniRoute and connect provider accounts.\n'
   if [[ "${OT_KEEP_RUNTIME_ENV_FILE:-0}" == "1" ]]; then
     printf 'Rendered env file kept at: %s\n' "${output_env_file}"
   else
