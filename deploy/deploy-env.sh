@@ -437,6 +437,7 @@ main() {
   project_prefix="${COMPOSE_PROJECT_PREFIX:-orchestrathreads}"
   project_name="${project_prefix}-${environment}"
   export COMPOSE_PROJECT_NAME="${project_name}"
+  export OT_AGENT_CONTAINER_PREFIX="${project_name}-agent-"
   export OT_RUNTIME_ENV_FILE="${output_env_file}"
   omniroute_password="$(_json_get_value "${runtime_json}" "OMNIROUTE_INITIAL_PASSWORD")"
   omniroute_api_key="$(_json_get_value "${runtime_json}" "OMNIROUTE_API_KEY")"

@@ -21,6 +21,8 @@ main() {
   local ports_file
   local root_token_file
   local compose_project_name
+  local agent_prefix
+  local agent_container_ids
 
   if [[ -z "${env_name}" ]]; then
     usage
@@ -55,6 +57,7 @@ main() {
   ports_file="${env_dir}/ports.env"
   root_token_file="${ROOT_DIR}/deploy/vault/local/root-token"
   compose_project_name="orchestrathreads-${env_name}"
+  agent_prefix="${compose_project_name}-agent-"
 
   if [[ ! -d "${env_dir}" ]]; then
     die "Environment directory not found: ${env_dir}"
@@ -72,6 +75,12 @@ main() {
 
   export COMPOSE_PROJECT_NAME="${compose_project_name}"
   docker compose -p "${compose_project_name}" down --volumes --remove-orphans 2>/dev/null || true
+  agent_container_ids="$(docker ps -aq --filter "name=${agent_prefix}")"
+  if [[ -n "${agent_container_ids}" ]]; then
+    docker rm -f ${agent_container_ids} >/dev/null 2>&1 || true
+  fi
+  docker rm -f "${compose_project_name}-vault-1" 2>/dev/null || true
+  docker network rm "${compose_project_name}_default" 2>/dev/null || true
 
   # Clean root-owned files FIRST (Docker containers may create files as root)
   if [[ -d "${env_dir}" ]]; then
@@ -97,7 +106,9 @@ main() {
       curl -fsS -X DELETE -H "X-Vault-Token: ${vault_token}" "${VAULT_ADDR}/v1/kv/data/orchestrathreads/${env_name}/runtime" 2>/dev/null || true
       curl -fsS -X DELETE -H "X-Vault-Token: ${vault_token}" "${VAULT_ADDR}/v1/kv/metadata/orchestrathreads/${env_name}/runtime" 2>/dev/null || true
       curl -fsS -X DELETE -H "X-Vault-Token: ${vault_token}" "${VAULT_ADDR}/v1/sys/policies/acl/orchestrathreads-${env_name}-runtime-read" 2>/dev/null || true
+      curl -fsS -X DELETE -H "X-Vault-Token: ${vault_token}" "${VAULT_ADDR}/v1/sys/policies/acl/orchestrathreads-${env_name}-runtime-write" 2>/dev/null || true
       curl -fsS -X DELETE -H "X-Vault-Token: ${vault_token}" "${VAULT_ADDR}/v1/auth/approle/role/orchestrathreads-${env_name}-runtime" 2>/dev/null || true
+      curl -fsS -X DELETE -H "X-Vault-Token: ${vault_token}" "${VAULT_ADDR}/v1/auth/approle/role/orchestrathreads-${env_name}-runtime-writer" 2>/dev/null || true
     else
       log_error "Root token file not found: ${root_token_file}"
     fi
