@@ -9,7 +9,9 @@ from agents.sgr.agent_runtime.backend import SGRMinimaxBackend
 from agents.sgr.agent_runtime.internal_tools import execute_internal_tool
 from agents.sgr.agent_runtime.support.outcomes import ParsedToolCall
 from core.orchestra_agents.runtime import EventDelivery
-from core.orchestra_agents.tests import test_sgr_example as _fixtures
+from core.orchestra_agents.tests.template_helpers.sgr_fake_omniroute import FakeOmniRoute
+
+_LONG_REASONING_LENGTH = 2100
 
 
 class SGRInternalToolsTests(unittest.IsolatedAsyncioTestCase):
@@ -18,7 +20,7 @@ class SGRInternalToolsTests(unittest.IsolatedAsyncioTestCase):
             "OMNIROUTE_URL": os.environ.get("OMNIROUTE_URL"),
             "OMNIROUTE_API_KEY": os.environ.get("OMNIROUTE_API_KEY"),
         }
-        self.omniroute = _fixtures.FakeOmniRoute()
+        self.omniroute = FakeOmniRoute()
         await self.omniroute.start()
         os.environ["OMNIROUTE_URL"] = self.omniroute.base_url
         os.environ["OMNIROUTE_API_KEY"] = "omniroute-test-key"
@@ -67,7 +69,7 @@ class SGRInternalToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(outcome.tool_name, "reasoning_tool")
         self.assertIn("Check state", outcome.result_text)
 
-    async def test_clarification_tool_returns_structured_result(self) -> None:
+    async def test_clarification_tool_structured(self) -> None:
         outcome = execute_internal_tool(
             self.backend,
             ParsedToolCall(
@@ -84,7 +86,7 @@ class SGRInternalToolsTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(outcome.emitted_message)
         self.assertIn("deadline", outcome.result_text)
 
-    async def test_final_answer_tool_returns_structured_result(self) -> None:
+    async def test_final_answer_tool_structured(self) -> None:
         outcome = execute_internal_tool(
             self.backend,
             ParsedToolCall(
@@ -156,7 +158,7 @@ class SGRInternalToolsTests(unittest.IsolatedAsyncioTestCase):
             ParsedToolCall(
                 tool_name="clarification_tool",
                 arguments={
-                    "reasoning": "x" * 2100,
+                    "reasoning": "x" * _LONG_REASONING_LENGTH,
                     "unclear_terms": ["deadline"],
                     "assumptions": ["today", "tomorrow"],
                     "questions": ["Which deadline applies?"],

@@ -5,26 +5,34 @@ import tempfile
 from typing import Any
 from unittest import IsolatedAsyncioTestCase, main, mock
 
-from agents.sgr.agent_runtime.backend import SGRMinimaxBackend
+from agents.sgr.agent_runtime.backend import SGRMinimaxBackend, configure_mcp_tools
 from agents.sgr.agent_runtime.tool_exec import execute_single
 from core.orchestra_agents.runtime import EventDelivery
-from core.orchestra_agents.tests import test_sgr_example as _fixtures
+from core.orchestra_agents.tests.template_helpers.sgr_fake_omniroute import FakeOmniRoute
+from core.orchestra_agents.tests.template_helpers.sgr_responses import _text_response
+
+JSONMap = dict[str, Any]
+
+_OMNIROUTE_URL_KEY = "OMNIROUTE_URL"
+_OMNIROUTE_API_KEY = "OMNIROUTE_API_KEY"
+_SGR_AGENT_SLUG = "sgr"
+_NAME_KEY = "name"
 
 
 class SGRWave1Tests(IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.previous_env = {
-            "OMNIROUTE_URL": os.environ.get("OMNIROUTE_URL"),
-            "OMNIROUTE_API_KEY": os.environ.get("OMNIROUTE_API_KEY"),
+            _OMNIROUTE_URL_KEY: os.environ.get(_OMNIROUTE_URL_KEY),
+            _OMNIROUTE_API_KEY: os.environ.get(_OMNIROUTE_API_KEY),
         }
 
-        self.omniroute = _fixtures.FakeOmniRoute()
+        self.omniroute = FakeOmniRoute()
         await self.omniroute.start()
-        os.environ["OMNIROUTE_URL"] = self.omniroute.base_url
-        os.environ["OMNIROUTE_API_KEY"] = "omniroute-test-key"
+        os.environ[_OMNIROUTE_URL_KEY] = self.omniroute.base_url
+        os.environ[_OMNIROUTE_API_KEY] = "omniroute-test-key"
         self._working_dir_ctx = tempfile.TemporaryDirectory()
         self.backend = SGRMinimaxBackend(
-            agent_slug="sgr",
+            agent_slug=_SGR_AGENT_SLUG,
             backend_type="sgr_minimax",
             working_dir=self._working_dir_ctx.name,
             config={
@@ -37,8 +45,6 @@ class SGRWave1Tests(IsolatedAsyncioTestCase):
             system_prompt="Use available MCP tools for outward communication.",
         )
         self._fake_mcp = _FakeMCPServer()
-        from agents.sgr.agent_runtime.backend import configure_mcp_tools
-
         configure_mcp_tools(
             self.backend,
             {"send_telegram_message": self._fake_mcp},
@@ -56,25 +62,25 @@ class SGRWave1Tests(IsolatedAsyncioTestCase):
                 os.environ[key] = prev_val
 
     async def test_response_required_event_without_action(self) -> None:
-        self.omniroute.enqueue(_fixtures._text_response("Thinking..."))
-        self.omniroute.enqueue(_fixtures._text_response("Still thinking..."))
+        self.omniroute.enqueue(_text_response("Thinking..."))
+        self.omniroute.enqueue(_text_response("Still thinking..."))
         delivery = _message_delivery("delivery-no-action", "event-no-action")
 
-        result = await self.backend.handle_events(delivery)
+        dispatch_result = await self.backend.handle_events(delivery)
 
-        self.assertTrue(result.accepted)
-        self.assertEqual(result.details["reason"], "no_tool_action_emitted")
-        self.assertTrue(result.details["no_action_warning"])
-        self.assertTrue(result.details["direct_text_ignored"])
+        self.assertTrue(dispatch_result.accepted)
+        self.assertEqual(dispatch_result.details["reason"], "no_tool_action_emitted")
+        self.assertTrue(dispatch_result.details["no_action_warning"])
+        self.assertTrue(dispatch_result.details["direct_text_ignored"])
 
-    async def test_tool_execution_error_returns_structured_error(self) -> None:
+    async def test_tool_exec_error_structured(self) -> None:
         fake_server = mock.AsyncMock()
         fake_server.handle_tools_call.side_effect = RuntimeError("boom")
         self.backend._mcp_servers["bad_tool"] = fake_server
 
         outcome = await execute_single(
             self.backend,
-            _tool_call(name="bad_tool", arguments={}, call_id="tool-error-1"),
+            _tool_call(tool_name="bad_tool", arguments={}, call_id="tool-error-1"),
         )
 
         self.assertEqual(outcome.tool_name, "bad_tool")
@@ -87,16 +93,16 @@ class SGRMCPAndSessionTests(IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
         self.previous_env = {
-            "OMNIROUTE_URL": os.environ.get("OMNIROUTE_URL"),
-            "OMNIROUTE_API_KEY": os.environ.get("OMNIROUTE_API_KEY"),
+            _OMNIROUTE_URL_KEY: os.environ.get(_OMNIROUTE_URL_KEY),
+            _OMNIROUTE_API_KEY: os.environ.get(_OMNIROUTE_API_KEY),
         }
-        self.omniroute = _fixtures.FakeOmniRoute()
+        self.omniroute = FakeOmniRoute()
         await self.omniroute.start()
-        os.environ["OMNIROUTE_URL"] = self.omniroute.base_url
-        os.environ["OMNIROUTE_API_KEY"] = "omniroute-test-key"
+        os.environ[_OMNIROUTE_URL_KEY] = self.omniroute.base_url
+        os.environ[_OMNIROUTE_API_KEY] = "omniroute-test-key"
         self._working_dir_ctx = tempfile.TemporaryDirectory()
         self.backend = SGRMinimaxBackend(
-            agent_slug="sgr",
+            agent_slug=_SGR_AGENT_SLUG,
             backend_type="sgr_minimax",
             working_dir=self._working_dir_ctx.name,
             config={"max_reasoning_steps": 6, "max_direct_text_retries": 1},
@@ -120,8 +126,8 @@ class SGRMCPAndSessionTests(IsolatedAsyncioTestCase):
         fake = _FakeMCPServer()
         servers: dict[str, Any] = {}
         schemas: list[dict[str, Any]] = []
-        entry = {"name": "fallback"}
-        defs = [{"name": "a"}, {"name": "b"}]
+        entry = {_NAME_KEY: "fallback"}
+        defs = [{_NAME_KEY: "a"}, {_NAME_KEY: "b"}]
         _register_server_tools(fake, entry, defs, servers, schemas)
         self.assertIn("a", servers)
         self.assertIn("b", servers)
@@ -133,7 +139,7 @@ class SGRMCPAndSessionTests(IsolatedAsyncioTestCase):
         fake = _FakeMCPServer()
         servers: dict[str, Any] = {}
         schemas: list[dict[str, Any]] = []
-        _register_server_tools(fake, {"name": "my_tool"}, [], servers, schemas)
+        _register_server_tools(fake, {_NAME_KEY: "my_tool"}, [], servers, schemas)
         self.assertIn("my_tool", servers)
 
     async def test_reset_clears_only_session(self) -> None:
@@ -170,16 +176,16 @@ class SGRMCPAndSessionTests(IsolatedAsyncioTestCase):
 class SGRSessionTurnCleanupTests(IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.previous_env = {
-            "OMNIROUTE_URL": os.environ.get("OMNIROUTE_URL"),
-            "OMNIROUTE_API_KEY": os.environ.get("OMNIROUTE_API_KEY"),
+            _OMNIROUTE_URL_KEY: os.environ.get(_OMNIROUTE_URL_KEY),
+            _OMNIROUTE_API_KEY: os.environ.get(_OMNIROUTE_API_KEY),
         }
-        self.omniroute = _fixtures.FakeOmniRoute()
+        self.omniroute = FakeOmniRoute()
         await self.omniroute.start()
-        os.environ["OMNIROUTE_URL"] = self.omniroute.base_url
-        os.environ["OMNIROUTE_API_KEY"] = "omniroute-test-key"
+        os.environ[_OMNIROUTE_URL_KEY] = self.omniroute.base_url
+        os.environ[_OMNIROUTE_API_KEY] = "omniroute-test-key"
         self._working_dir_ctx = tempfile.TemporaryDirectory()
         self.backend = SGRMinimaxBackend(
-            agent_slug="sgr",
+            agent_slug=_SGR_AGENT_SLUG,
             backend_type="sgr_minimax",
             working_dir=self._working_dir_ctx.name,
             config={"max_reasoning_steps": 6, "max_direct_text_retries": 1},
@@ -198,8 +204,8 @@ class SGRSessionTurnCleanupTests(IsolatedAsyncioTestCase):
                 os.environ[key] = prev_val
 
     async def test_session_history_records_event_turns(self) -> None:
-        self.omniroute.enqueue(_fixtures._text_response("Think"))
-        self.omniroute.enqueue(_fixtures._text_response("More"))
+        self.omniroute.enqueue(_text_response("Think"))
+        self.omniroute.enqueue(_text_response("More"))
         delivery = _message_delivery("d-clean", "e-clean")
         await self.backend.handle_events(delivery)
         self.assertTrue(self.backend._chat_history.messages_for_session("from:secretary"))
@@ -216,12 +222,12 @@ class SGRSessionTurnCleanupTests(IsolatedAsyncioTestCase):
         self.assertEqual(self.backend._chat_history.messages_for_session("from:secretary"), [])
 
     async def test_last_peer_preserved_in_result_details(self) -> None:
-        self.omniroute.enqueue(_fixtures._text_response("Think"))
-        self.omniroute.enqueue(_fixtures._text_response("More"))
+        self.omniroute.enqueue(_text_response("Think"))
+        self.omniroute.enqueue(_text_response("More"))
 
-        result = await self.backend.handle_events(_message_delivery("d-peer", "e-peer"))
+        dispatch_result = await self.backend.handle_events(_message_delivery("d-peer", "e-peer"))
 
-        self.assertEqual(result.details["peer_agent_slug"], "secretary")
+        self.assertEqual(dispatch_result.details["peer_agent_slug"], "secretary")
 
 
 if __name__ == "__main__":
@@ -239,7 +245,7 @@ class _FakeMCPServer:
         name: str,
         arguments: dict[str, Any],
     ) -> dict[str, Any]:
-        self.calls.append({"name": name, "arguments": arguments})
+        self.calls.append({_NAME_KEY: name, "arguments": arguments})
         return {
             "content": [{"type": "text", "text": "ok"}],
             "structuredContent": {"ok": True},
@@ -275,12 +281,17 @@ def _message_delivery(delivery_id: str, event_id: str) -> EventDelivery:
     )
 
 
-def _tool_call(name: str, arguments: dict[str, Any], call_id: str) -> dict[str, Any]:
+def _tool_call(tool_name: str, arguments: JSONMap, call_id: str) -> JSONMap:
+    return _build_tool_payload(tool_name, call_id)
+
+
+def _build_tool_payload(tool_name: str, call_id: str) -> JSONMap:
+    function_payload: JSONMap = {
+        _NAME_KEY: tool_name,
+        "arguments": "{}",
+    }
     return {
         "id": call_id,
         "type": "function",
-        "function": {
-            "name": name,
-            "arguments": "{}",
-        },
+        "function": function_payload,
     }
