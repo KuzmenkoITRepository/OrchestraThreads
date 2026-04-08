@@ -42,6 +42,10 @@ class HttpReadHandlers(_ServiceHandlerBase):
     async def handle_agents(self, _: web.Request) -> web.Response:
         return await self._json_from_service(self._service.list_agents())
 
+    async def handle_agent_status(self, request: web.Request) -> web.Response:
+        agent_slug = str(request.match_info.get("agent_slug") or "").strip()
+        return await self._json_from_service(self._service.get_agent_status(agent_slug))
+
     async def handle_threads(self, request: web.Request) -> web.Response:
         return await self._json_from_service(
             self._service.list_threads(
@@ -134,6 +138,7 @@ class HttpHandlers:
             "handle_register": write_handlers.handle_register,
             "handle_heartbeat": write_handlers.handle_heartbeat,
             "handle_agents": read_handlers.handle_agents,
+            "handle_agent_status": read_handlers.handle_agent_status,
             "handle_messages": write_handlers.handle_messages,
             "handle_notifications": write_handlers.handle_notifications,
             "handle_threads": read_handlers.handle_threads,

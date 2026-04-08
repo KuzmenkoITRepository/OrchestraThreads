@@ -143,6 +143,9 @@ class HarnessApiHelpers(HarnessRequestHelpers):
     async def list_agents(self) -> dict[str, Any]:
         return await self.request_json(method="GET", path="/agents")
 
+    async def get_agent_status(self, agent_slug: str) -> dict[str, Any]:
+        return await self.request_json(method="GET", path=f"/agents/{agent_slug}/status")
+
     async def list_threads(self, *, scope: str = "active") -> dict[str, Any]:
         return await self.request_json(method="GET", path=f"/api/v1/threads?scope={scope}")
 

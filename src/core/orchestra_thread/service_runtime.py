@@ -671,6 +671,31 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
             "agent_lease_seconds": self.agent_lease_seconds,
         }
 
+    async def get_agent_status(self, agent_slug: str) -> dict[str, Any]:
+        async with self._lock:
+            agent = await self.store.get_agent(agent_slug)
+            if agent is None:
+                raise common.ServiceError(404, f"Unknown agent: {agent_slug}")
+            busy_thread = await self.store.get_agent_busy_thread(agent_slug=agent_slug)
+            is_busy = busy_thread is not None
+            online = self.store.timestamp_within_lease(
+                agent.get("last_seen_at"),
+                lease_seconds=self.agent_lease_seconds,
+            )
+        return {
+            "success": True,
+            "agent_slug": agent_slug,
+            "online": online,
+            "busy": is_busy,
+            "status": "in_progress" if is_busy else "idle",
+            "current_thread_id": self._current_thread_id(busy_thread),
+        }
+
+    def _current_thread_id(self, busy_thread: JsonDictOrNone) -> object:
+        if busy_thread is None:
+            return None
+        return busy_thread.get("thread_id")
+
     async def send_message(  # noqa: WPS211
         self,
         *,
@@ -1713,6 +1738,7 @@ def _register_routes(*, app: web.Application, handlers: http_handlers.HttpHandle
         ("post", "/agents/register", handlers.handle_register),
         ("post", "/agents/heartbeat", handlers.handle_heartbeat),
         ("get", "/agents", handlers.handle_agents),
+        ("get", "/agents/{agent_slug}/status", handlers.handle_agent_status),
         ("get", "/api/v1/instructions", handlers.handle_instructions),
         ("post", "/api/v1/messages", handlers.handle_messages),
         ("post", "/api/v1/notifications", handlers.handle_notifications),

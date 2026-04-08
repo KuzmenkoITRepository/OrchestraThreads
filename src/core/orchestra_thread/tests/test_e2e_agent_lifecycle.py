@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 
 from core.orchestra_thread.tests.fixtures import BaseE2ETestCase, add_pair
+from core.orchestra_thread.tests.fixtures.e2e_harness import E2EHarness, FakeAgent
 
 
 def _agent_online_map(agents_payload: dict[str, object]) -> dict[str, bool]:
@@ -30,3 +32,76 @@ class AgentLifecycleE2ETests(BaseE2ETestCase):
         heartbeat_payload = await self.harness.heartbeat(agents["secretary"].slug)
         self.assertNotEqual(before, heartbeat_payload["agent"]["last_seen_at"])
         self.assertTrue(heartbeat_payload["agent"]["online"])
+
+    async def test_agent_status_endpoint_reports_busy_thread(self) -> None:
+        agents = await add_pair(self.harness)
+        await self.harness.add_agent("specialist")
+        await _run_busy_status_flow(self, self.harness, agents)
+
+
+async def _assert_idle_status(
+    case: BaseE2ETestCase,
+    harness: E2EHarness,
+    agent_slug: str,
+) -> None:
+    status_payload = await harness.get_agent_status(agent_slug)
+    case.assertEqual(status_payload["status"], "idle")
+    case.assertIsNone(status_payload["current_thread_id"])
+
+
+async def _run_busy_status_flow(
+    case: BaseE2ETestCase,
+    harness: E2EHarness,
+    agents: Mapping[str, FakeAgent],
+) -> None:
+    await _assert_idle_status(case, harness, agents["orchestra"].slug)
+    thread_id = await _open_busy_thread(harness, agents)
+    await _assert_busy_status(case, harness, agents["orchestra"].slug, thread_id)
+    await _close_busy_thread(harness, agents, thread_id)
+    await _assert_idle_status(case, harness, agents["orchestra"].slug)
+
+
+async def _open_busy_thread(harness: E2EHarness, agents: Mapping[str, FakeAgent]) -> str:
+    root = await harness.send_message(
+        {
+            "from_agent_slug": agents["secretary"].slug,
+            "to_agent_slug": agents["orchestra"].slug,
+            "message_text": "Investigate this issue.",
+        }
+    )
+    thread_id = str(root["thread"]["thread_id"])
+    await harness.send_notification(
+        {
+            "from_agent_slug": agents["orchestra"].slug,
+            "to_agent_slug": agents["secretary"].slug,
+            "thread_id": thread_id,
+            "status": "in_progress",
+            "message_text": "Working on it.",
+        }
+    )
+    return thread_id
+
+
+async def _assert_busy_status(
+    case: BaseE2ETestCase,
+    harness: E2EHarness,
+    agent_slug: str,
+    thread_id: str,
+) -> None:
+    busy_status = await harness.get_agent_status(agent_slug)
+    case.assertEqual(busy_status["status"], "in_progress")
+    case.assertTrue(busy_status["busy"])
+    case.assertEqual(busy_status["current_thread_id"], thread_id)
+
+
+async def _close_busy_thread(
+    harness: E2EHarness,
+    agents: Mapping[str, FakeAgent],
+    thread_id: str,
+) -> None:
+    await harness.close_thread(
+        owner_agent=agents["secretary"],
+        peer_agent=agents["orchestra"],
+        thread_id=thread_id,
+        message_text="Closing busy-status test thread.",
+    )

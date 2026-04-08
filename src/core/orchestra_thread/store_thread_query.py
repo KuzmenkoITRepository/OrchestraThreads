@@ -143,3 +143,23 @@ class ThreadQueryStoreMixin:
                 thread_id,
             )
         return row_to_dict(row)
+
+    async def get_agent_busy_thread(self, *, agent_slug: str) -> dict[str, Any] | None:
+        assert self.pool is not None
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT *
+                FROM threads
+                WHERE status = 'in_progress'
+                  AND (
+                    owner_agent_slug = $1
+                    OR participant_a_agent_slug = $1
+                    OR participant_b_agent_slug = $1
+                  )
+                ORDER BY COALESCE(last_activity_at, updated_at, created_at) DESC
+                LIMIT 1
+                """,
+                agent_slug,
+            )
+        return row_to_dict(row)
