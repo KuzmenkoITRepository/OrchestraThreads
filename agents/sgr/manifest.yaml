@@ -3,7 +3,7 @@ display_name: SGR Minimax Example
 status: active
 
 agent:
-  working_dir: /workspace
+  working_dir: /workspace/agents/sgr
   http_endpoint: http://{container_name}:8787
   system_prompt_file: system_prompt.md
 
