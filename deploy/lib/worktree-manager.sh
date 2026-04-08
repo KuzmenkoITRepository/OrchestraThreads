@@ -30,6 +30,24 @@ create_worktree() {
   return 0
 }
 
+update_worktree() {
+  local worktree_path
+  local target_ref
+
+  worktree_path="${1:-}"
+  target_ref="${2:-}"
+
+  if [[ -z "${worktree_path}" || -z "${target_ref}" ]]; then
+    return 1
+  fi
+
+  if ! git -C "${worktree_path}" checkout --detach "${target_ref}" 2>&1; then
+    return 1
+  fi
+
+  return 0
+}
+
 remove_worktree() {
   local worktree_path
   local repo_root

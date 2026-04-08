@@ -92,8 +92,12 @@ _ensure_env_workspace() {
   env_dir="${envs_root}/${environment}"
   workspace_dir="${env_dir}/workspace"
 
-  # Skip if workspace already exists (provisioned or previously bootstrapped)
+  # Update existing workspace to deploy ref if specified
   if [[ -d "${workspace_dir}" ]]; then
+    if [[ -n "${OT_DEPLOY_REF:-}" ]]; then
+      printf 'Updating workspace to %s...\n' "${OT_DEPLOY_REF}" >&2
+      update_worktree "${workspace_dir}" "${OT_DEPLOY_REF}"
+    fi
     return 0
   fi
 
@@ -437,6 +441,7 @@ main() {
   project_prefix="${COMPOSE_PROJECT_PREFIX:-orchestrathreads}"
   project_name="${project_prefix}-${environment}"
   export COMPOSE_PROJECT_NAME="${project_name}"
+  export COMPOSE_IGNORE_ORPHANS=true
   export OT_AGENT_CONTAINER_PREFIX="${project_name}-agent-"
   export OT_RUNTIME_ENV_FILE="${output_env_file}"
   omniroute_password="$(_json_get_value "${runtime_json}" "OMNIROUTE_INITIAL_PASSWORD")"
@@ -456,7 +461,7 @@ main() {
   if [[ "${pull_flag}" == "--pull" ]]; then
     docker compose --env-file "${output_env_file}" pull
   fi
-  docker compose --env-file "${output_env_file}" up -d orchestra-omniroute orchestra-wet
+  docker compose --env-file "${output_env_file}" up -d --build orchestra-omniroute orchestra-wet
 
   omniroute_bootstrap_json="$(bash "${OMNIROUTE_BOOTSTRAP_SCRIPT}" \
     --base-url "${omniroute_base_url}" \
@@ -472,7 +477,7 @@ main() {
   _render_runtime_env_file "${template_path}" "${runtime_json}" "${output_env_file}"
   chmod 600 "${output_env_file}"
 
-  docker compose --env-file "${output_env_file}" up -d
+  docker compose --env-file "${output_env_file}" up -d --build
 
   if [[ "${OT_KEEP_RUNTIME_ENV_FILE:-0}" != "1" ]]; then
     rm -f "${output_env_file}"
