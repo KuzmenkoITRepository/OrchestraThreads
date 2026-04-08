@@ -6,6 +6,8 @@ from typing import Any, cast
 from core.orchestra_agents import runtime as runtime_contract
 from core.orchestra_agents.tests.template_helpers.backend_ops import _wait_for
 
+_EVENT_ID = "event-1"
+
 
 def _assert_direct_capture(
     test_case: unittest.TestCase,
@@ -18,10 +20,10 @@ def _assert_direct_capture(
         (capture["stdin_payload"]["role"], "worker"),
         (capture["stdin_payload"]["engine_opts"]["close_stdin_after_start"], True),
         (capture["context_id_env"], backend.current_context_id),
-        (capture["event_id_env"], "event-1"),
+        (capture["event_id_env"], _EVENT_ID),
         (capture["event_kind_env"], "telegram_message"),
         (active_context["context_id"], backend.current_context_id),
-        (active_context["event_id"], "event-1"),
+        (active_context["event_id"], _EVENT_ID),
     ):
         test_case.assertEqual(actual, expected)
     test_case.assertNotIn("thread_id", active_context)
@@ -92,8 +94,8 @@ async def _dispatch_and_assert_completed(
     event_id: str = "event-1",
     recent_entries: int = 0,
 ) -> None:
-    result = await backend.handle_events(delivery)
-    test_case.assertTrue(result.accepted)
+    dispatch_result = await backend.handle_events(delivery)
+    test_case.assertTrue(dispatch_result.accepted)
     completed = await _wait_for(
         lambda: _dispatch_completed(backend, event_id=event_id, recent_entries=recent_entries)
     )

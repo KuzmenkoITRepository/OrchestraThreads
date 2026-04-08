@@ -6,6 +6,9 @@ from pathlib import Path
 
 from core.orchestra_agents.scaffold import ScaffoldOptions, scaffold_agent
 
+_UTF8 = "utf-8"
+_AGENT_RUNTIME_DIR = "agent_runtime"
+
 
 class ScaffoldAgentTests(unittest.TestCase):
     def test_scaffold_agent_renders_placeholders(self) -> None:
@@ -20,8 +23,8 @@ class ScaffoldAgentTests(unittest.TestCase):
                 ),
             )
 
-            manifest_text = (output_dir / "manifest.yaml").read_text(encoding="utf-8")
-            main_text = (output_dir / "agent_runtime" / "main.py").read_text(encoding="utf-8")
+            manifest_text = (output_dir / "manifest.yaml").read_text(encoding=_UTF8)
+            main_text = (output_dir / _AGENT_RUNTIME_DIR / "main.py").read_text(encoding=_UTF8)
             self.assertIn("slug: coding_agent", manifest_text)
             self.assertIn("type: codex_framework", manifest_text)
             self.assertIn("Coding Agent", manifest_text)
@@ -40,15 +43,17 @@ class ScaffoldAgentTests(unittest.TestCase):
                 ),
             )
 
-            manifest_text = (output_dir / "manifest.yaml").read_text(encoding="utf-8")
-            backend_text = (output_dir / "agent_runtime" / "backend.py").read_text(encoding="utf-8")
+            manifest_text = (output_dir / "manifest.yaml").read_text(encoding=_UTF8)
+            backend_text = (output_dir / _AGENT_RUNTIME_DIR / "backend.py").read_text(
+                encoding=_UTF8
+            )
 
             self.assertIn("slug: thread_worker", manifest_text)
             self.assertIn("type: agent_mux", manifest_text)
             self.assertIn("class AgentMuxBackend", backend_text)
             self._assert_generated_configs(output_dir)
 
-    def test_scaffold_opencode_template_creates_runtime_files(self) -> None:
+    def test_scaffold_opencode_creates_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             output_dir = Path(tmpdir) / "opencode_agent"
             scaffold_agent(
@@ -61,13 +66,15 @@ class ScaffoldAgentTests(unittest.TestCase):
                 ),
             )
 
-            manifest_text = (output_dir / "manifest.yaml").read_text(encoding="utf-8")
-            backend_text = (output_dir / "agent_runtime" / "backend.py").read_text(encoding="utf-8")
+            manifest_text = (output_dir / "manifest.yaml").read_text(encoding=_UTF8)
+            backend_text = (output_dir / _AGENT_RUNTIME_DIR / "backend.py").read_text(
+                encoding=_UTF8
+            )
 
             self.assertIn("slug: opencode_agent", manifest_text)
             self.assertIn("type: opencode_omo", manifest_text)
             self.assertIn("OpencodeOmoBackend", backend_text)
-            self.assertTrue((output_dir / "agent_runtime" / "main.py").exists())
+            self.assertTrue((output_dir / _AGENT_RUNTIME_DIR / "main.py").exists())
             self.assertTrue((output_dir / "system_prompt.md").exists())
 
     def _assert_generated_configs(self, output_dir: Path) -> None:

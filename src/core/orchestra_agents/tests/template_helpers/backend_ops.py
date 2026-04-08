@@ -10,6 +10,8 @@ from typing import Any, cast
 from core.orchestra_agents import runtime as runtime_contract
 from core.orchestra_agents.tests.template_helpers.fixture import TemplateFixture
 
+_POLL_INTERVAL = 0.05
+
 
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -24,10 +26,10 @@ async def _wait_for(predicate: Callable[[], object], *, timeout: float = 5.0) ->
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        value = predicate()
-        if value:
-            return value
-        await asyncio.sleep(0.05)
+        predicate_value = predicate()
+        if predicate_value:
+            return predicate_value
+        await asyncio.sleep(_POLL_INTERVAL)
     return None
 
 
@@ -110,12 +112,12 @@ async def _run_backend_once(
     backend = _build_backend(fixture)
     await backend.on_start()
     try:
-        result = await action(backend)
+        action_result = await action(backend)
     except BaseException:
         await backend.on_shutdown()
         raise
     await backend.on_shutdown()
-    return result
+    return action_result
 
 
 def _delivery(
