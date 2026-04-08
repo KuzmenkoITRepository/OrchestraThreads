@@ -1,96 +1,24 @@
 """Events engine service for routing events to agents."""
 
 import asyncio
-import logging
 import os
-from typing import Any, TypedDict
+from typing import Any
 
 from aiohttp import web
 from aiohttp.client import ClientSession, ClientTimeout
-from aiohttp.client_reqrep import ClientResponse
 
-logger = logging.getLogger(__name__)
+from core.events_engine import service_support as _support
 
-
-class _DeliverPayload(TypedDict):
-    agent_slug: str
-    event_data: dict[str, Any]
-
-
-class _EngineOps:
-    @staticmethod
-    def parse_deliver_payload(payload: Any) -> _DeliverPayload:
-        if not isinstance(payload, dict):
-            raise ValueError("Request payload must be an object")
-        agent_slug = payload.get("agent_slug")
-        if not isinstance(agent_slug, str) or not agent_slug.strip():
-            raise ValueError("agent_slug is required")
-        event_data = payload.get("event_data")
-        if not isinstance(event_data, dict):
-            raise ValueError("event_data is required")
-        return {
-            "agent_slug": agent_slug,
-            "event_data": event_data,
-        }
-
-    @staticmethod
-    def validate_status_data(status_data: dict[str, Any], agent_slug: str) -> str | None:
-        if not status_data.get("running"):
-            logger.error("Agent %s is not running", agent_slug)
-            return None
-        health_status = status_data.get("health_status")
-        if not isinstance(health_status, dict) or not health_status.get("ok"):
-            logger.error("Agent %s is not healthy", agent_slug)
-            return None
-        endpoint = status_data.get("http_endpoint")
-        if isinstance(endpoint, str) and endpoint:
-            return endpoint
-        logger.error("Agent %s has no http_endpoint", agent_slug)
-        return None
-
-    @staticmethod
-    async def extract_agent_endpoint(response: ClientResponse, agent_slug: str) -> str | None:
-        if response.status != 200:
-            logger.error("Failed to get agent status: %s", response.status)
-            return None
-        raw_data = await response.json()
-        if not isinstance(raw_data, dict):
-            logger.error("Invalid agent status payload: %s", raw_data)
-            return None
-        if not raw_data.get("success"):
-            logger.error("Agent status request failed: %s", raw_data)
-            return None
-        status_data = raw_data.get("status")
-        if not isinstance(status_data, dict):
-            logger.error("Invalid status section for agent %s", agent_slug)
-            return None
-        return _EngineOps.validate_status_data(status_data, agent_slug)
-
-    @staticmethod
-    async def handle_agent_delivery_response(
-        response: ClientResponse,
-        agent_endpoint: str,
-    ) -> bool:
-        if response.status == 200:
-            logger.info("Successfully delivered event to %s", agent_endpoint)
-            return True
-        body = await response.text()
-        logger.error(
-            "Failed to deliver event to %s: status=%s, body=%s",
-            agent_endpoint,
-            response.status,
-            body,
-        )
-        return False
+logger = _support.logger
 
 
 async def _healthz_handler(request: web.Request) -> web.Response:
-    if request:
-        return web.json_response({"status": "healthy"})
     return web.json_response({"status": "healthy"})
 
 
-async def _process_delivery(engine: "EventsEngine", payload: _DeliverPayload) -> web.Response:
+async def _process_delivery(
+    engine: "EventsEngine", payload: _support.DeliverPayload
+) -> web.Response:
     agent_slug = payload["agent_slug"]
     event_data = payload["event_data"]
     logger.info("Delivering event to agent: %s", agent_slug)
@@ -98,17 +26,20 @@ async def _process_delivery(engine: "EventsEngine", payload: _DeliverPayload) ->
     if agent_endpoint is None:
         return web.json_response(
             {
-                "success": False,
-                "error": f"Agent {agent_slug} not found or not running",
+                _support.SUCCESS_FIELD: False,
+                _support.ERROR_FIELD: f"Agent {agent_slug} not found or not running",
             },
-            status=404,
+            status=_support.HTTP_NOT_FOUND_STATUS,
         )
     delivered = await engine._deliver_to_agent(agent_endpoint, event_data)
     if delivered:
-        return web.json_response({"success": True})
+        return web.json_response({_support.SUCCESS_FIELD: True})
     return web.json_response(
-        {"success": False, "error": "Failed to deliver event to agent"},
-        status=500,
+        {
+            _support.SUCCESS_FIELD: False,
+            _support.ERROR_FIELD: "Failed to deliver event to agent",
+        },
+        status=_support.HTTP_SERVER_ERROR_STATUS,
     )
 
 
@@ -126,7 +57,9 @@ class EventsEngine:
     async def start(self) -> None:
         """Start the events engine service."""
         logger.info("Starting events engine service...")
-        self.http_session = ClientSession(timeout=ClientTimeout(total=30.0))
+        self.http_session = ClientSession(
+            timeout=ClientTimeout(total=_support.HTTP_SESSION_TIMEOUT_SECONDS)
+        )
 
         self.app = web.Application()
         self.app.router.add_post("/deliver", self._handle_deliver)
@@ -153,12 +86,18 @@ class EventsEngine:
     async def _handle_deliver(self, request: web.Request) -> web.Response:
         """Handle event delivery request."""
         try:
-            payload = _EngineOps.parse_deliver_payload(await request.json())
+            payload = _support.parse_deliver_payload(await request.json())
         except ValueError as exc:
-            return web.json_response({"success": False, "error": str(exc)}, status=400)
+            return web.json_response(
+                {_support.SUCCESS_FIELD: False, _support.ERROR_FIELD: str(exc)},
+                status=_support.HTTP_BAD_REQUEST_STATUS,
+            )
         except Exception as exc:
             logger.error("Error parsing delivery request: %s", exc, exc_info=True)
-            return web.json_response({"success": False, "error": str(exc)}, status=500)
+            return web.json_response(
+                {_support.SUCCESS_FIELD: False, _support.ERROR_FIELD: str(exc)},
+                status=_support.HTTP_SERVER_ERROR_STATUS,
+            )
 
         return await _process_delivery(self, payload)
 
@@ -171,7 +110,7 @@ class EventsEngine:
         url = f"{self.orchestra_agents_url}/api/v1/agents/{agent_slug}/status"
         try:
             async with session.get(url) as response:
-                return await _EngineOps.extract_agent_endpoint(response, agent_slug)
+                return await _support.extract_agent_endpoint(response, agent_slug)
         except Exception as exc:
             logger.error("Error getting agent endpoint: %s", exc, exc_info=True)
             return None
@@ -187,7 +126,7 @@ class EventsEngine:
         logger.debug("Event data: %s", event_data)
         try:
             async with session.post(url, json=event_data) as response:
-                return await _EngineOps.handle_agent_delivery_response(response, agent_endpoint)
+                return await _support.handle_agent_delivery_response(response, agent_endpoint)
         except Exception as exc:
             logger.error("Error delivering event to agent: %s", exc, exc_info=True)
             return False
