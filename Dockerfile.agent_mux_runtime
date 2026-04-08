@@ -1,6 +1,6 @@
 FROM golang:1.24-bookworm AS agent_mux_builder
 
-ARG AGENT_MUX_GIT_REF=main
+ARG AGENT_MUX_GIT_REF=0901802
 
 WORKDIR /build
 
@@ -10,7 +10,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git patch \
     && rm -rf /var/lib/apt/lists/*
 
-RUN git clone --depth 1 --branch "${AGENT_MUX_GIT_REF}" https://github.com/buildoak/agent-mux.git /src/agent-mux
+RUN git clone https://github.com/buildoak/agent-mux.git /src/agent-mux \
+    && git -C /src/agent-mux checkout "${AGENT_MUX_GIT_REF}" \
+    && git -C /src/agent-mux rev-parse --short HEAD
 
 WORKDIR /src/agent-mux
 
