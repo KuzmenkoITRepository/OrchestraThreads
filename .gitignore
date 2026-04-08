@@ -31,3 +31,4 @@ deploy/vault/bootstrap/.out/
 deploy/approvals/
 deploy/vault/local/
 environments/
+*.db
