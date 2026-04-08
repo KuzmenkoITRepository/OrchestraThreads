@@ -10,10 +10,16 @@ from core.task_registry.store_comments import (
 from core.task_registry.store_tasks import TaskStoreTasks
 
 
-class TaskStore(  # noqa: WPS215  # The facade intentionally composes multiple mixins.
-    TaskStoreBase,
+class _TaskStoreContent(
     TaskStoreTasks,
     TaskStoreChecklists,
     TaskStoreComments,
+):
+    __slots__ = ()
+
+
+class TaskStore(
+    TaskStoreBase,
+    _TaskStoreContent,
 ):
     __slots__ = ()

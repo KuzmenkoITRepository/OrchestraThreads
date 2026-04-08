@@ -12,6 +12,8 @@ from core.task_registry.config import TaskRegistryConfig, load_config
 
 logger = logging.getLogger(__name__)
 
+HTTP_UNAVAILABLE_STATUS = 503
+
 
 @dataclass
 class TaskRegistryStore:
@@ -71,9 +73,9 @@ async def _shutdown_service(service: TaskRegistryService, runner: web.AppRunner)
 async def _healthz(request: web.Request) -> web.Response:
     service = request.app["service"]
     if not isinstance(service, TaskRegistryService):
-        return web.json_response({"status": "error"}, status=503)
+        return web.json_response({"status": "error"}, status=HTTP_UNAVAILABLE_STATUS)
     if not await service.is_healthy():
-        return web.json_response({"status": "error"}, status=503)
+        return web.json_response({"status": "error"}, status=HTTP_UNAVAILABLE_STATUS)
     return web.json_response({"status": "ok"})
 
 
