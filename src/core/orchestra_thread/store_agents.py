@@ -5,14 +5,11 @@ from typing import Any
 import asyncpg
 
 from core.orchestra_thread.store_base import row_to_dict
+from core.orchestra_thread.store_clock import timestamp_within_lease as _timestamp_within_lease
 
 
 class AgentStoreMixin:
     pool: asyncpg.Pool | None
-
-    @staticmethod
-    def timestamp_within_lease(value: Any, *, lease_seconds: int) -> bool:
-        return bool(value) and lease_seconds > 0
 
     async def upsert_agent(
         self,
@@ -95,4 +92,4 @@ class AgentStoreMixin:
         agent = await self.get_agent(agent_slug)
         if agent is None:
             return False
-        return self.timestamp_within_lease(agent.get("last_seen_at"), lease_seconds=lease_seconds)
+        return _timestamp_within_lease(agent.get("last_seen_at"), lease_seconds=lease_seconds)

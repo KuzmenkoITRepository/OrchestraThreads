@@ -15,9 +15,16 @@ from core.orchestra_thread.client import OrchestraThreadsClient
 from core.orchestra_thread.mcp_server import OrchestraThreadsMCPServer
 from core.orchestra_thread.tests.fixtures.e2e_harness import E2EHarness
 
+_SLUG_SECRETARY = "secretary"
+_SLUG_ORCHESTRA = "orchestra"
+_KEY_THREAD = "thread"
+_KEY_THREAD_ID = "thread_id"
+_TOOL_SEND = "thread_send"
+_KEY_MESSAGE = "message"
 
-def _structured(result: dict[str, Any]) -> dict[str, Any]:
-    return dict(result["structuredContent"])
+
+def _structured(mcp_result: dict[str, Any]) -> dict[str, Any]:
+    return dict(mcp_result["structuredContent"])
 
 
 @asynccontextmanager
@@ -42,24 +49,24 @@ async def _create_root_context(
 ) -> str:
     root = await harness.send_message(
         {
-            "from_agent_slug": "secretary",
-            "to_agent_slug": "orchestra",
+            "from_agent_slug": _SLUG_SECRETARY,
+            "to_agent_slug": _SLUG_ORCHESTRA,
             "message_text": "Prepare a short update.",
         },
     )
-    thread_id = str(root["thread"]["thread_id"])
+    thread_id = str(root[_KEY_THREAD][_KEY_THREAD_ID])
     await harness.wait_for(
         lambda: len(orchestra.events) >= 1,
         message="orchestra did not receive the initial root-thread message",
     )
     write_active_context(
         {
-            "thread_id": thread_id,
+            _KEY_THREAD_ID: thread_id,
             "root_thread_id": thread_id,
             "parent_thread_id": None,
-            "source_agent_slug": "secretary",
-            "target_agent_slug": "orchestra",
-            "owner_agent_slug": "secretary",
+            "source_agent_slug": _SLUG_SECRETARY,
+            "target_agent_slug": _SLUG_ORCHESTRA,
+            "owner_agent_slug": _SLUG_SECRETARY,
         },
     )
     return thread_id
@@ -83,8 +90,8 @@ class MCPServerSetupMixin(unittest.IsolatedAsyncioTestCase):
 
         self.harness = E2EHarness()
         await self.harness.start()
-        self.secretary = await self.harness.add_agent("secretary")
-        self.orchestra = await self.harness.add_agent("orchestra")
+        self.secretary = await self.harness.add_agent(_SLUG_SECRETARY)
+        self.orchestra = await self.harness.add_agent(_SLUG_ORCHESTRA)
         self.specialist = await self.harness.add_agent("specialist")
 
     async def asyncTearDown(self) -> None:
@@ -97,26 +104,26 @@ class MCPSendToolTests(MCPServerSetupMixin):
     """Tests for thread_send and thread_current MCP tools."""
 
     async def test_send_creates_root(self) -> None:
-        async with _server_ctx(self.harness, "secretary") as server:
-            result = await server.handle_tools_call(
-                name="thread_send",
+        async with _server_ctx(self.harness, _SLUG_SECRETARY) as server:
+            send_result = await server.handle_tools_call(
+                name=_TOOL_SEND,
                 arguments={
-                    "target_agent_slug": "orchestra",
-                    "message": "Prepare a short update.",
+                    "target_agent_slug": _SLUG_ORCHESTRA,
+                    _KEY_MESSAGE: "Prepare a short update.",
                 },
             )
-        payload = _structured(result)
+        payload = _structured(send_result)
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["operation"], "thread_send")
         self.assertEqual(payload["route"], "created_root")
-        self.assertEqual(payload["peer_agent_slug"], "orchestra")
-        self.assertIsNotNone(payload["thread_id"])
+        self.assertEqual(payload["peer_agent_slug"], _SLUG_ORCHESTRA)
+        self.assertIsNotNone(payload[_KEY_THREAD_ID])
 
-        await self._close_root(str(payload["thread_id"]))
+        await self._close_root(str(payload[_KEY_THREAD_ID]))
 
     async def test_current_reply_and_child(self) -> None:
         thread_id = await _create_root_context(self.harness, self.orchestra)
-        async with _server_ctx(self.harness, "orchestra") as server:
+        async with _server_ctx(self.harness, _SLUG_ORCHESTRA) as server:
             await self._verify_current(server, thread_id)
             await self._verify_reply(server, thread_id)
             await self._verify_child(server, thread_id)
@@ -131,9 +138,9 @@ class MCPSendToolTests(MCPServerSetupMixin):
             await server.handle_tools_call(name="thread_current", arguments={}),
         )
         self.assertTrue(current["active"])
-        self.assertEqual(current["thread_id"], thread_id)
-        self.assertEqual(current["peer_agent_slug"], "secretary")
-        self.assertIn("thread_send", current["allowed_actions"])
+        self.assertEqual(current[_KEY_THREAD_ID], thread_id)
+        self.assertEqual(current["peer_agent_slug"], _SLUG_SECRETARY)
+        self.assertIn(_TOOL_SEND, current["allowed_actions"])
 
     async def _verify_reply(
         self,
@@ -142,12 +149,12 @@ class MCPSendToolTests(MCPServerSetupMixin):
     ) -> None:
         reply = _structured(
             await server.handle_tools_call(
-                name="thread_send",
-                arguments={"message": "Done. Here is the update."},
+                name=_TOOL_SEND,
+                arguments={_KEY_MESSAGE: "Done. Here is the update."},
             ),
         )
         self.assertEqual(reply["route"], "reply_current")
-        self.assertEqual(reply["thread_id"], thread_id)
+        self.assertEqual(reply[_KEY_THREAD_ID], thread_id)
 
     async def _verify_child(
         self,
@@ -156,15 +163,15 @@ class MCPSendToolTests(MCPServerSetupMixin):
     ) -> None:
         child = _structured(
             await server.handle_tools_call(
-                name="thread_send",
+                name=_TOOL_SEND,
                 arguments={
                     "target_agent_slug": "specialist",
-                    "message": "Check one detail.",
+                    _KEY_MESSAGE: "Check one detail.",
                 },
             ),
         )
         self.assertEqual(child["route"], "created_child")
-        self.assertNotEqual(child["thread_id"], thread_id)
+        self.assertNotEqual(child[_KEY_THREAD_ID], thread_id)
 
     async def _close_root(self, thread_id: str) -> None:
         closed = await self.harness.close_thread(
@@ -173,7 +180,7 @@ class MCPSendToolTests(MCPServerSetupMixin):
             thread_id=thread_id,
             message_text="Closing MCP test thread.",
         )
-        self.assertEqual(closed["thread"]["status"], "closed")
+        self.assertEqual(closed[_KEY_THREAD]["status"], "closed")
 
 
 class MCPStatusAndProtocolTests(MCPServerSetupMixin):
@@ -181,13 +188,13 @@ class MCPStatusAndProtocolTests(MCPServerSetupMixin):
 
     async def test_status_and_expand(self) -> None:
         thread_id = await _create_root_context(self.harness, self.orchestra)
-        async with _server_ctx(self.harness, "orchestra") as server:
+        async with _server_ctx(self.harness, _SLUG_ORCHESTRA) as server:
             await self._verify_status(server, thread_id)
             await self._verify_expand(server, thread_id)
         await self._close_root(thread_id)
 
     async def test_guide_returns_workflow(self) -> None:
-        async with _server_ctx(self.harness, "secretary") as server:
+        async with _server_ctx(self.harness, _SLUG_SECRETARY) as server:
             guide = _structured(
                 await server.handle_tools_call(
                     name="thread_guide",
@@ -200,7 +207,7 @@ class MCPStatusAndProtocolTests(MCPServerSetupMixin):
         self.assertIn("recommended_mcp_tool_flow", guide)
 
     async def test_protocol_surface(self) -> None:
-        async with _server_ctx(self.harness, "secretary") as server:
+        async with _server_ctx(self.harness, _SLUG_SECRETARY) as server:
             init_resp = await server.handle_request(
                 _init_request(),
             )
@@ -225,11 +232,11 @@ class MCPStatusAndProtocolTests(MCPServerSetupMixin):
         status = _structured(
             await server.handle_tools_call(
                 name="thread_status",
-                arguments={"status": "review", "message": "Ready for handoff."},
+                arguments={"status": "review", _KEY_MESSAGE: "Ready for handoff."},
             ),
         )
         self.assertTrue(status["ok"])
-        self.assertEqual(status["thread_id"], thread_id)
+        self.assertEqual(status[_KEY_THREAD_ID], thread_id)
         self.assertEqual(status["published_status"], "review")
         await self.harness.wait_for(
             lambda: any(ev.get("notification_status") == "review" for ev in self.secretary.events),
@@ -247,7 +254,7 @@ class MCPStatusAndProtocolTests(MCPServerSetupMixin):
                 arguments={"view": "latest"},
             ),
         )
-        self.assertEqual(latest["thread"]["thread_id"], thread_id)
+        self.assertEqual(latest[_KEY_THREAD][_KEY_THREAD_ID], thread_id)
         related = _structured(
             await server.handle_tools_call(
                 name="thread_expand",
@@ -263,7 +270,7 @@ class MCPStatusAndProtocolTests(MCPServerSetupMixin):
             thread_id=thread_id,
             message_text="Closing MCP test thread.",
         )
-        self.assertEqual(closed["thread"]["status"], "closed")
+        self.assertEqual(closed[_KEY_THREAD]["status"], "closed")
 
 
 def _init_request() -> dict[str, Any]:

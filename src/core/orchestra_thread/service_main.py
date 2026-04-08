@@ -9,6 +9,7 @@ import os
 from aiohttp import web
 
 from core.orchestra_thread.service_runtime import OrchestraThreadsService, build_app
+from core.orchestra_thread.service_runtime_config import RuntimeConfigOverrides
 
 
 def configure_logging() -> None:
@@ -40,7 +41,7 @@ async def _stop_runtime(runner: web.AppRunner, service: OrchestraThreadsService)
 
 
 async def _run() -> None:
-    service = OrchestraThreadsService()
+    service = OrchestraThreadsService(runtime_config_overrides=RuntimeConfigOverrides())
     await service.start()
     app = build_app(service)
     runner = web.AppRunner(app)

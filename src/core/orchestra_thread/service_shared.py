@@ -10,6 +10,7 @@ from core.orchestra_thread.common import ServiceError
 JsonDict = dict[str, Any]
 JsonDictOrNone = JsonDict | None
 STATIC_DIR = Path(__file__).with_name("static")
+MESSAGE_PREVIEW_LIMIT = 160
 
 
 def json_error(message: str, *, status: int) -> web.Response:
@@ -24,7 +25,7 @@ def service_error_response(exc: ServiceError) -> web.Response:
     return json_error(exc.message, status=exc.status)
 
 
-def message_preview(text: str, *, limit: int = 160) -> str:
+def message_preview(text: str, *, limit: int = MESSAGE_PREVIEW_LIMIT) -> str:
     normalized = " ".join(str(text or "").split())
     if len(normalized) <= limit:
         return normalized

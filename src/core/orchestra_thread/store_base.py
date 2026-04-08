@@ -3,50 +3,55 @@ from __future__ import annotations
 import json
 import re
 from contextlib import suppress
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import asyncpg
 
+from core.orchestra_thread.store_clock import timestamp_within_lease as _timestamp_within_lease
+
 SCHEMA_SQL = Path(__file__).with_name("schema.sql").read_text(encoding="utf-8")
 SCHEMA_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+DEFAULT_MIN_POOL_SIZE = 5
+DEFAULT_MAX_POOL_SIZE = 20
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 10.0
 
 
-def parse_timestamp(value: Any) -> datetime | None:
-    if value is None:
+def parse_timestamp(raw_value: Any) -> datetime | None:
+    if raw_value is None:
         return None
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            return value.replace(tzinfo=UTC)
-        return value.astimezone(UTC)
-    normalized = str(value).strip()
+    if isinstance(raw_value, datetime):
+        if raw_value.tzinfo is None:
+            return raw_value.replace(tzinfo=UTC)
+        return raw_value.astimezone(UTC)
+    normalized = str(raw_value).strip()
     if normalized:
         return datetime.fromisoformat(normalized)
     return None
 
 
-def normalize_value(value: Any) -> Any:
-    if isinstance(value, datetime):
-        parsed = parse_timestamp(value)
+def normalize_value(raw_value: Any) -> Any:
+    if isinstance(raw_value, datetime):
+        parsed = parse_timestamp(raw_value)
         if parsed is not None:
             return parsed.isoformat()
-        return value.isoformat()
-    return value
+        return raw_value.isoformat()
+    return raw_value
 
 
 def row_to_dict(row: Any) -> dict[str, Any] | None:
     if row is None:
         return None
     payload = dict(row)
-    for key, value in list(payload.items()):
-        if isinstance(value, str) and key.endswith("_json"):
+    for key, raw_value in list(payload.items()):
+        if isinstance(raw_value, str) and key.endswith("_json"):
             try:
-                payload[key] = json.loads(value)
+                payload[key] = json.loads(raw_value)
             except json.JSONDecodeError:
-                payload[key] = value
+                payload[key] = raw_value
             continue
-        payload[key] = normalize_value(value)
+        payload[key] = normalize_value(raw_value)
     return payload
 
 
@@ -54,16 +59,6 @@ def quote_ident(identifier: str) -> str:
     if not SCHEMA_NAME_RE.match(identifier):
         raise ValueError(f"Invalid SQL identifier: {identifier}")
     return f'"{identifier}"'
-
-
-def rowcount_from_status(status_text: str) -> int:
-    parts = str(status_text or "").split()
-    if not parts:
-        return 0
-    try:
-        return int(parts[-1])
-    except ValueError:
-        return 0
 
 
 async def init_connection(conn: asyncpg.Connection) -> None:
@@ -88,9 +83,9 @@ class ThreadStoreBase:
         database_url: str,
         *,
         schema_name: str = "public",
-        min_pool_size: int = 5,
-        max_pool_size: int = 20,
-        command_timeout_seconds: float = 10.0,
+        min_pool_size: int = DEFAULT_MIN_POOL_SIZE,
+        max_pool_size: int = DEFAULT_MAX_POOL_SIZE,
+        command_timeout_seconds: float = DEFAULT_COMMAND_TIMEOUT_SECONDS,
     ) -> None:
         self.database_url = str(database_url or "").strip()
         if not self.database_url:
@@ -145,12 +140,8 @@ class ThreadStoreBase:
             return False
         return True
 
-    @staticmethod
-    def timestamp_within_lease(value: Any, *, lease_seconds: int) -> bool:
-        parsed = parse_timestamp(value)
-        if parsed is None:
-            return False
-        return datetime.now(UTC) - parsed <= timedelta(seconds=lease_seconds)
+    def timestamp_within_lease(self, value: Any, *, lease_seconds: int) -> bool:
+        return _timestamp_within_lease(value, lease_seconds=lease_seconds)
 
     async def _ensure_schema(self) -> None:
         assert self.pool is not None

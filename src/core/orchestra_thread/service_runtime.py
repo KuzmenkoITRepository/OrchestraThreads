@@ -4,16 +4,26 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import uuid
 from typing import Any
 
 from aiohttp import ClientSession, ClientTimeout, web
 
-from core.orchestra_thread import common, guide, http_handlers, service_shared
+from core.orchestra_thread import (
+    common,
+    guide,
+    http_handlers,
+    service_message_requests,
+    service_notification_requests,
+    service_shared,
+    store_thread_creation,
+    store_thread_events,
+)
+from core.orchestra_thread.service_runtime_config import (
+    RuntimeConfigOverrides,
+    load_runtime_config,
+)
 from core.orchestra_thread.store import ThreadStore
-from core.orchestra_thread.store_thread_creation import ChildThreadRequest, RootThreadRequest
-from core.orchestra_thread.store_thread_events import AppendEventRequest
 
 logger = logging.getLogger(__name__)
 SERVICE_APP_KEY: web.AppKey[OrchestraThreadsService] = web.AppKey("OrchestraThreadsService")
@@ -40,40 +50,21 @@ def message_preview(text: str, *, limit: int = 160) -> str:
     return f"{normalized[: limit - 3]}..."
 
 
-class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
+class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service facade intentionally centralizes public thread API while delegating heavy logic to helper modules.
     """Thread service with retrying HTTP delivery and inactivity wakeups."""
 
-    def __init__(  # noqa: WPS211
+    def __init__(
         self,
         *,
-        database_url: str | None = None,
-        database_schema: str | None = None,
-        db_min_pool_size: int | None = None,
-        db_max_pool_size: int | None = None,
-        db_command_timeout_seconds: float | None = None,
         db_path: str | None = None,
-        agent_lease_seconds: int | None = None,
-        delivery_poll_interval_seconds: float | None = None,
-        inactivity_timeout_seconds: int | None = None,
-        retry_base_seconds: int | None = None,
-        retry_max_seconds: int | None = None,
+        runtime_config_overrides: RuntimeConfigOverrides | None = None,
     ) -> None:
         if db_path is not None:
             raise ValueError(
                 "SQLite support has been removed. Use database_url / ORCHESTRA_THREADS_DATABASE_URL."
             )
-        self._load_runtime_config(
-            database_url=database_url,
-            database_schema=database_schema,
-            db_min_pool_size=db_min_pool_size,
-            db_max_pool_size=db_max_pool_size,
-            db_command_timeout_seconds=db_command_timeout_seconds,
-            agent_lease_seconds=agent_lease_seconds,
-            delivery_poll_interval_seconds=delivery_poll_interval_seconds,
-            inactivity_timeout_seconds=inactivity_timeout_seconds,
-            retry_base_seconds=retry_base_seconds,
-            retry_max_seconds=retry_max_seconds,
-        )
+        config = load_runtime_config(runtime_config_overrides or RuntimeConfigOverrides())
+        self._apply_runtime_config(config)
         self.store = ThreadStore(
             self.database_url,
             schema_name=self.database_schema,
@@ -87,100 +78,17 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
         self._http_session: ClientSession | None = None
         self.running = False
 
-    def _load_runtime_config(  # noqa: WPS211
-        self,
-        *,
-        database_url: str | None,
-        database_schema: str | None,
-        db_min_pool_size: int | None,
-        db_max_pool_size: int | None,
-        db_command_timeout_seconds: float | None,
-        agent_lease_seconds: int | None,
-        delivery_poll_interval_seconds: float | None,
-        inactivity_timeout_seconds: int | None,
-        retry_base_seconds: int | None,
-        retry_max_seconds: int | None,
-    ) -> None:
-        self.database_url = str(
-            database_url
-            or os.getenv("ORCHESTRA_THREADS_DATABASE_URL")
-            or "postgresql://orchestra:orchestra@127.0.0.1:5432/orchestra_threads"
-        ).strip()
-        self.database_schema = self._schema_value(database_schema)
-        self.db_min_pool_size = self._int_setting(
-            explicit_value=db_min_pool_size,
-            env_name="ORCHESTRA_THREADS_DB_MIN_POOL_SIZE",
-            default="5",
-            minimum=1,
-        )
-        self.db_max_pool_size = self._int_setting(
-            explicit_value=db_max_pool_size,
-            env_name="ORCHESTRA_THREADS_DB_MAX_POOL_SIZE",
-            default="20",
-            minimum=self.db_min_pool_size,
-        )
-        self.db_command_timeout_seconds = self._float_setting(
-            explicit_value=db_command_timeout_seconds,
-            env_name="ORCHESTRA_THREADS_DB_COMMAND_TIMEOUT_SECONDS",
-            default="10",
-            minimum=1.0,
-        )
-        self.agent_lease_seconds = self._int_setting(
-            explicit_value=agent_lease_seconds,
-            env_name="ORCHESTRA_THREADS_AGENT_LEASE_SECONDS",
-            default="30",
-            minimum=5,
-        )
-        self.delivery_poll_interval_seconds = self._float_setting(
-            explicit_value=delivery_poll_interval_seconds,
-            env_name="ORCHESTRA_THREADS_DELIVERY_POLL_INTERVAL_SECONDS",
-            default="1",
-            minimum=0.2,
-        )
-        self.inactivity_timeout_seconds = self._int_setting(
-            explicit_value=inactivity_timeout_seconds,
-            env_name="ORCHESTRA_THREADS_INACTIVITY_TIMEOUT_SECONDS",
-            default="60",
-            minimum=10,
-        )
-        self.retry_base_seconds = self._int_setting(
-            explicit_value=retry_base_seconds,
-            env_name="ORCHESTRA_THREADS_RETRY_BASE_SECONDS",
-            default="2",
-            minimum=1,
-        )
-        self.retry_max_seconds = self._int_setting(
-            explicit_value=retry_max_seconds,
-            env_name="ORCHESTRA_THREADS_RETRY_MAX_SECONDS",
-            default="30",
-            minimum=self.retry_base_seconds,
-        )
-
-    def _schema_value(self, database_schema: str | None) -> str:
-        value = str(database_schema or os.getenv("ORCHESTRA_THREADS_DB_SCHEMA") or "public").strip()
-        return value or "public"
-
-    def _int_setting(
-        self,
-        *,
-        explicit_value: int | None,
-        env_name: str,
-        default: str,
-        minimum: int,
-    ) -> int:
-        raw_value = explicit_value or os.getenv(env_name) or default
-        return max(minimum, int(raw_value))
-
-    def _float_setting(
-        self,
-        *,
-        explicit_value: float | None,
-        env_name: str,
-        default: str,
-        minimum: float,
-    ) -> float:
-        raw_value = explicit_value or os.getenv(env_name) or default
-        return max(minimum, float(raw_value))
+    def _apply_runtime_config(self, config: Any) -> None:
+        self.database_url = config.database_url
+        self.database_schema = config.database_schema
+        self.db_min_pool_size = config.db_min_pool_size
+        self.db_max_pool_size = config.db_max_pool_size
+        self.db_command_timeout_seconds = config.db_command_timeout_seconds
+        self.agent_lease_seconds = config.agent_lease_seconds
+        self.delivery_poll_interval_seconds = config.delivery_poll_interval_seconds
+        self.inactivity_timeout_seconds = config.inactivity_timeout_seconds
+        self.retry_base_seconds = config.retry_base_seconds
+        self.retry_max_seconds = config.retry_max_seconds
 
     async def start(self) -> None:
         if self.running:
@@ -692,62 +600,18 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
             "agent_lease_seconds": self.agent_lease_seconds,
         }
 
-    async def send_message(  # noqa: WPS211
+    async def send_message(
         self,
         *,
-        from_agent_slug: str,
-        to_agent_slug: str,
-        message_text: str,
-        thread_id: str | None,
-        parent_thread_id: str | None,
-        client_request_id: str,
+        request_input: Any,
     ) -> dict[str, Any]:
-        request = self._message_request(
-            from_agent_slug=from_agent_slug,
-            to_agent_slug=to_agent_slug,
-            message_text=message_text,
-            thread_id=thread_id,
-            parent_thread_id=parent_thread_id,
-            client_request_id=client_request_id,
-        )
+        request = service_message_requests.build_message_request(request_input)
         return await self._send_message_locked(request=request)
 
-    def _message_request(  # noqa: WPS211
-        self,
-        *,
-        from_agent_slug: str,
-        to_agent_slug: str,
-        message_text: str,
-        thread_id: str | None,
-        parent_thread_id: str | None,
-        client_request_id: str,
-    ) -> dict[str, str | None]:
-        request = {
-            "from_agent_slug": str(from_agent_slug or "").strip(),
-            "to_agent_slug": str(to_agent_slug or "").strip(),
-            "message_text": common.normalize_text_input(str(message_text or "")).strip(),
-            "thread_id": str(thread_id or "").strip() or None,
-            "parent_thread_id": str(parent_thread_id or "").strip() or None,
-            "client_request_id": client_request_id,
-        }
-        self._validate_message_request(request=request)
-        return request
-
-    def _validate_message_request(self, *, request: dict[str, str | None]) -> None:
-        from_agent_slug = str(request["from_agent_slug"] or "")
-        to_agent_slug = str(request["to_agent_slug"] or "")
-        message_text = str(request["message_text"] or "")
-        if not from_agent_slug or not to_agent_slug:
-            raise common.ServiceError(400, "from_agent_slug and to_agent_slug are required")
-        if from_agent_slug == to_agent_slug:
-            raise common.ServiceError(400, "agent cannot send a thread message to itself")
-        if not message_text:
-            raise common.ServiceError(400, "message_text is required")
-
     async def _send_message_locked(self, *, request: dict[str, str | None]) -> JsonDict:
-        message_request_context = self._message_request_context(request=request)
+        message_context = service_message_requests.message_request_context(request=request)
         async with self._lock:
-            return await self._send_message_with_lock_context(message_request_context)
+            return await self._send_message_with_lock_context(message_context)
 
     async def _send_message_with_lock_context(self, message_request_context: JsonDict) -> JsonDict:
         from_agent_slug = str(message_request_context["from_agent_slug"])
@@ -775,13 +639,14 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
 
     async def _build_message_response(self, message_request_context: JsonDict) -> JsonDict:
         thread, created_thread = await self._resolve_message_thread(
-            thread_id=self._optional_text(message_request_context.get("thread_id")),
-            parent_thread_id=self._optional_text(message_request_context.get("parent_thread_id")),
+            thread_id=str(message_request_context.get("thread_id") or "").strip() or None,
+            parent_thread_id=str(message_request_context.get("parent_thread_id") or "").strip()
+            or None,
             from_agent_slug=str(message_request_context["from_agent_slug"]),
             to_agent_slug=str(message_request_context["to_agent_slug"]),
         )
         event, thread_payload = await self.store.append_thread_event(
-            request=AppendEventRequest(
+            request=store_thread_events.AppendEventRequest(
                 event_id=str(uuid.uuid4()),
                 thread_id=str(thread.get("thread_id")),
                 event_kind="message",
@@ -802,62 +667,6 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
             "created_thread": created_thread,
             "thread": self.thread_summary(thread_payload),
             "event": event,
-        }
-
-    def _message_request_context(
-        self,
-        *,
-        request: dict[str, str | None],
-    ) -> JsonDict:
-        return self._build_message_request_context(request)
-
-    def _build_message_request_context(self, request: dict[str, str | None]) -> JsonDict:
-        request_values = self._message_request_values(request)
-        thread_context = self._message_thread_context(request_values)
-        message_args = self._message_args(request_values)
-        idempotency = self._message_idempotency(request_values)
-        return {
-            "thread_id": thread_context["thread_id"],
-            "parent_thread_id": thread_context["parent_thread_id"],
-            "from_agent_slug": message_args["from_agent_slug"],
-            "to_agent_slug": message_args["to_agent_slug"],
-            "message_text": message_args["message_text"],
-            "client_request_id": idempotency["client_request_id"],
-        }
-
-    def _message_idempotency(self, request_values: dict[str, Any]) -> dict[str, str]:
-        return {
-            "from_agent_slug": str(request_values["from_agent_slug"]),
-            "client_request_id": str(request_values["client_request_id"]),
-        }
-
-    def _message_args(self, request_values: dict[str, Any]) -> dict[str, str]:
-        return {
-            "from_agent_slug": str(request_values["from_agent_slug"]),
-            "to_agent_slug": str(request_values["to_agent_slug"]),
-            "message_text": str(request_values["message_text"]),
-        }
-
-    def _message_thread_context(self, request_values: dict[str, Any]) -> dict[str, str | None]:
-        return {
-            "thread_id": self._optional_text(request_values.get("thread_id")),
-            "parent_thread_id": self._optional_text(request_values.get("parent_thread_id")),
-        }
-
-    def _optional_text(self, value: Any) -> str | None:
-        normalized_value = str(value or "").strip()
-        if normalized_value:
-            return normalized_value
-        return None
-
-    def _message_request_values(self, request: dict[str, str | None]) -> JsonDict:
-        return {
-            "from_agent_slug": str(request["from_agent_slug"]),
-            "to_agent_slug": str(request["to_agent_slug"]),
-            "message_text": str(request["message_text"]),
-            "thread_id": request["thread_id"],
-            "parent_thread_id": request["parent_thread_id"],
-            "client_request_id": str(request["client_request_id"]),
         }
 
     async def _resolve_message_thread(
@@ -881,7 +690,7 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
                 to_agent_slug=to_agent_slug,
             )
         return await self.store.get_or_create_root_thread(
-            request=RootThreadRequest(
+            request=store_thread_creation.RootThreadRequest(
                 thread_id=str(uuid.uuid4()),
                 owner_agent_slug=from_agent_slug,
                 from_agent_slug=from_agent_slug,
@@ -921,7 +730,7 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
             raise common.ServiceError(409, f"Parent thread {parent_thread_id} is already terminal")
         self.thread_peer_agent_slug(thread=parent_thread, agent_slug=from_agent_slug)
         return await self.store.get_or_create_child_thread(
-            request=ChildThreadRequest(
+            request=store_thread_creation.ChildThreadRequest(
                 thread_id=str(uuid.uuid4()),
                 root_thread_id=str(parent_thread.get("root_thread_id")),
                 parent_thread_id=parent_thread_id,
@@ -931,24 +740,12 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
             ),
         )
 
-    async def send_notification(  # noqa: WPS211
+    async def send_notification(
         self,
         *,
-        from_agent_slug: str,
-        to_agent_slug: str,
-        thread_id: str,
-        status: str,
-        message_text: str,
-        client_request_id: str,
+        request_input: Any,
     ) -> dict[str, Any]:
-        request = self._notification_request(
-            from_agent_slug=from_agent_slug,
-            to_agent_slug=to_agent_slug,
-            thread_id=thread_id,
-            status=status,
-            message_text=message_text,
-            client_request_id=client_request_id,
-        )
+        request = service_notification_requests.build_notification_request(request_input)
         should_notify_stop = bool(request["status"] == "closed")
         should_cascade_close = bool(request["status"] in common.THREAD_TERMINAL_STATUSES)
         response = await self._send_notification_locked(request=request)
@@ -958,45 +755,10 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
             await self._cascade_notification_close(request=request)
         return response
 
-    def _notification_request(  # noqa: WPS211
-        self,
-        *,
-        from_agent_slug: str,
-        to_agent_slug: str,
-        thread_id: str,
-        status: str,
-        message_text: str,
-        client_request_id: str,
-    ) -> dict[str, str]:
-        request = {
-            "from_agent_slug": str(from_agent_slug or "").strip(),
-            "to_agent_slug": str(to_agent_slug or "").strip(),
-            "thread_id": str(thread_id or "").strip(),
-            "status": common.normalize_status(status),
-            "message_text": common.normalize_text_input(str(message_text or "")).strip(),
-            "client_request_id": client_request_id,
-        }
-        self._validate_notification_request(request=request)
-        return request
-
-    def _validate_notification_request(self, *, request: dict[str, str]) -> None:
-        if (
-            not request["from_agent_slug"]
-            or not request["to_agent_slug"]
-            or not request["thread_id"]
-        ):
-            raise common.ServiceError(
-                400, "from_agent_slug, to_agent_slug, and thread_id are required"
-            )
-        if request["status"] not in common.THREAD_NOTIFICATION_STATUSES:
-            raise common.ServiceError(400, f"Unsupported notification status: {request['status']}")
-        if not request["message_text"]:
-            raise common.ServiceError(400, "message_text is required")
-
     async def _send_notification_locked(self, *, request: dict[str, str]) -> JsonDict:
-        notification_context = self._notification_context(request=request)
+        request_context = service_notification_requests.notification_context(request=request)
         async with self._lock:
-            return await self._send_notification_with_lock_context(notification_context)
+            return await self._send_notification_with_lock_context(request_context)
 
     async def _send_notification_with_lock_context(
         self, notification_context: JsonDict
@@ -1067,7 +829,7 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
         status = str(notification_context["status"])
         thread_id = str(notification_context["thread_id"])
         event, thread_payload = await self.store.append_thread_event(
-            request=AppendEventRequest(
+            request=store_thread_events.AppendEventRequest(
                 event_id=str(uuid.uuid4()),
                 thread_id=thread_id,
                 event_kind="notification",
@@ -1093,59 +855,6 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
             "operation": "notification",
             "thread": self.thread_summary(thread_payload),
             "event": event,
-        }
-
-    def _notification_context(
-        self,
-        *,
-        request: dict[str, str],
-    ) -> dict[str, Any]:
-        request_values = self._notification_values(request)
-        notification_core = self._notification_core(request_values)
-        notification_delivery = self._notification_delivery(notification_core)
-        idempotency = self._notification_idempotency(notification_core)
-        return {
-            "thread_id": notification_core["thread_id"],
-            "from_agent_slug": notification_core["from_agent_slug"],
-            "to_agent_slug": notification_core["to_agent_slug"],
-            "status": notification_core["status"],
-            "message_text": notification_core["message_text"],
-            "requires_delivery": notification_delivery["requires_delivery"],
-            "is_terminal": notification_delivery["is_terminal"],
-            "client_request_id": idempotency["client_request_id"],
-        }
-
-    def _notification_delivery(self, notification_core: dict[str, str]) -> dict[str, bool]:
-        status = notification_core["status"]
-        return {
-            "requires_delivery": status in common.DELIVERED_NOTIFICATION_STATUSES,
-            "is_terminal": status in common.THREAD_TERMINAL_STATUSES,
-        }
-
-    def _notification_idempotency(self, notification_core: dict[str, str]) -> dict[str, str]:
-        return {
-            "from_agent_slug": notification_core["from_agent_slug"],
-            "client_request_id": notification_core["client_request_id"],
-        }
-
-    def _notification_core(self, request_values: dict[str, str]) -> dict[str, str]:
-        return {
-            "from_agent_slug": request_values["from_agent_slug"],
-            "to_agent_slug": request_values["to_agent_slug"],
-            "thread_id": request_values["thread_id"],
-            "status": request_values["status"],
-            "message_text": request_values["message_text"],
-            "client_request_id": request_values["client_request_id"],
-        }
-
-    def _notification_values(self, request: dict[str, str]) -> dict[str, str]:
-        return {
-            "from_agent_slug": request["from_agent_slug"],
-            "to_agent_slug": request["to_agent_slug"],
-            "thread_id": request["thread_id"],
-            "status": request["status"],
-            "message_text": request["message_text"],
-            "client_request_id": request["client_request_id"],
         }
 
     def _allowed_notification_statuses(
@@ -1721,7 +1430,7 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
     ) -> None:
         async with self._lock:
             await self.store.append_thread_event(
-                request=AppendEventRequest(
+                request=store_thread_events.AppendEventRequest(
                     event_id=str(uuid.uuid4()),
                     thread_id=thread_id,
                     event_kind="inactive",
@@ -1738,6 +1447,9 @@ class OrchestraThreadsService:  # noqa: WPS214,WPS230,WPS338
             await self.store.mark_inactivity_sent(thread_id=thread_id)
 
 
+OrchestraThreadsService = _OrchestraThreadsServiceRuntime
+
+
 def build_app(service: OrchestraThreadsService) -> web.Application:
     app = web.Application()
     handlers = http_handlers.HttpHandlers(service)
@@ -1748,7 +1460,7 @@ def build_app(service: OrchestraThreadsService) -> web.Application:
     return app
 
 
-def _register_routes(*, app: web.Application, handlers: http_handlers.HttpHandlers) -> None:
+def _register_routes(*, app: web.Application, handlers: Any) -> None:
     route_specs: tuple[tuple[str, str, Any], ...] = (
         ("get", "/", handlers.handle_ui),
         ("get", "/ui", handlers.handle_ui),

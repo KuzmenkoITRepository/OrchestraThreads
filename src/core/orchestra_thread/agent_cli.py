@@ -24,7 +24,7 @@ def _write_line(message: str) -> None:
     sys.stdout.write(f"{message}\n")
 
 
-class ManualAgentCLI:  # noqa: WPS214, WPS230
+class ManualAgentCLI:  # noqa: WPS214, WPS230 - REPL agent keeps stateful CLI/session surface in one runtime object.
     """A callback-capable manual agent with a small REPL."""
 
     def __init__(self, args: Any) -> None:

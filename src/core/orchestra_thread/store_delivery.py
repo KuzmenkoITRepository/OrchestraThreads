@@ -5,9 +5,19 @@ from typing import Any
 
 import asyncpg
 
-from core.orchestra_thread.store_base import parse_timestamp, row_to_dict, rowcount_from_status
+from core.orchestra_thread.store_base import parse_timestamp, row_to_dict
 
 MAX_RETRY_EXPONENT = 10
+
+
+def _rowcount_from_status(status_text: str) -> int:
+    parts = str(status_text or "").split()
+    if not parts:
+        return 0
+    try:
+        return int(parts[-1])
+    except ValueError:
+        return 0
 
 
 class DeliveryStoreMixin:
@@ -114,7 +124,7 @@ class DeliveryStoreMixin:
                 reason[:4000],
                 thread_id,
             )
-        return rowcount_from_status(status_text)
+        return _rowcount_from_status(status_text)
 
     def _retry_delay_seconds(
         self,
