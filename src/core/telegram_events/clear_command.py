@@ -13,6 +13,40 @@ _CLEAR_RESTART_PROMPT = (
     "Do not call clarification_tool. Do not use any recipient other than 'ivan'."
 )
 
+_KEY_CHAT_ID = "chat_id"
+_KEY_MESSAGE_ID = "message_id"
+_KEY_SENDER_NAME = "sender_name"
+_KEY_TIMESTAMP = "timestamp"
+_KEY_USERNAME = "username"
+_KEY_USER_ID = "user_id"
+_KEY_DELIVERY_ID = "delivery_id"
+_KEY_EVENTS = "events"
+_KEY_EVENT_ID = "event_id"
+_KEY_THREAD_ID = "thread_id"
+_KEY_ROOT_THREAD_ID = "root_thread_id"
+_KEY_PARENT_THREAD_ID = "parent_thread_id"
+_KEY_OWNER_AGENT_SLUG = "owner_agent_slug"
+_KEY_SEQUENCE_NO = "sequence_no"
+_KEY_EVENT_KIND = "event_kind"
+_KEY_NOTIFICATION_STATUS = "notification_status"
+_KEY_FROM_AGENT_SLUG = "from_agent_slug"
+_KEY_TO_AGENT_SLUG = "to_agent_slug"
+_KEY_MESSAGE_TEXT = "message_text"
+_KEY_INTERRUPTS_RUNTIME = "interrupts_runtime"
+_KEY_REQUIRES_RESPONSE = "requires_response"
+_KEY_CREATED_AT = "created_at"
+_KEY_METADATA = "metadata"
+_KEY_SOURCE = "source"
+_KEY_COMMAND = "command"
+_KEY_TRIGGERED_BY = "triggered_by"
+_KEY_REQUESTED_BY = "requested_by"
+_KEY_ROUTING_KEY = "routing_key"
+_KEY_CHAT_PREFIX = "chat:"
+_KEY_TELEGRAM = "telegram"
+_KEY_TELEGRAM_EVENTS = "telegram_events"
+_KEY_TELEGRAM_MESSAGE = "telegram_message"
+_KEY_CLEAR_CONTEXT = "telegram_events:/clear"
+
 
 def is_clear_command(message_data: dict[str, Any]) -> bool:
     text = str(message_data.get("text") or "").strip()
@@ -20,7 +54,8 @@ def is_clear_command(message_data: dict[str, Any]) -> bool:
 
 
 def routing_key_for_message(message_data: dict[str, Any]) -> str:
-    return f"chat:{message_data['chat_id']}"
+    chat_id = message_data[_KEY_CHAT_ID]
+    return f"{_KEY_CHAT_PREFIX}{chat_id}"
 
 
 def build_clear_event_payload(
@@ -30,24 +65,24 @@ def build_clear_event_payload(
     metadata = clear_event_metadata(message_data)
     event_id = clear_event_id(message_data)
     return {
-        "delivery_id": event_id,
-        "events": [
+        _KEY_DELIVERY_ID: event_id,
+        _KEY_EVENTS: [
             {
-                "event_id": event_id,
-                "thread_id": None,
-                "root_thread_id": None,
-                "parent_thread_id": None,
-                "owner_agent_slug": None,
-                "sequence_no": None,
-                "event_kind": "telegram_message",
-                "notification_status": None,
-                "from_agent_slug": "telegram_events",
-                "to_agent_slug": target_agent_slug,
-                "message_text": _CLEAR_RESTART_PROMPT,
-                "interrupts_runtime": False,
-                "requires_response": True,
-                "created_at": message_data["timestamp"],
-                "metadata": metadata,
+                _KEY_EVENT_ID: event_id,
+                _KEY_THREAD_ID: None,
+                _KEY_ROOT_THREAD_ID: None,
+                _KEY_PARENT_THREAD_ID: None,
+                _KEY_OWNER_AGENT_SLUG: None,
+                _KEY_SEQUENCE_NO: None,
+                _KEY_EVENT_KIND: _KEY_TELEGRAM_MESSAGE,
+                _KEY_NOTIFICATION_STATUS: None,
+                _KEY_FROM_AGENT_SLUG: _KEY_TELEGRAM_EVENTS,
+                _KEY_TO_AGENT_SLUG: target_agent_slug,
+                _KEY_MESSAGE_TEXT: _CLEAR_RESTART_PROMPT,
+                _KEY_INTERRUPTS_RUNTIME: False,
+                _KEY_REQUIRES_RESPONSE: True,
+                _KEY_CREATED_AT: message_data[_KEY_TIMESTAMP],
+                _KEY_METADATA: metadata,
             }
         ],
     }
@@ -70,19 +105,22 @@ def clear_endpoint_from_status(payload: object, agent_slug: str) -> str | None:
 
 
 def clear_event_metadata(message_data: dict[str, Any]) -> dict[str, Any]:
+    chat_id = message_data[_KEY_CHAT_ID]
+    message_id = message_data[_KEY_MESSAGE_ID]
+    sender_name = message_data[_KEY_SENDER_NAME]
     return {
-        "source": "telegram",
-        "chat_id": message_data["chat_id"],
-        "message_id": message_data["message_id"],
-        "sender_name": message_data["sender_name"],
-        "username": message_data.get("username"),
-        "user_id": message_data.get("user_id"),
-        "command": _CLEAR_COMMAND,
-        "triggered_by": "telegram_events",
+        _KEY_SOURCE: _KEY_TELEGRAM,
+        _KEY_CHAT_ID: chat_id,
+        _KEY_MESSAGE_ID: message_id,
+        _KEY_SENDER_NAME: sender_name,
+        _KEY_USERNAME: message_data.get(_KEY_USERNAME),
+        _KEY_USER_ID: message_data.get(_KEY_USER_ID),
+        _KEY_COMMAND: _CLEAR_COMMAND,
+        _KEY_TRIGGERED_BY: _KEY_TELEGRAM_EVENTS,
     }
 
 
 def clear_event_id(message_data: dict[str, Any]) -> str:
-    return (
-        f"telegram_clear_{message_data['chat_id']}_{message_data['message_id']}_{uuid.uuid4().hex}"
-    )
+    chat_id = message_data[_KEY_CHAT_ID]
+    message_id = message_data[_KEY_MESSAGE_ID]
+    return f"telegram_clear_{chat_id}_{message_id}_{uuid.uuid4().hex}"

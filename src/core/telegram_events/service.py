@@ -1,5 +1,3 @@
-"""Telegram events service main implementation."""
-
 import asyncio
 from typing import Any
 

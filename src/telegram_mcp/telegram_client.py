@@ -1,5 +1,3 @@
-"""HTTP-based Telegram client that proxies to telegram-events service."""
-
 from __future__ import annotations
 
 import logging
@@ -9,7 +7,14 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-_SEND_TIMEOUT = 30.0
+_SEND_TIMEOUT_SECONDS = 30.0
+_MAX_TEXT_LENGTH = 4096
+_SEND_ENDPOINT = "/send"
+_HTTP_CLIENT_NOT_STARTED = "HTTP client not started"
+
+_KEY_OK = "ok"
+_KEY_MESSAGE_ID = "message_id"
+_KEY_ERROR = "error"
 
 
 class TelegramHTTPClient:
@@ -20,7 +25,7 @@ class TelegramHTTPClient:
     async def start(self) -> None:
         if self._client is not None:
             return
-        self._client = httpx.AsyncClient(timeout=_SEND_TIMEOUT)
+        self._client = httpx.AsyncClient(timeout=_SEND_TIMEOUT_SECONDS)
         logger.info("Telegram HTTP client initialized: %s", self._base_url)
 
     async def close(self) -> None:
@@ -29,21 +34,21 @@ class TelegramHTTPClient:
             self._client = None
 
     async def send_message(self, chat_id: int, text: str) -> dict[str, Any]:
-        error = _validate_send_inputs(chat_id, text)
-        if error:
-            return {"ok": False, "message_id": 0, "error": error}
+        validation_error = _validate_send_inputs(chat_id, text)
+        if validation_error:
+            return {_KEY_OK: False, _KEY_MESSAGE_ID: 0, _KEY_ERROR: validation_error}
         return await self._post_send(chat_id, text)
 
     async def _post_send(self, chat_id: int, text: str) -> dict[str, Any]:
         client = self._client
         if client is None:
-            return {"ok": False, "message_id": 0, "error": "HTTP client not started"}
-        url = f"{self._base_url}/send"
+            return {_KEY_OK: False, _KEY_MESSAGE_ID: 0, _KEY_ERROR: _HTTP_CLIENT_NOT_STARTED}
+        url = f"{self._base_url}{_SEND_ENDPOINT}"
         try:
             response = await client.post(url, json={"chat_id": chat_id, "message": text})
         except Exception as exc:
             logger.error("HTTP request to telegram-events failed: %s", exc)
-            return {"ok": False, "message_id": 0, "error": str(exc)}
+            return {_KEY_OK: False, _KEY_MESSAGE_ID: 0, _KEY_ERROR: str(exc)}
         return _parse_response(response)
 
 
@@ -52,28 +57,28 @@ def _validate_send_inputs(chat_id: int, text: str) -> str | None:
         return "chat_id must be an integer"
     if not isinstance(text, str) or not text.strip():
         return "text must be a non-empty string"
-    if len(text) > 4096:
-        return "text must be 4096 characters or fewer"
+    if len(text) > _MAX_TEXT_LENGTH:
+        return f"text must be {_MAX_TEXT_LENGTH} characters or fewer"
     return None
 
 
 def _parse_response(response: httpx.Response) -> dict[str, Any]:
     try:
-        data = response.json()
+        response_payload = response.json()
     except Exception:
         return {
-            "ok": False,
-            "message_id": 0,
-            "error": f"HTTP {response.status_code}: {response.text}",
+            _KEY_OK: False,
+            _KEY_MESSAGE_ID: 0,
+            _KEY_ERROR: f"HTTP {response.status_code}: {response.text}",
         }
     if response.status_code == 200:
         return {
-            "ok": bool(data.get("ok")),
-            "message_id": int(data.get("message_id", 0)),
-            "error": str(data.get("error", "")),
+            _KEY_OK: bool(response_payload.get(_KEY_OK)),
+            _KEY_MESSAGE_ID: int(response_payload.get(_KEY_MESSAGE_ID, 0)),
+            _KEY_ERROR: str(response_payload.get(_KEY_ERROR, "")),
         }
     return {
-        "ok": False,
-        "message_id": 0,
-        "error": str(data.get("error", f"HTTP {response.status_code}")),
+        _KEY_OK: False,
+        _KEY_MESSAGE_ID: 0,
+        _KEY_ERROR: str(response_payload.get(_KEY_ERROR, f"HTTP {response.status_code}")),
     }
