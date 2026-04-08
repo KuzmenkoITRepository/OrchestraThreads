@@ -3,7 +3,7 @@ display_name: Whiner Quality Auditor
 status: active
 
 agent:
-  working_dir: /workspace/agents/whiner
+  working_dir: /workspace
   http_endpoint: http://{container_name}:8787
   system_prompt_file: system_prompt.md
 

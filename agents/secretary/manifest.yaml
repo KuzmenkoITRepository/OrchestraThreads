@@ -4,7 +4,7 @@ status: active
 auto_start: true
 
 agent:
-  working_dir: /workspace/agents/secretary
+  working_dir: /workspace
   http_endpoint: http://{container_name}:8787
   system_prompt_file: system_prompt.md
   allowed_peer_agent_slugs:
