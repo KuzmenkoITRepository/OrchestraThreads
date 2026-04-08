@@ -5,6 +5,12 @@ Unified tooling for creating, deploying, and tearing down fully isolated Orchest
 ## Quick Start
 
 ```bash
+# Start or create an environment in one command
+bash deploy/up-environment.sh my-feature dev
+
+# Stop an environment in one command
+bash deploy/down-environment.sh my-feature
+
 # Ensure Vault is running and unsealed
 docker compose --profile vault up -d vault
 UNSEAL_KEY=$(cat deploy/vault/local/unseal-key)
@@ -86,6 +92,27 @@ Supports both standard environments (dev/stg/prod) and provisioned environments.
 5. Starts the rest of the stack
 
 The only remaining manual step is adding/logging into providers in the OmniRoute UI.
+
+### up-environment.sh
+
+Minimal operator entrypoint:
+
+```bash
+bash deploy/up-environment.sh <env-name> [base-env]
+```
+
+- if the environment does not exist yet, it provisions it
+- if the environment already exists, it redeploys it
+
+### down-environment.sh
+
+Minimal operator stop command:
+
+```bash
+bash deploy/down-environment.sh <env-name>
+```
+
+This stops the compose stack and removes the env-scoped spawned agent containers.
 
 For production-ready deploys, the OmniRoute runtime key is persisted with a constrained
 writer AppRole (`orchestrathreads-<env>-runtime-writer`) instead of the Vault root token.
