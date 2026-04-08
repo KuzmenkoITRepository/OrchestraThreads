@@ -367,6 +367,8 @@ services:
       - python
       - -m
       - telegram_mcp
+    healthcheck:
+      disable: true
     restart: unless-stopped
     stdin_open: true
     tty: false
