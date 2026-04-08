@@ -195,6 +195,14 @@ main() {
 
   create_worktree "${workspace_dir}"
 
+  local agent_dir
+  for agent_dir in "${workspace_dir}"/agents/*/; do
+    if [[ -d "${agent_dir}" ]]; then
+      mkdir -p "${agent_dir}/runtime_state"
+      chmod 777 "${agent_dir}/runtime_state"
+    fi
+  done
+
   bash "${ROOT_DIR}/deploy/create-env.sh" "${env_name}" "${base_env}"
   if [[ ! -f "${root_token_file}" ]]; then
     die "Missing Vault root token file: ${root_token_file}"
