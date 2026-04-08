@@ -2,14 +2,28 @@ from __future__ import annotations
 
 import inspect
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from telethon import TelegramClient as TelethonClient
 from telethon.sessions import StringSession
 
 from telegram_mcp import SendAttempt, send_with_retries
+from telegram_mcp.send_request import SendRequest, validate_message_text
+from telegram_mcp.send_retry import rich_send_with_retries
 
 logger = logging.getLogger(__name__)
+
+
+class _RetryClientAdapter:
+    def __init__(self, client: TelethonClient) -> None:
+        self._client = client
+
+    async def get_entity(self, chat_id: int) -> Any:
+        return await self._client.get_entity(chat_id)
+
+    async def send_message(self, entity: Any, text: str) -> Any:
+        return await self._client.send_message(entity, text)
 
 
 def validate_send_inputs(chat_id: int, text: str) -> str | None:
@@ -36,19 +50,25 @@ async def ensure_client_started(client: TelethonClient) -> tuple[str, str]:
 
 
 class TelegramClient:
-    def __init__(self, api_id: int, api_hash: str, session_string: str | None = None):
+    def __init__(
+        self,
+        api_id: int,
+        api_hash: str,
+        session_string: str | None = None,
+        max_retries: int = 3,
+        timeout_seconds: float = 10.0,
+    ):
         if not isinstance(api_id, int):
             raise ValueError("api_id must be an integer")
         if not isinstance(api_hash, str) or not api_hash.strip():
             raise ValueError("api_hash must be a non-empty string")
-        if session_string is not None and not isinstance(session_string, str):
-            raise ValueError("session_string must be a string or None")
 
         self.api_id = api_id
         self.api_hash = api_hash.strip()
         self.session_string = session_string.strip() if session_string else None
         self._client: TelethonClient | None = None
-        self._max_retries = 3
+        self._max_retries = max_retries
+        self._timeout = timeout_seconds
 
     async def close(self) -> None:
         client = self._client
@@ -63,18 +83,46 @@ class TelegramClient:
         validation_error = validate_send_inputs(chat_id, text)
         if validation_error is not None:
             return {"ok": False, "message_id": 0, "error": validation_error}
-        client = await self._require_client()
+        client = await self.require_client()
         if client is None:
             return {"ok": False, "message_id": 0, "error": "Telegram client is not initialized"}
         return await send_with_retries(
             SendAttempt(
-                client=client,
+                client=_RetryClientAdapter(client),
                 chat_id=chat_id,
                 text=text,
                 attempt=0,
                 max_retries=self._max_retries,
             )
         )
+
+    async def send_rich(
+        self,
+        chat_id: int,
+        request: SendRequest,
+        *,
+        on_flood_wait: Callable[[int], None] | None = None,
+    ) -> dict[str, Any]:
+        """Send a message with optional formatting, reply, or media."""
+        text_error = validate_message_text(request.message)
+        if text_error is not None:
+            return {"ok": False, "message_id": 0, "error": text_error}
+        client = await self.require_client()
+        if client is None:
+            return {"ok": False, "message_id": 0, "error": "Telegram client is not initialized"}
+        return await rich_send_with_retries(
+            client,
+            chat_id,
+            request,
+            max_retries=self._max_retries,
+            on_flood_wait=on_flood_wait,
+        )
+
+    async def require_client(self) -> TelethonClient | None:
+        """Return the raw Telethon client, starting if needed."""
+        if self._client is None:
+            await self.start()
+        return self._client
 
     async def start(self) -> None:
         if self._client is None:
@@ -87,9 +135,9 @@ class TelegramClient:
 
     def _create_client(self) -> TelethonClient:
         session = StringSession(self.session_string) if self.session_string else StringSession()
-        return TelethonClient(session, self.api_id, self.api_hash)
-
-    async def _require_client(self) -> TelethonClient | None:
-        if self._client is None:
-            await self.start()
-        return self._client
+        return TelethonClient(
+            session,
+            self.api_id,
+            self.api_hash,
+            timeout=int(self._timeout),
+        )
