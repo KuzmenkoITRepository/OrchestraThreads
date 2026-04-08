@@ -54,7 +54,7 @@ def _run(cmd: list[str], *, timeout: int = 120) -> subprocess.CompletedProcess[s
     )
 
 
-class DockerDriver:  # noqa: WPS214, WPS230
+class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intentionally a single stateful orchestration boundary.
     """Start, stop, and inspect agent containers through Docker."""
 
     def __init__(
