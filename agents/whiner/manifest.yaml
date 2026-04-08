@@ -1,0 +1,75 @@
+slug: whiner
+display_name: Whiner Quality Auditor
+status: active
+
+agent:
+  working_dir: /workspace/agents/whiner
+  http_endpoint: http://{container_name}:8787
+  system_prompt_file: system_prompt.md
+
+runtime:
+  driver: docker
+  image: orchestra-opencode-runtime:latest
+  command:
+    - python
+    - -m
+    - agent_runtime.main
+  mounts:
+    - type: bind
+      source: ../../
+      target: /workspace
+      mode: rw
+    - type: bind
+      source: /var/run/docker.sock
+      target: /var/run/docker.sock
+      mode: rw
+  env:
+    AGENT_HTTP_HOST: 0.0.0.0
+    AGENT_HTTP_PORT: "8787"
+    OPENCODE_RUNTIME_STATE_ROOT: /tmp/opencode-runtime/whiner
+    PYTHONPATH: /workspace/src:/workspace/agents/whiner
+    ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
+    LLM_PROXY_URL: http://host.docker.internal:8100
+    TASK_REGISTRY_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
+    LOG_LEVEL: INFO
+  env_passthrough:
+    - ORCHESTRA_THREADS_URL
+    - LLM_PROXY_URL
+    - OMNIROUTE_API_KEY
+    - OPENCODE_RUNTIME_STATE_ROOT
+    - LOG_LEVEL
+
+backend:
+  type: opencode_omo
+  config:
+    model: omo
+    opencode_serve_port: 4096
+    dispatch_timeout_seconds: 180
+    startup_timeout_seconds: 20
+    mcp_servers:
+      - name: orchestra_threads
+        command: python
+        args:
+          - -m
+          - core.orchestra_thread.mcp_server
+        env:
+          ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
+          ORCHESTRA_THREADS_AGENT_SLUG: whiner
+          PYTHONPATH: /workspace/src:/workspace/agents/whiner
+      - name: task_registry
+        command: python
+        args:
+          - -m
+          - core.task_registry.mcp_server
+        env:
+          TASK_REGISTRY_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
+          PYTHONPATH: /workspace/src:/workspace/agents/whiner
+          LOG_LEVEL: INFO
+      - name: docker_mcp
+        command: python
+        args:
+          - -m
+          - core.docker_mcp.mcp_server
+        env:
+          PYTHONPATH: /workspace/src:/workspace/agents/whiner
+          LOG_LEVEL: INFO
