@@ -24,6 +24,7 @@ class ParsedManifest:
     runtime: dict[str, Any]
     backend: dict[str, Any]
     manifest_path: Path | None
+    auto_start: bool
 
 
 class _FieldParsers:
@@ -35,6 +36,21 @@ class _FieldParsers:
             errors.append(f"{field_name} must be an object")
             return {}
         return dict(value)
+
+    @staticmethod
+    def as_bool(
+        value: Any,
+        field_name: str,
+        *,
+        errors: list[str],
+        default: bool = False,
+    ) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        errors.append(f"{field_name} must be a boolean")
+        return default
 
     @staticmethod
     def as_string(
@@ -257,6 +273,11 @@ class _ManifestParser:
             runtime=self._parse_runtime(normalized.get("runtime")),
             backend=self._parse_backend(normalized.get("backend")),
             manifest_path=self.manifest_path,
+            auto_start=_FieldParsers.as_bool(
+                normalized.get("auto_start"),
+                "auto_start",
+                errors=self.errors,
+            ),
         )
         if self.errors:
             raise ManifestValidationError(self.errors)

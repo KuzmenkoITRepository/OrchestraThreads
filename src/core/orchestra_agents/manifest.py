@@ -97,6 +97,7 @@ class AgentManifest:
     agent: AgentConfig
     runtime: RuntimeConfig
     backend: BackendConfig
+    auto_start: bool = False
     manifest_path: Path | None = field(default=None, compare=False)
 
     @property
@@ -130,6 +131,7 @@ class AgentManifest:
             "agent": self.agent.to_dict(),
             "runtime": self.runtime.to_dict(),
             "backend": self.backend.to_dict(),
+            "auto_start": self.auto_start,
         }
         if include_path:
             payload["manifest_path"] = str(self.manifest_path) if self.manifest_path else None
@@ -182,4 +184,5 @@ class AgentManifest:
                 config=dict(parsed.backend["config"]),
             ),
             manifest_path=parsed.manifest_path,
+            auto_start=parsed.auto_start,
         )

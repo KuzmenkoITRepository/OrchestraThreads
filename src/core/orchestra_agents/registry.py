@@ -73,6 +73,9 @@ class _RegistryQueries:
     def active_manifests(self) -> list[AgentManifest]:
         return [m for m in self._manifests.values() if m.is_active]
 
+    def auto_start_manifests(self) -> list[AgentManifest]:
+        return [m for m in self._manifests.values() if m.is_active and m.auto_start]
+
     def issues(self) -> list[ManifestLoadIssue]:
         return list(self._issues)
 
