@@ -5,7 +5,7 @@ WORKDIR /workspace
 COPY requirements.txt /tmp/requirements.txt
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bash ca-certificates curl git \
+    && apt-get install -y --no-install-recommends bash ca-certificates curl docker.io docker-cli git \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir -r /tmp/requirements.txt \
     && useradd --create-home --uid 10001 appuser
@@ -17,6 +17,6 @@ RUN chmod +x /usr/local/bin/opencode
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-USER appuser
+USER root
 
 CMD ["python", "-m", "agent_runtime.main"]
