@@ -132,11 +132,25 @@ policy = (
     '  capabilities = ["read"]\n'
     '}\n'
 )
+writer_policy = (
+    f'path "kv/data/orchestrathreads/{environment}/runtime" {{\n'
+    '  capabilities = ["read", "update"]\n'
+    '}\n'
+    f'path "kv/metadata/orchestrathreads/{environment}/runtime" {{\n'
+    '  capabilities = ["read"]\n'
+    '}\n'
+)
 vault_request(
     f'{vault_addr}/v1/sys/policies/acl/orchestrathreads-{environment}-runtime-read',
     token=root_token,
     method='PUT',
     payload={'policy': policy},
+)
+vault_request(
+    f'{vault_addr}/v1/sys/policies/acl/orchestrathreads-{environment}-runtime-write',
+    token=root_token,
+    method='PUT',
+    payload={'policy': writer_policy},
 )
 vault_request(
     f'{vault_addr}/v1/auth/approle/role/orchestrathreads-{environment}-runtime',
@@ -150,12 +164,34 @@ vault_request(
         'secret_id_num_uses': 0,
     },
 )
+vault_request(
+    f'{vault_addr}/v1/auth/approle/role/orchestrathreads-{environment}-runtime-writer',
+    token=root_token,
+    method='POST',
+    payload={
+        'token_policies': [f'orchestrathreads-{environment}-runtime-write'],
+        'token_ttl': '15m',
+        'token_max_ttl': '1h',
+        'secret_id_ttl': '720h',
+        'secret_id_num_uses': 0,
+    },
+)
 role_data = vault_request(
     f'{vault_addr}/v1/auth/approle/role/orchestrathreads-{environment}-runtime/role-id',
     token=root_token,
 )
+writer_role_data = vault_request(
+    f'{vault_addr}/v1/auth/approle/role/orchestrathreads-{environment}-runtime-writer/role-id',
+    token=root_token,
+)
 secret_data = vault_request(
     f'{vault_addr}/v1/auth/approle/role/orchestrathreads-{environment}-runtime/secret-id',
+    token=root_token,
+    method='POST',
+    payload={},
+)
+writer_secret_data = vault_request(
+    f'{vault_addr}/v1/auth/approle/role/orchestrathreads-{environment}-runtime-writer/secret-id',
     token=root_token,
     method='POST',
     payload={},
@@ -167,6 +203,9 @@ approle_path.write_text(
             f'VAULT_ROLE_NAME_{environment.upper().replace("-", "_")}=orchestrathreads-{environment}-runtime',
             f'VAULT_ROLE_ID_{environment.upper().replace("-", "_")}={role_data["data"]["role_id"]}',
             f'VAULT_SECRET_ID_{environment.upper().replace("-", "_")}={secret_data["data"]["secret_id"]}',
+            f'VAULT_WRITER_ROLE_NAME_{environment.upper().replace("-", "_")}=orchestrathreads-{environment}-runtime-writer',
+            f'VAULT_WRITER_ROLE_ID_{environment.upper().replace("-", "_")}={writer_role_data["data"]["role_id"]}',
+            f'VAULT_WRITER_SECRET_ID_{environment.upper().replace("-", "_")}={writer_secret_data["data"]["secret_id"]}',
             '',
         )
     ),
