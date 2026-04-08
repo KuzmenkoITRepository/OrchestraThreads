@@ -96,9 +96,6 @@ payload['OMNIROUTE_INITIAL_PASSWORD'] = secrets.token_urlsafe(24)
 payload['OMNIROUTE_API_KEY'] = ''
 payload['LANGFUSE_PUBLIC_KEY'] = ''
 payload['LANGFUSE_SECRET_KEY'] = ''
-payload['TELEGRAM_API_ID'] = ''
-payload['TELEGRAM_API_HASH'] = ''
-payload['TELEGRAM_SESSION_STRING'] = ''
 payload['ORCHESTRA_THREADS_DATABASE_URL'] = (
     f"postgresql://orchestra:{payload['POSTGRES_PASSWORD']}@postgres:5432/orchestra_threads"
 )
