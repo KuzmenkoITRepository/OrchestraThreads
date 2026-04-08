@@ -14,6 +14,10 @@ from core.orchestra_agents.runtime import (
     StandardAgentApplication,
 )
 
+_METHOD_GET = "GET"
+_KEY_CONTEXT_ID = "context_id"
+_HTTP_BAD_REQUEST = 400
+
 
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -49,13 +53,13 @@ class RuntimeContractTests(unittest.IsolatedAsyncioTestCase):
         await self.app.stop()
 
     async def test_health_endpoint_reports_context_id(self) -> None:
-        health = await self._request("GET", "/healthz")
+        health = await self._request(_METHOD_GET, "/healthz")
         self.assertEqual(health["status"], "ok")
-        self.assertTrue(health["context_id"])
+        self.assertTrue(health[_KEY_CONTEXT_ID])
 
     async def test_event_and_status_endpoints(self) -> None:
-        health = await self._request("GET", "/healthz")
-        initial_context_id = health["context_id"]
+        health = await self._request(_METHOD_GET, "/healthz")
+        initial_context_id = health[_KEY_CONTEXT_ID]
 
         event_payload = {
             "delivery_id": "delivery-1",
@@ -74,20 +78,20 @@ class RuntimeContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(event_result["accepted"])
         self.assertEqual(event_result["accepted_events"], 1)
 
-        status = await self._request("GET", "/last_status")
+        status = await self._request(_METHOD_GET, "/last_status")
         self.assertEqual(status["last_delivery_id"], "delivery-1")
         self.assertEqual(status["last_event_kind"], "message")
-        self.assertEqual(status["context_id"], initial_context_id)
+        self.assertEqual(status[_KEY_CONTEXT_ID], initial_context_id)
 
     async def test_clear_context_endpoint(self) -> None:
-        health = await self._request("GET", "/healthz")
-        initial_context_id = health["context_id"]
+        health = await self._request(_METHOD_GET, "/healthz")
+        initial_context_id = health[_KEY_CONTEXT_ID]
 
         clear_result = await self._request("POST", "/clear_context", {"requested_by": "service"})
         self.assertTrue(clear_result["success"])
         self.assertEqual(clear_result["context_generation"], 1)
         self.assertEqual(clear_result["previous_context_id"], initial_context_id)
-        self.assertNotEqual(clear_result["context_id"], initial_context_id)
+        self.assertNotEqual(clear_result[_KEY_CONTEXT_ID], initial_context_id)
 
     async def test_stop_endpoint(self) -> None:
         stop_result = await self._request("POST", "/stop", {"reason": "closed"})
@@ -103,7 +107,7 @@ class RuntimeContractTests(unittest.IsolatedAsyncioTestCase):
             json=payload,
         ) as response:
             raw = await response.text()
-            data = json.loads(raw) if raw else {}
-            if response.status >= 400:
-                raise AssertionError(f"{method} {path} -> {response.status}: {data}")
-            return cast(dict[str, Any], data)
+            parsed = json.loads(raw) if raw else {}
+            if response.status >= _HTTP_BAD_REQUEST:
+                raise AssertionError(f"{method} {path} -> {response.status}: {parsed}")
+            return cast(dict[str, Any], parsed)

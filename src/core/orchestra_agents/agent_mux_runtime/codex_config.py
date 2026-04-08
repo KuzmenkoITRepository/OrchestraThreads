@@ -9,12 +9,25 @@ from typing import Any
 from core.orchestra_agents.agent_mux_runtime.codex_config_servers import render_server_block
 from core.orchestra_agents.agent_mux_runtime.toml_rendering import toml_quote
 
+CODEx_HOME_DIRNAME = ".codex"
+CONFIG_FILENAME = "config.toml"
+REQUEST_ENV_PREFIX = "env."
+WORKING_DIR_KEY = "working_dir"
+MODEL_PROVIDER_NAME = "omniroute"
+PROVIDER_TITLE = "OmniRoute/WET"
+PROVIDER_ENV_KEY = "OMNIROUTE_API_KEY"
+PROVIDER_WIRE_API = "responses"
+AGENT_SLUG_HEADER = "X-Orchestra-Agent-Slug"
+CONTEXT_ID_HEADER = "X-Orchestra-Context-Id"
+LANGFUSE_SESSION_ID_HEADER = "X-Orchestra-Langfuse-Session-Id"
+OPENAI_V1_SUFFIX = "/v1"
+
 
 def _build_openai_base_url(route_policy: str, *, proxy_url: str) -> str:
     """Build OpenAI-compatible base URL for the given route policy."""
     base = proxy_url.rstrip("/")
     prefix = _route_policy_path_prefix(route_policy)
-    return f"{base}{prefix}/v1"
+    return f"{base}{prefix}{OPENAI_V1_SUFFIX}"
 
 
 def _route_policy_path_prefix(route_policy: str) -> str:
@@ -49,10 +62,10 @@ def _build_request_variables(
         "active_context_path": str(active_context_path),
         "pythonpath": str(pythonpath),
         "agent_working_dir": str(agent_working_dir),
-        "working_dir": str(agent_working_dir),
+        WORKING_DIR_KEY: str(agent_working_dir),
     }
-    for key, value in os.environ.items():
-        variables[f"env.{key}"] = str(value)
+    for env_key, env_value in os.environ.items():
+        variables[f"{REQUEST_ENV_PREFIX}{env_key}"] = str(env_value)
     return variables
 
 
@@ -82,7 +95,7 @@ def create_runtime_codex_request(
 def write_runtime_codex_config(
     request: RuntimeCodexConfigRequest,
 ) -> Path:
-    config_path = request.codex_home / ".codex" / "config.toml"
+    config_path = request.codex_home / CODEx_HOME_DIRNAME / CONFIG_FILENAME
     config_path.parent.mkdir(parents=True, exist_ok=True)
     lines = _base_config_lines(
         model=request.model,
@@ -104,13 +117,17 @@ def write_runtime_codex_config(
 def _base_config_lines(*, model: str, base_url: str) -> list[str]:
     return [
         f"model = {toml_quote(model)}",
-        'model_provider = "omniroute"',
+        f"model_provider = {toml_quote(MODEL_PROVIDER_NAME)}",
         "",
-        "[model_providers.omniroute]",
-        'name = "OmniRoute/WET"',
+        f"[model_providers.{MODEL_PROVIDER_NAME}]",
+        f"name = {toml_quote(PROVIDER_TITLE)}",
         f"base_url = {toml_quote(base_url)}",
-        'env_key = "OMNIROUTE_API_KEY"',
-        'wire_api = "responses"',
-        'env_http_headers = { "X-Orchestra-Agent-Slug" = "ORCHESTRA_AGENT_SLUG", "X-Orchestra-Context-Id" = "ORCHESTRA_CONTEXT_ID", "X-Orchestra-Langfuse-Session-Id" = "ORCHESTRA_CONTEXT_ID" }',
+        f"env_key = {toml_quote(PROVIDER_ENV_KEY)}",
+        f"wire_api = {toml_quote(PROVIDER_WIRE_API)}",
+        "env_http_headers = { "
+        f'{toml_quote(AGENT_SLUG_HEADER)} = "ORCHESTRA_AGENT_SLUG", '
+        f'{toml_quote(CONTEXT_ID_HEADER)} = "ORCHESTRA_CONTEXT_ID", '
+        f'{toml_quote(LANGFUSE_SESSION_ID_HEADER)} = "ORCHESTRA_CONTEXT_ID" '
+        "}",
         "",
     ]

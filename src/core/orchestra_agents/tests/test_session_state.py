@@ -17,21 +17,36 @@ from core.orchestra_agents.agent_mux_runtime.session_types import (
     SessionLifecycle,
 )
 
+_FIXED_TIMESTAMP = "2026-04-07T09:00:00Z"
+_SOURCE_TEST = "test"
+_KIND_MESSAGE = "message"
+_EVT_ID_ONE = "evt-1"
 
-def test_runtime_session_construction() -> None:
+
+def test_runtime_session_identity_and_defaults() -> None:
     session = RuntimeSession(
         session_id=SessionId("session-1"),
         routing_key=RoutingKey("key-1"),
         lifecycle=SessionLifecycle.IDLE,
     )
 
-    assert session.session_id == "session-1"
-    assert session.routing_key == "key-1"
-    assert session.lifecycle == SessionLifecycle.IDLE
-    assert session.mailbox == []
-    assert session.cli_session_metadata == {}
-    assert session.timeline == []
-    assert session.processed_event_ids == set()
+    assert (
+        session.session_id,
+        session.routing_key,
+        session.lifecycle,
+        session.mailbox,
+        session.cli_session_metadata,
+        session.timeline,
+        session.processed_event_ids,
+    ) == (
+        "session-1",
+        "key-1",
+        SessionLifecycle.IDLE,
+        [],
+        {},
+        [],
+        set(),
+    )
 
 
 def test_session_append_event() -> None:
@@ -42,17 +57,17 @@ def test_session_append_event() -> None:
     )
 
     event = NormalizedEvent(
-        event_id="evt-1",
-        source="test",
+        event_id=_EVT_ID_ONE,
+        source=_SOURCE_TEST,
         routing_key="key-2",
-        kind="message",
+        kind=_KIND_MESSAGE,
         payload={},
-        created_at="2026-04-07T09:00:00Z",
+        created_at=_FIXED_TIMESTAMP,
     )
 
     session.append_event(event)
     assert len(session.mailbox) == 1
-    assert session.mailbox[0].event_id == "evt-1"
+    assert session.mailbox[0].event_id == _EVT_ID_ONE
 
 
 def test_session_idempotent_append() -> None:
@@ -64,11 +79,11 @@ def test_session_idempotent_append() -> None:
 
     event = NormalizedEvent(
         event_id="evt-dup",
-        source="test",
+        source=_SOURCE_TEST,
         routing_key="key-3",
-        kind="message",
+        kind=_KIND_MESSAGE,
         payload={},
-        created_at="2026-04-07T09:00:00Z",
+        created_at=_FIXED_TIMESTAMP,
     )
 
     session.append_event(event)
@@ -86,18 +101,18 @@ def test_session_claim_next_event() -> None:
     )
 
     event1 = NormalizedEvent(
-        event_id="evt-1",
-        source="test",
+        event_id=_EVT_ID_ONE,
+        source=_SOURCE_TEST,
         routing_key="key-4",
-        kind="message",
+        kind=_KIND_MESSAGE,
         payload={},
-        created_at="2026-04-07T09:00:00Z",
+        created_at=_FIXED_TIMESTAMP,
     )
     event2 = NormalizedEvent(
         event_id="evt-2",
-        source="test",
+        source=_SOURCE_TEST,
         routing_key="key-4",
-        kind="message",
+        kind=_KIND_MESSAGE,
         payload={},
         created_at="2026-04-07T09:01:00Z",
     )
@@ -107,7 +122,7 @@ def test_session_claim_next_event() -> None:
 
     claimed = session.claim_next_event()
     assert claimed is not None
-    assert claimed.event_id == "evt-1"
+    assert claimed.event_id == _EVT_ID_ONE
     assert len(session.mailbox) == 1
 
 
@@ -133,16 +148,16 @@ def test_session_persistence() -> None:
             session_id=SessionId("session-persist"),
             routing_key=RoutingKey("key-persist"),
             lifecycle=SessionLifecycle.IDLE,
-            created_at="2026-04-07T09:00:00Z",
+            created_at=_FIXED_TIMESTAMP,
         )
 
         event = NormalizedEvent(
             event_id="evt-persist",
-            source="test",
+            source=_SOURCE_TEST,
             routing_key="key-persist",
-            kind="message",
-            payload={"data": "test"},
-            created_at="2026-04-07T09:00:00Z",
+            kind=_KIND_MESSAGE,
+            payload={"data": _SOURCE_TEST},
+            created_at=_FIXED_TIMESTAMP,
         )
         session.append_event(event)
 
