@@ -76,7 +76,7 @@ services:
         - CMD
         - python
         - -c
-        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8788/healthz').status == 200 else 1)
+        - import os,sys,urllib.request; os.environ['no_proxy']='127.0.0.1,localhost'; os.environ['NO_PROXY']='127.0.0.1,localhost'; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8788/healthz').status == 200 else 1)
       interval: 10s
       timeout: 5s
       retries: 5
@@ -102,7 +102,7 @@ services:
         - CMD
         - python
         - -c
-        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8793/healthz').status == 200 else 1)
+        - import os,sys,urllib.request; os.environ['no_proxy']='127.0.0.1,localhost'; os.environ['NO_PROXY']='127.0.0.1,localhost'; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8793/healthz').status == 200 else 1)
       interval: 10s
       timeout: 5s
       retries: 5
@@ -156,7 +156,7 @@ services:
         - CMD
         - python
         - -c
-        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8790/healthz').status == 200 else 1)
+        - import os,sys,urllib.request; os.environ['no_proxy']='127.0.0.1,localhost'; os.environ['NO_PROXY']='127.0.0.1,localhost'; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8790/healthz').status == 200 else 1)
       interval: 10s
       timeout: 5s
       retries: 5
@@ -222,7 +222,7 @@ services:
         - CMD
         - python
         - -c
-        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8791/healthz').status == 200 else 1)
+        - import os,sys,urllib.request; os.environ['no_proxy']='127.0.0.1,localhost'; os.environ['NO_PROXY']='127.0.0.1,localhost'; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8791/healthz').status == 200 else 1)
       interval: 10s
       timeout: 5s
       retries: 5
@@ -253,7 +253,7 @@ services:
         - CMD
         - python
         - -c
-        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8792/healthz').status == 200 else 1)
+        - import os,sys,urllib.request; os.environ['no_proxy']='127.0.0.1,localhost'; os.environ['NO_PROXY']='127.0.0.1,localhost'; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8792/healthz').status == 200 else 1)
       interval: 10s
       timeout: 5s
       retries: 5
@@ -286,7 +286,7 @@ services:
         - CMD
         - python
         - -c
-        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8789/healthz').status == 200 else 1)
+        - import os,sys,urllib.request; os.environ['no_proxy']='127.0.0.1,localhost'; os.environ['NO_PROXY']='127.0.0.1,localhost'; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8789/healthz').status == 200 else 1)
       interval: 10s
       timeout: 5s
       retries: 5
