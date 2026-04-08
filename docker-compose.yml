@@ -11,7 +11,7 @@ x-agent-common: &agent-common
   init: true
   restart: "no"
   profiles:
-    - agents
+    - user-agents
 
 services:
   vault:
@@ -189,8 +189,8 @@ services:
     networks:
       - default
     ports:
-      - "${OT_PORT_WET:-8100}:8100"
-      - "${OT_PORT_WET_ADMIN:-8101}:8101"
+      - "${OT_PORT_WET:-18100}:8100"
+      - "${OT_PORT_WET_ADMIN:-18101}:8101"
     environment:
       WET_MODE: auto
       WET_PORT: 8100
@@ -306,7 +306,7 @@ services:
     networks:
       - default
     ports:
-      - "${OT_PORT_TELEGRAM_EVENTS:-8793}:8787"
+      - "${OT_PORT_TELEGRAM_EVENTS:-8795}:8787"
     environment:
       PYTHONPATH: /app/src
       TELEGRAM_API_ID: ${TELEGRAM_API_ID}
@@ -319,6 +319,11 @@ services:
       TARGET_AGENT_SLUG: ${TARGET_AGENT_SLUG:-secretary}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,postgres,langfuse-postgres,langfuse
+      # Telethon uses raw MTProto (not HTTP) — Docker Desktop proxy breaks it
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
     healthcheck:
       test:
         - CMD
@@ -347,9 +352,17 @@ services:
       - default
     environment:
       PYTHONPATH: /app/src
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING:-}
       TELEGRAM_EVENTS_URL: http://telegram-events:8787
       TELEGRAM_CHAT_ID_IVAN: ${TELEGRAM_CHAT_ID_IVAN:-748976004}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Telethon uses raw MTProto — Docker Desktop proxy breaks it
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
     command:
       - python
       - -m
@@ -358,57 +371,61 @@ services:
     stdin_open: true
     tty: false
 
-  telegram-bot-listener:
-    build: .
-    image: orchestra-threads:${OT_TAG:-local}
-    depends_on:
-      events-engine:
-        condition: service_healthy
-    ports:
-      - "${OT_PORT_TELEGRAM_BOT_LISTENER:-8792}:8791"
-    networks:
-      - default
-    environment:
-      PYTHONPATH: /app/src
-      TELEGRAM_BOT_LISTENER_HOST: 0.0.0.0
-      TELEGRAM_BOT_LISTENER_PORT: 8791
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      TELEGRAM_BOT_ALLOWED_USER_IDS: ${TELEGRAM_BOT_ALLOWED_USER_IDS}
-      TELEGRAM_BOT_LISTENER_API_TOKEN: ${TELEGRAM_BOT_LISTENER_API_TOKEN}
-      TELEGRAM_BOT_STATE_FILE: ${TELEGRAM_BOT_STATE_FILE:-/app/data/telegram_bot_listener/state.json}
-      TELEGRAM_BOT_POLL_TIMEOUT_SECONDS: ${TELEGRAM_BOT_POLL_TIMEOUT_SECONDS:-10}
-      EVENTS_ENGINE_URL: http://events-engine:8789
-      TARGET_AGENT_SLUG: ${TARGET_AGENT_SLUG:-secretary}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,telegram-bot-listener,postgres,langfuse-postgres,langfuse
-    volumes:
-      - ./data:/app/data
-    command:
-      - python
-      - -m
-      - core.telegram_bot_listener.service_main
-    restart: unless-stopped
-
-  telegram-bot-mcp:
-    build: .
-    image: orchestra-threads:${OT_TAG:-local}
-    depends_on:
-      telegram-bot-listener:
-        condition: service_started
-    networks:
-      - default
-    environment:
-      PYTHONPATH: /app/src
-      TELEGRAM_BOT_LISTENER_URL: http://telegram-bot-listener:8791
-      TELEGRAM_BOT_LISTENER_API_TOKEN: ${TELEGRAM_BOT_LISTENER_API_TOKEN}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    command:
-      - python
-      - -m
-      - telegram_bot_mcp
-    restart: unless-stopped
-    stdin_open: true
-    tty: false
+  # telegram-bot-listener and telegram-bot-mcp are disabled:
+  # they require TELEGRAM_BOT_TOKEN and TELEGRAM_BOT_LISTENER_API_TOKEN
+  # which are not configured yet. Uncomment when ready.
+  #
+  # telegram-bot-listener:
+  #   build: .
+  #   image: orchestra-threads:${OT_TAG:-local}
+  #   depends_on:
+  #     events-engine:
+  #       condition: service_healthy
+  #   ports:
+  #     - "${OT_PORT_TELEGRAM_BOT_LISTENER:-8794}:8791"
+  #   networks:
+  #     - default
+  #   environment:
+  #     PYTHONPATH: /app/src
+  #     TELEGRAM_BOT_LISTENER_HOST: 0.0.0.0
+  #     TELEGRAM_BOT_LISTENER_PORT: 8791
+  #     TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+  #     TELEGRAM_BOT_ALLOWED_USER_IDS: ${TELEGRAM_BOT_ALLOWED_USER_IDS}
+  #     TELEGRAM_BOT_LISTENER_API_TOKEN: ${TELEGRAM_BOT_LISTENER_API_TOKEN}
+  #     TELEGRAM_BOT_STATE_FILE: ${TELEGRAM_BOT_STATE_FILE:-/app/data/telegram_bot_listener/state.json}
+  #     TELEGRAM_BOT_POLL_TIMEOUT_SECONDS: ${TELEGRAM_BOT_POLL_TIMEOUT_SECONDS:-10}
+  #     EVENTS_ENGINE_URL: http://events-engine:8789
+  #     TARGET_AGENT_SLUG: ${TARGET_AGENT_SLUG:-secretary}
+  #     LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  #     NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,telegram-bot-listener,postgres,langfuse-postgres,langfuse
+  #   volumes:
+  #     - ./data:/app/data
+  #   command:
+  #     - python
+  #     - -m
+  #     - core.telegram_bot_listener.service_main
+  #   restart: unless-stopped
+  #
+  # telegram-bot-mcp:
+  #   build: .
+  #   image: orchestra-threads:${OT_TAG:-local}
+  #   depends_on:
+  #     telegram-bot-listener:
+  #       condition: service_started
+  #   networks:
+  #     - default
+  #   environment:
+  #     PYTHONPATH: /app/src
+  #     TELEGRAM_BOT_LISTENER_URL: http://telegram-bot-listener:8791
+  #     TELEGRAM_BOT_LISTENER_API_TOKEN: ${TELEGRAM_BOT_LISTENER_API_TOKEN}
+  #     LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  #   command:
+  #     - python
+  #     - -m
+  #     - telegram_bot_mcp
+  #   restart: unless-stopped
+  #   stdin_open: true
+  #   tty: false
 
   odinykt:
     <<: *agent-common
