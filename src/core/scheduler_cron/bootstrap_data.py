@@ -3,17 +3,26 @@ from __future__ import annotations
 SCHEDULER_WAKEUP = "scheduler_wakeup"
 AGENT_EVENT = "agent_event"
 SYSTEM_USER = "system"
-TARGET_AGENT = "sgr"
+DEFAULT_TARGET_AGENT = "sgr"
+WHINER_TARGET_AGENT = "whiner"
 
 
 def _scheduler_wakeup_payload(task: str) -> dict[str, object]:
-    return {"task": task, "context": {}, "target_agent": TARGET_AGENT}
+    return {"task": task, "context": {}, "target_agent": DEFAULT_TARGET_AGENT}
 
 
-def _agent_event_payload() -> dict[str, object]:
+def _health_check_payload() -> dict[str, object]:
     return {
-        "target_agent": TARGET_AGENT,
+        "target_agent": DEFAULT_TARGET_AGENT,
         "event_data": {"type": "health_check", "timestamp": None},
+    }
+
+
+def _whiner_audit_payload() -> dict[str, object]:
+    return {
+        "task": "scheduled_audit",
+        "context": {},
+        "target_agent": WHINER_TARGET_AGENT,
     }
 
 
@@ -35,7 +44,18 @@ def job_definitions() -> tuple[dict[str, object], ...]:
             "job_type": "cron",
             "schedule": "*/15 * * * *",
             "action_type": AGENT_EVENT,
-            "action_payload": _agent_event_payload(),
+            "action_payload": _health_check_payload(),
+            "enabled": True,
+            "auto_delete": False,
+            "misfire_policy": "skip",
+            "created_by": SYSTEM_USER,
+        },
+        {
+            "name": "whiner-audit",
+            "job_type": "cron",
+            "schedule": "0 */3 * * *",
+            "action_type": SCHEDULER_WAKEUP,
+            "action_payload": _whiner_audit_payload(),
             "enabled": True,
             "auto_delete": False,
             "misfire_policy": "skip",

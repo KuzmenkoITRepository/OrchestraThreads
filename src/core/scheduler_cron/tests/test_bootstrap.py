@@ -11,8 +11,8 @@ from core.scheduler_cron.store import SchedulerCronStore
 
 _TEST_SCHEMA_PREFIX = "scheduler_boot_"
 
-EXPECTED_JOB_NAMES = frozenset({"overdue-check", "health-check", "weekly-summary"})
-EXPECTED_JOB_COUNT = 3
+EXPECTED_JOB_NAMES = frozenset({"overdue-check", "health-check", "whiner-audit", "weekly-summary"})
+EXPECTED_JOB_COUNT = 4
 
 
 def _database_url() -> str:
@@ -160,3 +160,15 @@ class TestBootstrapOps(unittest.TestCase):  # noqa: WPS214
         self._engine = second_engine
         self._bootstrap()
         self.assertEqual(len(second_engine.added_jobs), EXPECTED_JOB_COUNT)
+
+    def test_whiner_audit_targets_whiner_every_three_hours(self) -> None:
+        defs = {str(defn["name"]): defn for defn in job_definitions()}
+        whiner_job = defs["whiner-audit"]
+        self.assertEqual(whiner_job["schedule"], "0 */3 * * *")
+        self.assertEqual(whiner_job["action_type"], "scheduler_wakeup")
+        payload = whiner_job["action_payload"]
+        self.assertIsInstance(payload, dict)
+        payload_dict = payload if isinstance(payload, dict) else {}
+        self.assertEqual(payload_dict["target_agent"], "whiner")
+        self.assertEqual(payload_dict["task"], "scheduled_audit")
+        self.assertEqual(payload_dict["context"], {})
