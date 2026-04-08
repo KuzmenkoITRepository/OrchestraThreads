@@ -210,11 +210,74 @@ make typecheck                  # Type check with mypy
 make test                       # Run tests in Docker
 make clean                      # Clean cache files
 
-# Docker stack
-docker compose run --rm --use-aliases secretary
-docker compose run --rm --use-aliases orchestra
+# Docker stack (via Vault — canonical flow)
+docker compose --profile vault up -d vault
+docker exec -e VAULT_ADDR=http://127.0.0.1:8200 <vault-container> vault operator unseal "$(cat deploy/vault/local/unseal-key)"
+bash deploy/deploy-env.sh dev   # Fetch secrets from Vault, render env, start core stack
+
+# User agents (odinykt, specialist) — manual start only
+COMPOSE_PROJECT_NAME=orchestrathreads-dev \
+  docker compose --profile user-agents --env-file deploy/runtime_env/dev.env \
+  up -d odinykt specialist
+
+# Tests
 docker compose --profile test run --rm test
-docker compose down
+
+# Teardown
+COMPOSE_PROJECT_NAME=orchestrathreads-dev docker compose --profile user-agents down
+```
+
+## DEPLOYMENT
+
+### Vault-based secret management (MANDATORY for prod)
+
+All environments use HashiCorp Vault as the single source of truth for secrets.
+The `deploy/deploy-env.sh` script fetches secrets at deploy time, renders a temporary
+`.env` file, starts the stack, then deletes the file.
+
+**Production deployments MUST go through `deploy/deploy-env.sh prod`.** Direct
+`docker compose up` without Vault is not permitted for prod/stg environments.
+
+### Docker Compose profiles
+
+| Profile | Services | When to use |
+|---|---|---|
+| _(none)_ | postgres, orchestra-threads, orchestra-agents, events-engine, telegram-events, telegram-mcp, omniroute, wet, memory, scheduler-cron, task-registry | Always — core platform stack |
+| `vault` | HashiCorp Vault | Must be running before `deploy-env.sh` |
+| `user-agents` | odinykt, specialist | Manual testing / interactive agent sessions |
+| `test` | test runner, mux-smoke | CI and local test runs |
+
+### First-time Vault setup
+
+```bash
+# 1. Start and initialize Vault (one-time)
+docker compose --profile vault up -d vault
+docker exec -e VAULT_ADDR=http://127.0.0.1:8200 <vault-container> vault operator init -key-shares=1 -key-threshold=1
+# Save unseal key and root token to deploy/vault/local/
+
+# 2. Unseal
+docker exec -e VAULT_ADDR=http://127.0.0.1:8200 <vault-container> vault operator unseal "$(cat deploy/vault/local/unseal-key)"
+
+# 3. Bootstrap (KV v2, AppRole, policies)
+VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=$(cat deploy/vault/local/root-token) \
+  bash deploy/vault/bootstrap/bootstrap-vault.sh
+
+# 4. Migrate existing secrets from .env + .env.telegram
+VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=$(cat deploy/vault/local/root-token) \
+  python3 deploy/vault/bootstrap/migrate_current_secrets.py
+
+# 5. Patch dev secrets if needed (migration zeros non-prod sensitive keys)
+VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=$(cat deploy/vault/local/root-token) \
+  vault kv patch kv/orchestrathreads/dev/runtime \
+  TELEGRAM_API_ID=... TELEGRAM_API_HASH=... TELEGRAM_SESSION_STRING=... OMNIROUTE_API_KEY=...
+```
+
+### Daily dev workflow
+
+```bash
+# deploy-env.sh auto-starts Vault, unseals it, and loads AppRole credentials
+# from deploy/vault/bootstrap/.out/dev.env — no manual export needed
+bash deploy/deploy-env.sh dev
 ```
 
 ## NOTES
