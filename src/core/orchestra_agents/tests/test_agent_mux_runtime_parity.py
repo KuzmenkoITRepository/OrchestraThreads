@@ -5,6 +5,22 @@ import unittest
 from typing import Any
 from unittest.mock import patch
 
+_SHARED_RUNTIME_MODULE = "core.orchestra_agents.agent_mux_runtime"
+_TEMPLATE_STATE_MODULE = "core.orchestra_agents.templates.agent_mux.agent_runtime.state"
+_TEMPLATE_DISPATCH_MODULE = "core.orchestra_agents.templates.agent_mux.agent_runtime.dispatch"
+_TEMPLATE_PROMPTING_MODULE = "core.orchestra_agents.templates.agent_mux.agent_runtime.prompting"
+_EXAMPLE_STATE_MODULE = "agents.orchestra.agent_runtime.state"
+_EXAMPLE_DISPATCH_MODULE = "agents.orchestra.agent_runtime.dispatch"
+_EXAMPLE_PROMPTING_MODULE = "agents.orchestra.agent_runtime.prompting"
+_STATE_NAME = "AgentMuxRuntimeState"
+_QUEUE_ENTRY_NAME = "QueueEntry"
+_DISPATCH_SPEC_NAME = "AgentMuxDispatchSpec"
+_BUILD_COMMAND_NAME = "build_agent_mux_command"
+_PARSE_RESULT_NAME = "parse_agent_mux_result"
+_WRITE_CONFIG_NAME = "write_runtime_codex_config"
+_WAKEUP_BLOCK_NAME = "build_compact_wakeup_block"
+_CONTEXT_BLOCK_NAME = "build_context_memory_block"
+
 
 def _load(module_path: str) -> Any:
     return importlib.import_module(module_path)
@@ -26,65 +42,59 @@ class AgentMuxRuntimeParityTests(unittest.TestCase):
             (
                 (
                     _symbol(
-                        "core.orchestra_agents.templates.agent_mux.agent_runtime.state",
-                        "AgentMuxRuntimeState",
+                        _TEMPLATE_STATE_MODULE,
+                        _STATE_NAME,
                     ),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "AgentMuxRuntimeState"),
+                    _symbol(_SHARED_RUNTIME_MODULE, _STATE_NAME),
                 ),
                 (
                     _symbol(
-                        "core.orchestra_agents.templates.agent_mux.agent_runtime.state",
-                        "QueueEntry",
+                        _TEMPLATE_STATE_MODULE,
+                        _QUEUE_ENTRY_NAME,
                     ),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "QueueEntry"),
+                    _symbol(_SHARED_RUNTIME_MODULE, _QUEUE_ENTRY_NAME),
                 ),
                 (
                     _symbol(
-                        "core.orchestra_agents.templates.agent_mux.agent_runtime.dispatch",
-                        "AgentMuxDispatchSpec",
+                        _TEMPLATE_DISPATCH_MODULE,
+                        _DISPATCH_SPEC_NAME,
                     ),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "AgentMuxDispatchSpec"),
+                    _symbol(_SHARED_RUNTIME_MODULE, _DISPATCH_SPEC_NAME),
                 ),
                 (
                     _symbol(
-                        "core.orchestra_agents.templates.agent_mux.agent_runtime.dispatch",
-                        "build_agent_mux_command",
+                        _TEMPLATE_DISPATCH_MODULE,
+                        _BUILD_COMMAND_NAME,
                     ),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "build_agent_mux_command"),
+                    _symbol(_SHARED_RUNTIME_MODULE, _BUILD_COMMAND_NAME),
                 ),
                 (
                     _symbol(
-                        "core.orchestra_agents.templates.agent_mux.agent_runtime.dispatch",
-                        "parse_agent_mux_result",
+                        _TEMPLATE_DISPATCH_MODULE,
+                        _PARSE_RESULT_NAME,
                     ),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "parse_agent_mux_result"),
+                    _symbol(_SHARED_RUNTIME_MODULE, _PARSE_RESULT_NAME),
                 ),
                 (
                     _symbol(
-                        "core.orchestra_agents.templates.agent_mux.agent_runtime.dispatch",
-                        "write_runtime_codex_config",
+                        _TEMPLATE_DISPATCH_MODULE,
+                        _WRITE_CONFIG_NAME,
                     ),
-                    _symbol(
-                        "core.orchestra_agents.agent_mux_runtime", "write_runtime_codex_config"
-                    ),
+                    _symbol(_SHARED_RUNTIME_MODULE, _WRITE_CONFIG_NAME),
                 ),
                 (
                     _symbol(
-                        "core.orchestra_agents.templates.agent_mux.agent_runtime.prompting",
-                        "build_compact_wakeup_block",
+                        _TEMPLATE_PROMPTING_MODULE,
+                        _WAKEUP_BLOCK_NAME,
                     ),
-                    _symbol(
-                        "core.orchestra_agents.agent_mux_runtime", "build_compact_wakeup_block"
-                    ),
+                    _symbol(_SHARED_RUNTIME_MODULE, _WAKEUP_BLOCK_NAME),
                 ),
                 (
                     _symbol(
-                        "core.orchestra_agents.templates.agent_mux.agent_runtime.prompting",
-                        "build_context_memory_block",
+                        _TEMPLATE_PROMPTING_MODULE,
+                        _CONTEXT_BLOCK_NAME,
                     ),
-                    _symbol(
-                        "core.orchestra_agents.agent_mux_runtime", "build_context_memory_block"
-                    ),
+                    _symbol(_SHARED_RUNTIME_MODULE, _CONTEXT_BLOCK_NAME),
                 ),
             ),
         )
@@ -94,95 +104,36 @@ class AgentMuxRuntimeParityTests(unittest.TestCase):
             self,
             (
                 (
-                    _symbol("agents.orchestra.agent_runtime.state", "AgentMuxRuntimeState"),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "AgentMuxRuntimeState"),
+                    _symbol(_EXAMPLE_STATE_MODULE, _STATE_NAME),
+                    _symbol(_SHARED_RUNTIME_MODULE, _STATE_NAME),
                 ),
                 (
-                    _symbol("agents.orchestra.agent_runtime.state", "QueueEntry"),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "QueueEntry"),
+                    _symbol(_EXAMPLE_STATE_MODULE, _QUEUE_ENTRY_NAME),
+                    _symbol(_SHARED_RUNTIME_MODULE, _QUEUE_ENTRY_NAME),
                 ),
                 (
-                    _symbol("agents.orchestra.agent_runtime.dispatch", "AgentMuxDispatchSpec"),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "AgentMuxDispatchSpec"),
+                    _symbol(_EXAMPLE_DISPATCH_MODULE, _DISPATCH_SPEC_NAME),
+                    _symbol(_SHARED_RUNTIME_MODULE, _DISPATCH_SPEC_NAME),
                 ),
                 (
-                    _symbol("agents.orchestra.agent_runtime.dispatch", "build_agent_mux_command"),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "build_agent_mux_command"),
+                    _symbol(_EXAMPLE_DISPATCH_MODULE, _BUILD_COMMAND_NAME),
+                    _symbol(_SHARED_RUNTIME_MODULE, _BUILD_COMMAND_NAME),
                 ),
                 (
-                    _symbol("agents.orchestra.agent_runtime.dispatch", "parse_agent_mux_result"),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "parse_agent_mux_result"),
+                    _symbol(_EXAMPLE_DISPATCH_MODULE, _PARSE_RESULT_NAME),
+                    _symbol(_SHARED_RUNTIME_MODULE, _PARSE_RESULT_NAME),
                 ),
                 (
-                    _symbol(
-                        "agents.orchestra.agent_runtime.dispatch", "write_runtime_codex_config"
-                    ),
-                    _symbol(
-                        "core.orchestra_agents.agent_mux_runtime", "write_runtime_codex_config"
-                    ),
+                    _symbol(_EXAMPLE_DISPATCH_MODULE, _WRITE_CONFIG_NAME),
+                    _symbol(_SHARED_RUNTIME_MODULE, _WRITE_CONFIG_NAME),
                 ),
                 (
-                    _symbol(
-                        "agents.orchestra.agent_runtime.prompting", "build_compact_wakeup_block"
-                    ),
-                    _symbol(
-                        "core.orchestra_agents.agent_mux_runtime", "build_compact_wakeup_block"
-                    ),
+                    _symbol(_EXAMPLE_PROMPTING_MODULE, _WAKEUP_BLOCK_NAME),
+                    _symbol(_SHARED_RUNTIME_MODULE, _WAKEUP_BLOCK_NAME),
                 ),
                 (
-                    _symbol(
-                        "agents.orchestra.agent_runtime.prompting", "build_context_memory_block"
-                    ),
-                    _symbol(
-                        "core.orchestra_agents.agent_mux_runtime", "build_context_memory_block"
-                    ),
-                ),
-                (
-                    _symbol("agents.secretary.agent_runtime.state", "AgentMuxRuntimeState"),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "AgentMuxRuntimeState"),
-                ),
-                (
-                    _symbol("agents.secretary.agent_runtime.state", "QueueEntry"),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "QueueEntry"),
-                ),
-                (
-                    _symbol("agents.secretary.agent_runtime.dispatch", "AgentMuxDispatchSpec"),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "AgentMuxDispatchSpec"),
-                ),
-                (
-                    _symbol("agents.secretary.agent_runtime.dispatch", "build_agent_mux_command"),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "build_agent_mux_command"),
-                ),
-                (
-                    _symbol("agents.secretary.agent_runtime.dispatch", "parse_agent_mux_result"),
-                    _symbol("core.orchestra_agents.agent_mux_runtime", "parse_agent_mux_result"),
-                ),
-                (
-                    _symbol(
-                        "agents.secretary.agent_runtime.dispatch",
-                        "write_runtime_codex_config",
-                    ),
-                    _symbol(
-                        "core.orchestra_agents.agent_mux_runtime", "write_runtime_codex_config"
-                    ),
-                ),
-                (
-                    _symbol(
-                        "agents.secretary.agent_runtime.prompting",
-                        "build_compact_wakeup_block",
-                    ),
-                    _symbol(
-                        "core.orchestra_agents.agent_mux_runtime", "build_compact_wakeup_block"
-                    ),
-                ),
-                (
-                    _symbol(
-                        "agents.secretary.agent_runtime.prompting",
-                        "build_context_memory_block",
-                    ),
-                    _symbol(
-                        "core.orchestra_agents.agent_mux_runtime", "build_context_memory_block"
-                    ),
+                    _symbol(_EXAMPLE_PROMPTING_MODULE, _CONTEXT_BLOCK_NAME),
+                    _symbol(_SHARED_RUNTIME_MODULE, _CONTEXT_BLOCK_NAME),
                 ),
             ),
         )
@@ -193,13 +144,6 @@ class AgentMuxRuntimeParityTests(unittest.TestCase):
             (
                 (
                     _symbol("agents.orchestra.agent_runtime.backend", "AgentMuxBackend"),
-                    _symbol(
-                        "core.orchestra_agents.templates.agent_mux.agent_runtime.backend",
-                        "AgentMuxBackend",
-                    ),
-                ),
-                (
-                    _symbol("agents.secretary.agent_runtime.backend", "AgentMuxBackend"),
                     _symbol(
                         "core.orchestra_agents.templates.agent_mux.agent_runtime.backend",
                         "AgentMuxBackend",

@@ -69,7 +69,7 @@ class MemoryServiceHttpTests(AioHTTPTestCase):
         self.assertEqual(items[0]["agent_slug"], "agent-a")
         self.assertEqual(items[0]["text"], "alpha secret")
 
-    async def test_clear_and_delete_only_affect_explicit_memory_operations(self) -> None:
+    async def test_clear_delete_are_explicit(self) -> None:
         memory_id = await self._remember_memory(text="remember me")
         clear_body = await self._post_json("/memory/clear", {"agent_slug": "agent-b"})
         self.assertEqual(clear_body["deleted_count"], 0)
@@ -196,7 +196,7 @@ class MemoryClearContextIsolationTests(unittest.IsolatedAsyncioTestCase):
         self._patcher.stop()
         self._tempdir.cleanup()
 
-    async def test_agent_clear_context_does_not_remove_memory(self) -> None:
+    async def test_clear_context_keeps_memory(self) -> None:
         await self._service.remember(
             agent_slug="agent-a",
             room="knowledge",

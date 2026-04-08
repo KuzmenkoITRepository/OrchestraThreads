@@ -213,7 +213,7 @@ The template manifest should declare:
 - standard agent working dir and HTTP endpoint;
 - docker runtime command for `agent_runtime.main`;
 - bind mount of the repo/workspace;
-- env for `ORCHESTRA_THREADS_URL`, `LLM_PROXY_URL`, route policy, artifact
+- env for `ORCHESTRA_THREADS_URL`, `OMNIROUTE_URL`, route policy, artifact
   root, and queue root;
 - backend type `agent_mux`.
 

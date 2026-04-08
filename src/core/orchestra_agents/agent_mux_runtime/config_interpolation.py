@@ -33,16 +33,16 @@ def render_scalar(value: Any, variables: ScalarVars) -> str:
 def render_list(values: RawListValues, variables: ScalarVars) -> list[str]:
     input_values = values or []
     rendered_items: list[str] = []
-    for item in input_values:
-        rendered_items.append(render_scalar(item, variables))
+    for list_entry in input_values:
+        rendered_items.append(render_scalar(list_entry, variables))
     return rendered_items
 
 
 def render_dict(values: RawValues, variables: ScalarVars) -> dict[str, str]:
     input_values = values or {}
     rendered_items: dict[str, str] = {}
-    for key, item_value in input_values.items():
-        rendered_items[str(key)] = render_scalar(item_value, variables)
+    for key, dict_entry in input_values.items():
+        rendered_items[str(key)] = render_scalar(dict_entry, variables)
     return rendered_items
 
 

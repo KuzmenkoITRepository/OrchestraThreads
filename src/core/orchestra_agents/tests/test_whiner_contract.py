@@ -17,7 +17,7 @@ def _load_whiner_manifest() -> dict[str, object]:
 
 
 class WhinerContractTests(unittest.TestCase):
-    def test_whiner_manifest_exposes_required_mcp_servers(self) -> None:
+    def test_manifest_exposes_mcp_servers(self) -> None:
         manifest = _load_whiner_manifest()
         backend = manifest["backend"]
         assert isinstance(backend, dict)
@@ -36,7 +36,7 @@ class WhinerContractTests(unittest.TestCase):
         self.assertIn("task_registry", payload)
         self.assertIn("docker_mcp", payload)
 
-    def test_whiner_prompt_requires_task_creation_for_orchestra(self) -> None:
+    def test_prompt_requires_task_creation(self) -> None:
         prompt_text = Path("agents/whiner/system_prompt.md").read_text(encoding="utf-8")
 
         self.assertIn("create improvement tasks autonomously", prompt_text)

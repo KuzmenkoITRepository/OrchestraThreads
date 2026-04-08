@@ -1,5 +1,3 @@
-"""Telegram events service entrypoint."""
-
 import asyncio
 import logging
 import signal
@@ -10,14 +8,16 @@ from functools import partial
 from core.telegram_events.service import TelegramEventsService
 from core.telegram_events.service_config import build_service, configure_logging
 
+_TERMINATION_SIGNALS = (signal.SIGTERM, signal.SIGINT)
+
 
 def _on_signal(
-    sig: int,
+    signal_number: int,
     logger: logging.Logger,
     service: TelegramEventsService,
     loop: asyncio.AbstractEventLoop,
 ) -> None:
-    logger.info("Received signal %s, shutting down...", sig)
+    logger.info("Received signal %s, shutting down...", signal_number)
     asyncio.create_task(service.stop())
     loop.stop()
 
@@ -26,8 +26,8 @@ def _register_signal_handlers(
     loop: asyncio.AbstractEventLoop,
     handler: Callable[[int], None],
 ) -> None:
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, handler, int(sig))
+    for signal_value in _TERMINATION_SIGNALS:
+        loop.add_signal_handler(signal_value, handler, int(signal_value))
 
 
 async def main() -> None:

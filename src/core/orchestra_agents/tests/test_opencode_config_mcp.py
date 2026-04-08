@@ -8,7 +8,7 @@ from core.orchestra_agents.templates.opencode.agent_runtime.config_mcp import bu
 
 
 class OpencodeMCPConfigTests(unittest.TestCase):
-    def test_build_mcp_block_supports_multiple_servers(self) -> None:
+    def test_build_mcp_block_multi_servers(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir)
             payload = build_mcp_block(

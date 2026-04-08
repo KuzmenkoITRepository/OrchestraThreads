@@ -16,7 +16,7 @@ from core.orchestra_agents.agent_mux_runtime.codex_config_servers import render_
 @dataclass(frozen=True)
 class RuntimeCodexConfigRequest:
     codex_home: Path
-    llm_proxy_url: str
+    omniroute_url: str
     route_policy: str
     model: str
     mcp_servers: Sequence[Mapping[str, Any]] | None = None
@@ -52,7 +52,7 @@ def create_runtime_codex_request(
 ) -> RuntimeCodexConfigRequest:
     return RuntimeCodexConfigRequest(
         codex_home=settings.codex_home,
-        llm_proxy_url=settings.llm_proxy_url,
+        omniroute_url=settings.omniroute_url,
         route_policy=settings.route_policy,
         model=settings.model,
         mcp_servers=settings.mcp_servers,
@@ -74,7 +74,7 @@ def write_runtime_codex_config(
         model=request.model,
         base_url=build_openai_base_url(
             request.route_policy,
-            proxy_url=request.llm_proxy_url,
+            proxy_url=request.omniroute_url,
         ),
     )
     variables = dict(request.variables or {})

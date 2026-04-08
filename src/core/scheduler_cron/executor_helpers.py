@@ -8,14 +8,14 @@ DEFAULT_SCHEDULER_AGENT = "sgr"
 SCHEDULER_SOURCE = "scheduler_cron"
 
 
-def required_str(value: object, *, field: str) -> str:
-    if isinstance(value, str) and value.strip():
-        return value.strip()
+def required_str(raw_value: object, *, field: str) -> str:
+    if isinstance(raw_value, str) and raw_value.strip():
+        return raw_value.strip()
     raise ValueError(f"{field} is required")
 
 
-def as_dict(value: object) -> dict[str, object]:
-    return dict(value) if isinstance(value, dict) else {}
+def as_dict(raw_value: object) -> dict[str, object]:
+    return dict(raw_value) if isinstance(raw_value, dict) else {}
 
 
 def render_json(payload: dict[str, object]) -> str:
@@ -27,14 +27,14 @@ def event_kind_from(payload: dict[str, object]) -> str:
     return raw or DEFAULT_EVENT_KIND
 
 
-def scheduler_target(value: object) -> str:
-    if value is None:
+def scheduler_target(raw_value: object) -> str:
+    if raw_value is None:
         return DEFAULT_SCHEDULER_AGENT
-    return required_str(value, field="target_agent")
+    return required_str(raw_value, field="target_agent")
 
 
-def dict_response(value: object) -> dict[str, object]:
-    return dict(value) if isinstance(value, dict) else {"ok": True}
+def dict_response(raw_value: object) -> dict[str, object]:
+    return dict(raw_value) if isinstance(raw_value, dict) else {"ok": True}
 
 
 def delivery_payload(
@@ -44,7 +44,8 @@ def delivery_payload(
     message_text: str,
     requires_response: bool,
 ) -> dict[str, object]:
-    event_id = f"scheduler-{uuid.uuid4().hex}"
+    event_uuid = uuid.uuid4().hex
+    event_id = f"scheduler-{event_uuid}"
     event_item = {
         "event_id": event_id,
         "event_kind": event_kind,

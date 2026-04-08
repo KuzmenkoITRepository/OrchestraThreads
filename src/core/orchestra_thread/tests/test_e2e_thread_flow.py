@@ -2,18 +2,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.orchestra_thread.tests.fixtures import (
-    BaseE2ETestCase,
-    create_root_thread,
-    send_message,
-    send_notification,
-    wait_for_events,
-)
 from core.orchestra_thread.tests.fixtures.e2e_harness import E2EHarness, FakeAgent
+from core.orchestra_thread.tests.fixtures.e2e_test_case import (
+    BaseE2ETestCase,
+    send_notification,
+)
 from core.orchestra_thread.tests.fixtures.flow_helpers import (
     assert_child_cascade,
     assert_inactivity_retry,
 )
+from core.orchestra_thread.tests.fixtures.thread_helpers import (
+    create_root_thread,
+    send_message,
+    wait_for_events,
+)
+
+_KEY_THREAD = "thread"
+_KEY_THREAD_ID = "thread_id"
+_HTTP_CONFLICT = 409
 
 
 @dataclass(frozen=True)
@@ -42,7 +48,7 @@ async def close_thread(
         thread_id=thread_id,
         message_text=message_text,
     )
-    case.assertEqual(closed["thread"]["status"], "closed")
+    case.assertEqual(closed[_KEY_THREAD]["status"], "closed")
 
 
 async def assert_reply_and_reuse(
@@ -58,13 +64,13 @@ async def assert_reply_and_reuse(
         thread_id=thread_id,
         message_text="Done. Here is the update.",
     )
-    case.assertEqual(reply["thread"]["thread_id"], thread_id)
+    case.assertEqual(reply[_KEY_THREAD][_KEY_THREAD_ID], thread_id)
     await wait_for_events(
         harness,
         pair.secretary,
         message="secretary did not receive the reply on the root thread",
     )
-    case.assertEqual(pair.secretary.events[-1]["thread_id"], thread_id)
+    case.assertEqual(pair.secretary.events[-1][_KEY_THREAD_ID], thread_id)
 
     reused = await send_message(
         harness,
@@ -73,12 +79,12 @@ async def assert_reply_and_reuse(
         message_text="One more thing.",
     )
     case.assertFalse(reused["created_thread"])
-    case.assertEqual(reused["thread"]["thread_id"], thread_id)
+    case.assertEqual(reused[_KEY_THREAD][_KEY_THREAD_ID], thread_id)
 
     threads_payload = await harness.list_threads(scope="active")
-    active_roots = [item for item in threads_payload["threads"] if item["scope"] == "root"]
+    active_roots = [entry for entry in threads_payload["threads"] if entry["scope"] == "root"]
     case.assertEqual(len(active_roots), 1)
-    case.assertEqual(active_roots[0]["thread_id"], thread_id)
+    case.assertEqual(active_roots[0][_KEY_THREAD_ID], thread_id)
 
 
 async def assert_status_controls(
@@ -95,7 +101,7 @@ async def assert_status_controls(
         status="review",
         message_text="Ready for handoff.",
     )
-    case.assertEqual(review["thread"]["status"], "review")
+    case.assertEqual(review[_KEY_THREAD]["status"], "review")
     await harness.wait_for(
         lambda: any(
             event.get("notification_status") == "review" for event in pair.secretary.events
@@ -110,7 +116,7 @@ async def assert_status_controls(
         thread_id=thread_id,
         status="done",
         message_text="Done.",
-        expected_status=409,
+        expected_status=_HTTP_CONFLICT,
     )
     case.assertIn("cannot publish done", invalid_done["error"])
 
@@ -122,12 +128,12 @@ async def assert_status_controls(
         status="closed",
         message_text="Closing thread.",
     )
-    case.assertEqual(closed["thread"]["status"], "closed")
+    case.assertEqual(closed[_KEY_THREAD]["status"], "closed")
     await harness.wait_for(
         lambda: pair.orchestra.stops,
         message="orchestra did not receive stop after thread closure",
     )
-    case.assertEqual(pair.orchestra.stops[-1]["thread_id"], thread_id)
+    case.assertEqual(pair.orchestra.stops[-1][_KEY_THREAD_ID], thread_id)
 
 
 async def create_child_and_assert(
@@ -144,17 +150,17 @@ async def create_child_and_assert(
         parent_thread_id=root_thread_id,
         message_text="Check one detail.",
     )
-    child_thread_id = str(child["thread"]["thread_id"])
+    child_thread_id = str(child[_KEY_THREAD][_KEY_THREAD_ID])
     case.assertNotEqual(child_thread_id, root_thread_id)
-    case.assertEqual(child["thread"]["parent_thread_id"], root_thread_id)
-    case.assertEqual(child["thread"]["root_thread_id"], root_thread_id)
+    case.assertEqual(child[_KEY_THREAD]["parent_thread_id"], root_thread_id)
+    case.assertEqual(child[_KEY_THREAD]["root_thread_id"], root_thread_id)
 
     await wait_for_events(
         harness,
         specialist,
         message="specialist did not receive the child-thread message",
     )
-    case.assertEqual(specialist.events[-1]["thread_id"], child_thread_id)
+    case.assertEqual(specialist.events[-1][_KEY_THREAD_ID], child_thread_id)
     return child_thread_id
 
 
@@ -215,7 +221,7 @@ class ThreadFlowE2ETests(BaseE2ETestCase):
             to_agent_slug=pair.orchestra.slug,
             thread_id=thread_id,
             message_text="Should fail after close.",
-            expected_status=409,
+            expected_status=_HTTP_CONFLICT,
         )
         self.assertIn("already terminal", after_close["error"])
 

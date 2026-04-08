@@ -12,6 +12,8 @@ from aiohttp import ClientSession, ClientTimeout, web
 from core.orchestra_agents.registry import AgentManifestRegistry
 from core.orchestra_agents.service import OrchestraAgentsService, build_app
 
+_STATUS_RUNNING = "running"
+
 
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -34,13 +36,13 @@ class FakeDriver:
             "slug": manifest.slug,
             "container_name": self.container_name(manifest.slug),
             "exists": True,
-            "running": manifest.slug in self.started or manifest.slug in self.restarted,
+            _STATUS_RUNNING: manifest.slug in self.started or manifest.slug in self.restarted,
             "healthy": True,
             "backend_type": manifest.backend.type,
             "http_endpoint": manifest.resolve_http_endpoint(
                 container_name=self.container_name(manifest.slug)
             ),
-            "docker_status": "running",
+            "docker_status": _STATUS_RUNNING,
             "health_status": {"ok": True},
             "started_at": "2025-01-01T00:00:00Z",
             "last_error": None,
@@ -56,7 +58,7 @@ class FakeDriver:
             "slug": slug,
             "container_name": self.container_name(slug),
             "exists": not remove,
-            "running": False,
+            _STATUS_RUNNING: False,
             "removed": remove,
         }
 
@@ -116,7 +118,7 @@ backend:
         self.assertEqual(self.driver.started, ["coding_agent"])
 
         status = await self._request("GET", "/api/v1/agents/coding_agent/status")
-        self.assertTrue(status["status"]["running"])
+        self.assertTrue(status["status"][_STATUS_RUNNING])
 
     async def test_validates_manifest_payload(self) -> None:
         manifest_yaml_raw = """
@@ -133,13 +135,13 @@ backend:
   type: sgr
         """
         manifest_yaml = manifest_yaml_raw.strip()
-        result = await self._request(
+        validation_result = await self._request(
             "POST",
             "/api/v1/manifests/validate",
             {"yaml": manifest_yaml},
         )
-        self.assertTrue(result["success"])
-        self.assertEqual(result["manifest"]["backend"]["type"], "sgr")
+        self.assertTrue(validation_result["success"])
+        self.assertEqual(validation_result["manifest"]["backend"]["type"], "sgr")
 
     async def _request(
         self,
@@ -154,7 +156,7 @@ backend:
             json=payload,
         ) as response:
             raw = await response.text()
-            data = json.loads(raw) if raw else {}
+            parsed = json.loads(raw) if raw else {}
             if response.status != expected_status:
-                raise AssertionError(f"{method} {path} -> {response.status}: {data}")
-            return cast(dict[str, Any], data)
+                raise AssertionError(f"{method} {path} -> {response.status}: {parsed}")
+            return cast(dict[str, Any], parsed)

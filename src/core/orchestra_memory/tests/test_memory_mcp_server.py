@@ -133,7 +133,7 @@ class OrchestraMemoryMCPServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("agent_slug override is not allowed", response["error"]["message"])
         await server.close()
 
-    async def test_backend_payloads_always_use_server_agent_slug(self) -> None:
+    async def test_backend_uses_server_agent_slug(self) -> None:
         client = _FakeMemoryClient()
         server = OrchestraMemoryMCPServer(agent_slug="secretary", client=client)
 

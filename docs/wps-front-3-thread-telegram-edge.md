@@ -2,7 +2,7 @@
 
 ## Front mission
 
-**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
+**Historical note:** legacy proxy routing has been replaced by `omniroute` + `wet`.
 
 This front reduces active WPS debt in thread orchestration, MCP/thread HTTP
 surfaces, persistent thread-store decomposition, and Telegram/event edge

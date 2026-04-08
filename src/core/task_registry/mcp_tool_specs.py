@@ -1,192 +1,177 @@
 from __future__ import annotations
 
-from typing import Any
+from core.task_registry import mcp_tool_specs_common as _common
 
-JsonDict = dict[str, Any]
+DESCRIPTION_FIELD = _common.DESCRIPTION_FIELD
+TYPE_FIELD = _common.TYPE_FIELD
+JsonDict = _common.JsonDict
+artifact_schema = _common.artifact_schema
+checklist_item_schema = _common.checklist_item_schema
+object_schema = _common.object_schema
+string_prop = _common.string_prop
+task_id_prop = _common.task_id_prop
+tool_spec = _common.tool_spec
 
-
-def _tool(name: str, description: str, schema: JsonDict) -> JsonDict:
-    return {"name": name, "description": description, "inputSchema": schema}
-
-
-def _object_schema(  # noqa: WPS210  # Schema builder needs properties + required lists.
-    properties: JsonDict,
-    required: list[str] | None = None,
-) -> JsonDict:
-    schema: JsonDict = {"type": "object", "properties": properties}
-    if required:
-        schema["required"] = required
-    return schema
+TASK_ID_FIELD = "task_id"
+STATUS_FIELD = "status"
+ASSIGNEE_FIELD = "assignee"
 
 
-_CHECKLIST_ITEM_SCHEMA: JsonDict = {  # noqa: WPS407  # Schema dict must be mutable for JSON serialization.
-    "type": "object",
-    "properties": {
-        "label": {"type": "string", "description": "Checklist item text"},
-        "checked": {"type": "boolean", "description": "Whether item is checked", "default": False},
-    },
-    "required": ["label"],
-}
-
-_ARTIFACT_SCHEMA: JsonDict = {  # noqa: WPS407  # Schema dict must be mutable for JSON serialization.
-    "type": "object",
-    "properties": {
-        "url": {"type": "string", "description": "Artifact URL or path"},
-        "type": {"type": "string", "description": "Artifact type (e.g. 'file', 'link', 'image')"},
-        "label": {"type": "string", "description": "Human-readable label"},
-    },
-    "required": ["url", "type"],
-}
-
-_TASK_ID_PROP: JsonDict = {"type": "string", "description": "Task UUID"}  # noqa: WPS407
-
-
-def tool_specs() -> list[JsonDict]:  # noqa: WPS213  # All 10 specs belong in one list.
+def _task_lifecycle_specs() -> list[JsonDict]:
     return [
-        _tool(
+        tool_spec(
             "task_create",
             "Create a new task with optional description, acceptance criteria, and checklist.",
-            _object_schema(
+            object_schema(
                 {
-                    "title": {"type": "string", "description": "Task title"},
-                    "description": {"type": "string", "description": "Task description"},
-                    "acceptance_criteria": {"type": "string", "description": "Acceptance criteria"},
-                    "created_by": {"type": "string", "description": "Creator agent name"},
-                    "status": {
-                        "type": "string",
-                        "description": "Initial status",
+                    "title": string_prop("Task title"),
+                    "description": string_prop("Task description"),
+                    "acceptance_criteria": string_prop("Acceptance criteria"),
+                    "created_by": string_prop("Creator agent name"),
+                    STATUS_FIELD: {
+                        TYPE_FIELD: "string",
+                        DESCRIPTION_FIELD: "Initial status",
                         "default": "draft",
                     },
-                    "assignee": {"type": "string", "description": "Assigned agent name"},
+                    ASSIGNEE_FIELD: string_prop("Assigned agent name"),
                     "priority": {
-                        "type": "string",
-                        "description": "Priority level",
+                        TYPE_FIELD: "string",
+                        DESCRIPTION_FIELD: "Priority level",
                         "default": "normal",
                     },
                     "checklist": {
-                        "type": "array",
-                        "items": _CHECKLIST_ITEM_SCHEMA,
-                        "description": "Initial checklist items",
+                        TYPE_FIELD: "array",
+                        "items": checklist_item_schema(),
+                        DESCRIPTION_FIELD: "Initial checklist items",
                     },
                     "artifacts": {
-                        "type": "array",
-                        "items": _ARTIFACT_SCHEMA,
-                        "description": "Initial artifacts attached to the task",
+                        TYPE_FIELD: "array",
+                        "items": artifact_schema(),
+                        DESCRIPTION_FIELD: "Initial artifacts attached to the task",
                     },
                 },
                 required=["title", "created_by"],
             ),
         ),
-        _tool(
+        tool_spec(
             "task_get",
             "Get a task by its ID with full details.",
-            _object_schema(
-                {"task_id": _TASK_ID_PROP},
-                required=["task_id"],
-            ),
+            object_schema({TASK_ID_FIELD: task_id_prop()}, required=[TASK_ID_FIELD]),
         ),
-        _tool(
+        tool_spec(
             "task_list",
             "List tasks with optional filters by status, assignee, or creator.",
-            _object_schema(
+            object_schema(
                 {
-                    "status": {"type": "string", "description": "Filter by status"},
-                    "assignee": {"type": "string", "description": "Filter by assignee"},
-                    "created_by": {"type": "string", "description": "Filter by creator"},
+                    STATUS_FIELD: string_prop("Filter by status"),
+                    ASSIGNEE_FIELD: string_prop("Filter by assignee"),
+                    "created_by": string_prop("Filter by creator"),
                     "limit": {
-                        "type": "integer",
-                        "description": "Max results to return",
+                        TYPE_FIELD: "integer",
+                        DESCRIPTION_FIELD: "Max results to return",
                         "default": 100,
                     },
-                },
+                }
             ),
         ),
-        _tool(
+        tool_spec(
             "task_update_status",
             "Update the status of an existing task.",
-            _object_schema(
+            object_schema(
                 {
-                    "task_id": _TASK_ID_PROP,
-                    "status": {"type": "string", "description": "New status value"},
+                    TASK_ID_FIELD: task_id_prop(),
+                    STATUS_FIELD: string_prop("New status value"),
                 },
-                required=["task_id", "status"],
+                required=[TASK_ID_FIELD, STATUS_FIELD],
             ),
         ),
-        _tool(
+        tool_spec(
             "task_assign",
             "Assign a task to an agent.",
-            _object_schema(
+            object_schema(
                 {
-                    "task_id": _TASK_ID_PROP,
-                    "assignee": {"type": "string", "description": "Agent name to assign"},
+                    TASK_ID_FIELD: task_id_prop(),
+                    ASSIGNEE_FIELD: string_prop("Agent name to assign"),
                 },
-                required=["task_id", "assignee"],
+                required=[TASK_ID_FIELD, ASSIGNEE_FIELD],
             ),
         ),
-        _tool(
+    ]
+
+
+def _task_update_specs() -> list[JsonDict]:
+    return [
+        tool_spec(
             "task_add_comment",
             "Add a comment to a task.",
-            _object_schema(
+            object_schema(
                 {
-                    "task_id": _TASK_ID_PROP,
-                    "author": {"type": "string", "description": "Comment author"},
-                    "body": {"type": "string", "description": "Comment text"},
+                    TASK_ID_FIELD: task_id_prop(),
+                    "author": string_prop("Comment author"),
+                    "body": string_prop("Comment text"),
                     "artifacts": {
                         "type": "array",
-                        "items": _ARTIFACT_SCHEMA,
+                        "items": artifact_schema(),
                         "description": "Optional attachments",
                     },
                 },
-                required=["task_id", "author", "body"],
+                required=[TASK_ID_FIELD, "author", "body"],
             ),
         ),
-        _tool(
+        tool_spec(
             "task_add_artifact",
             "Add an artifact (file, link, image) to a task.",
-            _object_schema(
+            object_schema(
                 {
-                    "task_id": _TASK_ID_PROP,
+                    TASK_ID_FIELD: task_id_prop(),
                     "artifact": {
-                        **_ARTIFACT_SCHEMA,
-                        "description": "Artifact object with url, type, and optional label",
+                        **artifact_schema(),
+                        DESCRIPTION_FIELD: "Artifact object with url, type, and optional label",
                     },
                 },
-                required=["task_id", "artifact"],
+                required=[TASK_ID_FIELD, "artifact"],
             ),
         ),
-        _tool(
+        tool_spec(
             "task_link_thread",
             "Link an orchestra thread to a task.",
-            _object_schema(
+            object_schema(
                 {
-                    "task_id": _TASK_ID_PROP,
+                    TASK_ID_FIELD: task_id_prop(),
                     "thread_id": {
-                        "type": "string",
+                        TYPE_FIELD: "string",
                         "format": "uuid",
-                        "description": "Thread UUID to link",
+                        DESCRIPTION_FIELD: "Thread UUID to link",
                     },
                 },
-                required=["task_id", "thread_id"],
+                required=[TASK_ID_FIELD, "thread_id"],
             ),
         ),
-        _tool(
+        tool_spec(
             "task_get_checklist",
             "Get all checklist items for a task.",
-            _object_schema(
-                {"task_id": _TASK_ID_PROP},
-                required=["task_id"],
-            ),
+            object_schema({TASK_ID_FIELD: task_id_prop()}, required=[TASK_ID_FIELD]),
         ),
-        _tool(
+        tool_spec(
             "task_update_checklist",
             "Update a checklist item's checked state.",
-            _object_schema(
+            object_schema(
                 {
-                    "item_id": {"type": "string", "description": "Checklist item UUID"},
-                    "checked": {"type": "boolean", "description": "New checked state"},
-                    "checked_by": {"type": "string", "description": "Agent who checked/unchecked"},
+                    "item_id": string_prop("Checklist item UUID"),
+                    "checked": {
+                        TYPE_FIELD: "boolean",
+                        DESCRIPTION_FIELD: "New checked state",
+                    },
+                    "checked_by": string_prop("Agent who checked/unchecked"),
                 },
                 required=["item_id", "checked", "checked_by"],
             ),
         ),
+    ]
+
+
+def tool_specs() -> list[JsonDict]:
+    return [
+        *_task_lifecycle_specs(),
+        *_task_update_specs(),
     ]

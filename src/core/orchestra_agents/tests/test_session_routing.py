@@ -12,104 +12,92 @@ from core.orchestra_agents.agent_mux_runtime.session_store import SessionStore
 from core.orchestra_agents.agent_mux_runtime.session_types import RoutingKey
 
 
-class _ConcurrentCreator:
-    def __init__(self, resolver: SessionResolver, results: list[str]) -> None:
-        self._resolver = resolver
-        self._results = results
-
-    def __call__(self) -> None:
-        session = self._resolver.resolve_or_create_session(RoutingKey("key-concurrent"))
-        self._results.append(session.session_id)
+def _resolve_concurrent_session(resolver: SessionResolver, session_ids: list[str]) -> None:
+    session = resolver.resolve_or_create_session(RoutingKey("key-concurrent"))
+    session_ids.append(session.session_id)
 
 
-def test_resolve_or_create_session_creates_new() -> None:
-    with TemporaryDirectory() as tmpdir:
-        state_root = Path(tmpdir)
-        session_store = SessionStore(state_root)
-        resolver = SessionResolver(session_store, state_root)
+def _run_concurrent_resolves(state_root: Path, count: int = 5) -> list[str]:
+    resolver = SessionResolver(SessionStore(state_root), state_root)
+    session_ids: list[str] = []
 
-        session = resolver.resolve_or_create_session(RoutingKey("key-new"))
-
-        assert session is not None
-        assert session.routing_key == "key-new"
-        assert session.session_id.startswith("session-")
-
-
-def test_resolve_or_create_session_reuses_existing() -> None:
-    with TemporaryDirectory() as tmpdir:
-        state_root = Path(tmpdir)
-        session_store = SessionStore(state_root)
-        resolver = SessionResolver(session_store, state_root)
-
-        session1 = resolver.resolve_or_create_session(RoutingKey("key-reuse"))
-        session2 = resolver.resolve_or_create_session(RoutingKey("key-reuse"))
-
-        assert session1.session_id == session2.session_id
+    pool = [
+        threading.Thread(target=_resolve_concurrent_session, args=(resolver, session_ids))
+        for _ in range(count)
+    ]
+    for t_item in pool:
+        t_item.start()
+    for t_item in pool:
+        t_item.join()
+    return session_ids
 
 
-def test_concurrent_same_key_events_reuse_one_session() -> None:
-    with TemporaryDirectory() as tmpdir:
-        state_root = Path(tmpdir)
-        session_store = SessionStore(state_root)
-        resolver = SessionResolver(session_store, state_root)
+class TestSessionRouting:
+    def test_resolve_or_create_creates_new(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            state_root = Path(tmpdir)
+            resolver = SessionResolver(SessionStore(state_root), state_root)
 
-        results: list[str] = []
-        target = _ConcurrentCreator(resolver, results)
+            session = resolver.resolve_or_create_session(RoutingKey("key-new"))
 
-        pool = [threading.Thread(target=target) for _ in range(5)]
-        for t_item in pool:
-            t_item.start()
-        for t_item in pool:
-            t_item.join()
+            assert session is not None
+            assert session.routing_key == "key-new"
+            assert session.session_id.startswith("session-")
 
-        assert len(set(results)) == 1
+    def test_resolve_session_reuses_existing(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            state_root = Path(tmpdir)
+            resolver = SessionResolver(SessionStore(state_root), state_root)
 
+            first = resolver.resolve_or_create_session(RoutingKey("key-reuse"))
+            second = resolver.resolve_or_create_session(RoutingKey("key-reuse"))
 
-def test_different_routing_keys_create_different_sessions() -> None:
-    with TemporaryDirectory() as tmpdir:
-        state_root = Path(tmpdir)
-        session_store = SessionStore(state_root)
-        resolver = SessionResolver(session_store, state_root)
+            assert first.session_id == second.session_id
 
-        session1 = resolver.resolve_or_create_session(RoutingKey("key-1"))
-        session2 = resolver.resolve_or_create_session(RoutingKey("key-2"))
+    def test_concurrent_same_key_reuse_session(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            resolved_ids = _run_concurrent_resolves(Path(tmpdir))
+            assert len(set(resolved_ids)) == 1
 
-        assert session1.session_id != session2.session_id
-        assert session1.routing_key == "key-1"
-        assert session2.routing_key == "key-2"
+    def test_different_keys_create_sessions(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            state_root = Path(tmpdir)
+            resolver = SessionResolver(SessionStore(state_root), state_root)
 
+            first = resolver.resolve_or_create_session(RoutingKey("key-1"))
+            second = resolver.resolve_or_create_session(RoutingKey("key-2"))
 
-def test_event_enters_one_session_mailbox() -> None:
-    with TemporaryDirectory() as tmpdir:
-        state_root = Path(tmpdir)
-        session_store = SessionStore(state_root)
-        resolver = SessionResolver(session_store, state_root)
+            assert first.session_id != second.session_id
+            assert first.routing_key == "key-1"
+            assert second.routing_key == "key-2"
 
-        session = resolver.resolve_or_create_session(RoutingKey("key-mailbox"))
+    def test_event_enters_one_session_mailbox(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            state_root = Path(tmpdir)
+            resolver = SessionResolver(SessionStore(state_root), state_root)
+            session = resolver.resolve_or_create_session(RoutingKey("key-mailbox"))
 
-        event = NormalizedEvent(
-            event_id="evt-mailbox",
-            source="test",
-            routing_key="key-mailbox",
-            kind="message",
-            payload={},
-            created_at="2026-04-07T09:00:00Z",
-        )
+            event = NormalizedEvent(
+                event_id="evt-mailbox",
+                source="test",
+                routing_key="key-mailbox",
+                kind="message",
+                payload={},
+                created_at="2026-04-07T09:00:00Z",
+            )
 
-        session.append_event(event)
+            session.append_event(event)
 
-        assert len(session.mailbox) == 1
-        assert session.mailbox[0].event_id == "evt-mailbox"
+            assert len(session.mailbox) == 1
+            assert session.mailbox[0].event_id == "evt-mailbox"
 
+    def test_duplicate_active_sessions_detected(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            state_root = Path(tmpdir)
+            resolver = SessionResolver(SessionStore(state_root), state_root)
 
-def test_duplicate_active_sessions_detected() -> None:
-    with TemporaryDirectory() as tmpdir:
-        state_root = Path(tmpdir)
-        session_store = SessionStore(state_root)
-        resolver = SessionResolver(session_store, state_root)
+            resolver.resolve_or_create_session(RoutingKey("key-dup"))
 
-        resolver.resolve_or_create_session(RoutingKey("key-dup"))
+            duplicates = resolver.detect_duplicate_sessions(RoutingKey("key-dup"))
 
-        duplicates = resolver.detect_duplicate_sessions(RoutingKey("key-dup"))
-
-        assert len(duplicates) == 0
+            assert len(duplicates) == 0

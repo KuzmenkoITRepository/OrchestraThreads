@@ -14,21 +14,27 @@ from core.scheduler_cron.scheduler_engine_support import (
     trigger_for,
 )
 
+_SKIP_MSG = "apscheduler is not installed"
 
-def _apscheduler_available() -> bool:
+_COALESCE_KEY = "coalesce"
+_ELAPSED_MS = 20
+_SAMPLE_INT = 42
+_PARSED_INT = 123
+_FALLBACK_EMPTY = 11
+
+
+def _has_apscheduler() -> bool:
     return find_spec("apscheduler") is not None
 
 
-class SchedulerEngineSupportTests(unittest.TestCase):
-    @unittest.skipUnless(_apscheduler_available(), "apscheduler is not installed")
-    def test_build_scheduler_returns_asyncio_scheduler(self) -> None:
+class TestBuildScheduler(unittest.TestCase):
+    @unittest.skipUnless(_has_apscheduler(), _SKIP_MSG)
+    def test_returns_asyncio_scheduler(self) -> None:
         scheduler = build_scheduler()
-        class_name = scheduler.__class__.__name__
+        self.assertIn("AsyncIOScheduler", type(scheduler).__name__)
 
-        self.assertIn("AsyncIOScheduler", class_name)
-
-    @unittest.skipUnless(_apscheduler_available(), "apscheduler is not installed")
-    def test_build_scheduler_exposes_expected_scheduler_methods(self) -> None:
+    @unittest.skipUnless(_has_apscheduler(), _SKIP_MSG)
+    def test_exposes_expected_methods(self) -> None:
         scheduler = build_scheduler()
 
         self.assertTrue(hasattr(scheduler, "start"))
@@ -36,30 +42,29 @@ class SchedulerEngineSupportTests(unittest.TestCase):
         self.assertTrue(hasattr(scheduler, "get_jobs"))
         self.assertTrue(hasattr(scheduler, "add_job"))
 
-    @unittest.skipUnless(_apscheduler_available(), "apscheduler is not installed")
-    def test_build_scheduler_uses_memory_job_store_as_default(self) -> None:
+    @unittest.skipUnless(_has_apscheduler(), _SKIP_MSG)
+    def test_uses_memory_job_store(self) -> None:
         scheduler = build_scheduler()
-        jobstores_raw = vars(scheduler).get("_jobstores")
+        jobstores = scheduler.__dict__.get("_jobstores", {})
 
-        self.assertIsInstance(jobstores_raw, dict)
-        jobstores = dict(jobstores_raw)
+        self.assertIsInstance(jobstores, dict)
         self.assertIn("default", jobstores)
         default_store = jobstores["default"]
-        self.assertIn("MemoryJobStore", default_store.__class__.__name__)
+        self.assertIn("MemoryJobStore", type(default_store).__name__)
 
-    @unittest.skipUnless(_apscheduler_available(), "apscheduler is not installed")
-    def test_trigger_for_cron_returns_cron_trigger(self) -> None:
+    @unittest.skipUnless(_has_apscheduler(), _SKIP_MSG)
+    def test_cron_trigger(self) -> None:
         trigger = trigger_for(job_type="cron", schedule="*/5 * * * *")
+        self.assertIn("CronTrigger", type(trigger).__name__)
 
-        self.assertIn("CronTrigger", trigger.__class__.__name__)
-
-    @unittest.skipUnless(_apscheduler_available(), "apscheduler is not installed")
-    def test_trigger_for_date_returns_date_trigger(self) -> None:
+    @unittest.skipUnless(_has_apscheduler(), _SKIP_MSG)
+    def test_date_trigger(self) -> None:
         trigger = trigger_for(job_type="date", schedule="2025-01-01T00:00:00")
+        self.assertIn("DateTrigger", type(trigger).__name__)
 
-        self.assertIn("DateTrigger", trigger.__class__.__name__)
 
-    def test_job_args_with_payload_and_auto_delete(self) -> None:
+class TestJobArgs(unittest.TestCase):
+    def test_with_payload_and_auto_delete(self) -> None:
         payload: dict[str, object] = {"x": 1, "mode": "full"}
         job: dict[str, object] = {
             "id": "job-1",
@@ -72,7 +77,7 @@ class SchedulerEngineSupportTests(unittest.TestCase):
 
         self.assertEqual(args, ["job-1", "send", payload, True])
 
-    def test_job_args_without_payload_or_auto_delete(self) -> None:
+    def test_without_payload_or_auto_delete(self) -> None:
         job: dict[str, object] = {
             "id": 77,
             "action_type": "archive",
@@ -82,55 +87,61 @@ class SchedulerEngineSupportTests(unittest.TestCase):
 
         self.assertEqual(args, ["77", "archive", {}, False])
 
-    def test_job_options_skip_policy(self) -> None:
+
+class TestJobOptions(unittest.TestCase):
+    def test_skip_policy(self) -> None:
         options = job_options({"misfire_policy": "skip"})
 
-        self.assertEqual(options["coalesce"], False)
+        self.assertEqual(options[_COALESCE_KEY], False)
         self.assertIsNone(options["misfire_grace_time"])
         self.assertEqual(options["replace_existing"], True)
 
-    def test_job_options_coalesce_policy(self) -> None:
+    def test_coalesce_policy(self) -> None:
         options = job_options({"misfire_policy": "coalesce"})
 
-        self.assertEqual(options["coalesce"], True)
+        self.assertEqual(options[_COALESCE_KEY], True)
         self.assertEqual(options["misfire_grace_time"], MISFIRE_GRACE_SECONDS)
         self.assertEqual(options["replace_existing"], True)
 
-    def test_job_options_run_all_policy(self) -> None:
+    def test_run_all_policy(self) -> None:
         options = job_options({"misfire_policy": "run_all"})
 
-        self.assertEqual(options["coalesce"], False)
+        self.assertEqual(options[_COALESCE_KEY], False)
         self.assertEqual(options["misfire_grace_time"], MISFIRE_GRACE_SECONDS)
         self.assertEqual(options["replace_existing"], True)
 
-    def test_duration_ms_returns_positive_int_for_past_time(self) -> None:
-        started_at = datetime.now(UTC) - timedelta(milliseconds=20)
 
-        result = duration_ms(started_at)
+class TestDurationMs(unittest.TestCase):
+    def test_positive_int_for_past(self) -> None:
+        started_at = datetime.now(UTC) - timedelta(milliseconds=_ELAPSED_MS)
 
-        self.assertIsInstance(result, int)
-        self.assertGreater(result, 0)
+        elapsed = duration_ms(started_at)
 
-    def test_coerce_int_true_is_one(self) -> None:
+        self.assertIsInstance(elapsed, int)
+        self.assertGreater(elapsed, 0)
+
+
+class TestCoerceInt(unittest.TestCase):
+    def test_true_is_one(self) -> None:
         self.assertEqual(coerce_int(True), 1)
 
-    def test_coerce_int_false_is_zero(self) -> None:
+    def test_false_is_zero(self) -> None:
         self.assertEqual(coerce_int(False), 0)
 
-    def test_coerce_int_int_passthrough(self) -> None:
-        self.assertEqual(coerce_int(42), 42)
+    def test_int_passthrough(self) -> None:
+        self.assertEqual(coerce_int(_SAMPLE_INT), _SAMPLE_INT)
 
-    def test_coerce_int_valid_str(self) -> None:
-        self.assertEqual(coerce_int("123"), 123)
+    def test_valid_str(self) -> None:
+        self.assertEqual(coerce_int("123"), _PARSED_INT)
 
-    def test_coerce_int_invalid_str_uses_fallback(self) -> None:
+    def test_invalid_str_uses_fallback(self) -> None:
         self.assertEqual(coerce_int("not-a-number", fallback=9), 9)
 
-    def test_coerce_int_none_uses_fallback(self) -> None:
+    def test_none_uses_fallback(self) -> None:
         self.assertEqual(coerce_int(None, fallback=7), 7)
 
-    def test_coerce_int_empty_str_uses_fallback(self) -> None:
-        self.assertEqual(coerce_int("   ", fallback=11), 11)
+    def test_empty_str_uses_fallback(self) -> None:
+        self.assertEqual(coerce_int("   ", fallback=_FALLBACK_EMPTY), _FALLBACK_EMPTY)
 
 
 if __name__ == "__main__":

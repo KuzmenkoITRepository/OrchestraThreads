@@ -32,7 +32,7 @@ class _ProcessEnvContext:
     active_context_path: str
 
 
-async def run_agent_mux(  # noqa: WPS210
+async def run_agent_mux(
     request: AgentMuxRunRequest,
     session_id: SessionId | None = None,
 ) -> dict[str, Any]:
@@ -45,16 +45,15 @@ async def run_agent_mux(  # noqa: WPS210
         return cli_adapter.start_session(session_id, request.event)
 
     codex_home = Path(settings.state_root).expanduser().resolve() / "home"
-    config_request = RuntimeCodexConfigRequest(
-        codex_home=codex_home,
-        llm_proxy_url=settings.llm_proxy_url,
-        route_policy=settings.llm_route_policy,
-        model=settings.default_model,
-        mcp_servers=settings.mcp_servers,
-    )
     write_runtime_codex_config(
         create_runtime_codex_request(
-            config_request,
+            RuntimeCodexConfigRequest(
+                codex_home=codex_home,
+                omniroute_url=settings.omniroute_url,
+                route_policy=settings.llm_route_policy,
+                model=settings.default_model,
+                mcp_servers=settings.mcp_servers,
+            ),
             agent_slug=request.agent_slug,
             active_context_path=request.active_context_path,
             pythonpath=str(os.getenv("PYTHONPATH") or f"/workspace/src:{request.working_dir}"),
@@ -107,7 +106,7 @@ def _process_env(
         {
             "HOME": str(codex_home),
             "CODEX_HOME": str(codex_home / ".codex"),
-            "LLM_PROXY_API_KEY": settings.llm_proxy_api_key,
+            "OMNIROUTE_API_KEY": settings.omniroute_api_key,
             "ORCHESTRA_AGENT_SLUG": context.agent_slug,
             "ORCHESTRA_CONTEXT_ID": context.context_id,
             "AGENT_MUX_CONTEXT_ID": context.context_id,

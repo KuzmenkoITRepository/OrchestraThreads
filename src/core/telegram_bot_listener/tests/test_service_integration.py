@@ -33,8 +33,8 @@ class _FakeTelegramApi:
             return web.json_response({"ok": True, "result": []})
         if method == "getUpdates":
             offset = int(payload.get("offset", 0))
-            ready = [item for item in self._updates if int(item["update_id"]) >= offset]
-            self._updates = [item for item in self._updates if int(item["update_id"]) < offset]
+            ready = self._filter_updates(offset, keep=True)
+            self._updates = self._filter_updates(offset, keep=False)
             return web.json_response({"ok": True, "result": ready})
         if method == "sendMessage":
             self._message_id += 1
@@ -46,6 +46,12 @@ class _FakeTelegramApi:
             self.answered_callbacks.append(dict(payload))
             return web.json_response({"ok": True, "result": True})
         return web.json_response({"ok": False, "description": method}, status=404)
+
+    def _filter_updates(self, offset: int, *, keep: bool) -> list[dict[str, Any]]:
+        return [item for item in self._updates if self._matches_offset(item, offset) == keep]
+
+    def _matches_offset(self, item: dict[str, Any], offset: int) -> bool:
+        return int(item["update_id"]) >= offset
 
 
 class _FakeEventsEngine:
@@ -172,26 +178,7 @@ class TelegramBotListenerIntegrationTests(AioHTTPTestCase):  # noqa: WPS214 - ai
         self.assertEqual(history_body["timeline"], [])
 
     async def test_done_command_publishes_completion_event(self) -> None:
-        create_response = await self.client.request(
-            "POST",
-            "/api/v1/surveys",
-            headers=self._headers(),
-            json={
-                "telegram_user_id": 42,
-                "title": "Discussion quality",
-                "questions": [
-                    {
-                        "question_id": "quality",
-                        "text": "How was the discussion?",
-                        "options": [{"id": "good", "label": "Good"}],
-                    }
-                ],
-            },
-        )
-        session_id = (await create_response.json())["session_id"]
-        session = await self.service.store.session_by_id(session_id)
-        assert session is not None
-        callback_token = next(iter(session.callback_actions))
+        callback_token = await self._create_survey_and_get_callback()
         self.telegram_api.queue_updates(
             [
                 {
@@ -247,3 +234,25 @@ class TelegramBotListenerIntegrationTests(AioHTTPTestCase):  # noqa: WPS214 - ai
 
     def _headers(self) -> dict[str, str]:
         return {"X-Telegram-Bot-Listener-Token": self.api_token}
+
+    async def _create_survey_and_get_callback(self) -> str:
+        create_response = await self.client.request(
+            "POST",
+            "/api/v1/surveys",
+            headers=self._headers(),
+            json={
+                "telegram_user_id": 42,
+                "title": "Discussion quality",
+                "questions": [
+                    {
+                        "question_id": "quality",
+                        "text": "How was the discussion?",
+                        "options": [{"id": "good", "label": "Good"}],
+                    }
+                ],
+            },
+        )
+        session_id = (await create_response.json())["session_id"]
+        session = await self.service.store.session_by_id(session_id)
+        assert session is not None
+        return next(iter(session.callback_actions))

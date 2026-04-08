@@ -10,6 +10,17 @@ from typing import Any
 
 import aiohttp
 
+HTTP_ERROR_STATUS = 400
+DEFAULT_TIMEOUT_SECONDS = 10.0
+HTTP_POST = "POST"
+HTTP_GET = "GET"
+FROM_AGENT_SLUG = "from_agent_slug"
+TO_AGENT_SLUG = "to_agent_slug"
+MESSAGE_TEXT = "message_text"
+THREAD_ID = "thread_id"
+PARENT_THREAD_ID = "parent_thread_id"
+CLIENT_REQUEST_ID = "client_request_id"
+
 
 @dataclass(frozen=True, slots=True)
 class SendMessageRequest:
@@ -66,7 +77,7 @@ class _ThreadsTransport:
             json=json_payload,
         ) as response:
             payload = self._parse_payload(await response.text(), status=response.status)
-            if response.status >= 400:
+            if response.status >= HTTP_ERROR_STATUS:
                 raise RuntimeError(str(payload.get("error") or payload))
             if isinstance(payload, dict):
                 return payload
@@ -86,7 +97,7 @@ class _ThreadsTransport:
         try:
             return json.loads(raw_body) if raw_body else {}
         except json.JSONDecodeError:
-            if status >= 400:
+            if status >= HTTP_ERROR_STATUS:
                 raise RuntimeError(raw_body.strip() or f"HTTP {status}") from None
             raise RuntimeError(
                 f"OrchestraThreads returned a non-JSON response with HTTP {status}"
@@ -99,13 +110,13 @@ class _ThreadsApi:  # noqa: WPS214  # HTTP API client needs one method per servi
 
     async def heartbeat(self, *, agent_slug: str) -> dict[str, Any]:
         return await self._transport.request(
-            method="POST",
+            method=HTTP_POST,
             path="/agents/heartbeat",
             json_payload={"agent_slug": agent_slug},
         )
 
     async def list_agents(self) -> dict[str, Any]:
-        return await self._transport.request(method="GET", path="/agents")
+        return await self._transport.request(method=HTTP_GET, path="/agents")
 
     async def get_agent_status(self, *, agent_slug: str) -> dict[str, Any]:
         normalized_slug = str(agent_slug).strip()
@@ -121,13 +132,13 @@ class _ThreadsApi:  # noqa: WPS214  # HTTP API client needs one method per servi
         if limit is not None:
             suffix = f"?limit={max(1, int(limit))}"
         return await self._transport.request(
-            method="GET",
+            method=HTTP_GET,
             path=f"/api/v1/threads/{thread_id}{suffix}",
         )
 
     async def get_thread_compact(self, *, thread_id: str) -> dict[str, Any]:
         return await self._transport.request(
-            method="GET",
+            method=HTTP_GET,
             path=f"/api/v1/threads/{thread_id}/compact",
         )
 
@@ -137,18 +148,21 @@ class _ThreadsApi:  # noqa: WPS214  # HTTP API client needs one method per servi
         view: str = "compact",
         section: str | None = None,
     ) -> dict[str, Any]:
-        query = f"view={str(view or 'compact').strip() or 'compact'}"
+        view_value = str(view or "compact").strip() or "compact"
+        query = f"view={view_value}"
         if section:
-            query = f"{query}&section={str(section).strip()}"
+            section_value = str(section).strip()
+            query = "&".join((query, f"section={section_value}"))
         return await self._transport.request(
-            method="GET",
+            method=HTTP_GET,
             path=f"/api/v1/instructions?{query}",
         )
 
     async def list_threads(self, *, scope: str = "active", limit: int = 100) -> dict[str, Any]:
+        normalized_limit = max(1, int(limit))
         return await self._transport.request(
-            method="GET",
-            path=f"/api/v1/threads?scope={scope}&limit={max(1, int(limit))}",
+            method=HTTP_GET,
+            path=f"/api/v1/threads?scope={scope}&limit={normalized_limit}",
         )
 
 
@@ -166,7 +180,9 @@ class OrchestraThreadsClient:
         ).rstrip("/")
         raw_timeout: float | str
         if timeout_seconds is None:
-            raw_timeout = os.getenv("ORCHESTRA_THREADS_HTTP_TIMEOUT_SECONDS", "10")
+            raw_timeout = os.getenv(
+                "ORCHESTRA_THREADS_HTTP_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS)
+            )
         else:
             raw_timeout = timeout_seconds
         self._transport = _ThreadsTransport(
@@ -182,23 +198,23 @@ class OrchestraThreadsClient:
 
     async def send_message(self, **kwargs: Any) -> dict[str, Any]:
         request = SendMessageRequest(
-            from_agent_slug=kwargs["from_agent_slug"],
-            to_agent_slug=kwargs["to_agent_slug"],
-            message_text=kwargs["message_text"],
-            thread_id=kwargs.get("thread_id"),
-            parent_thread_id=kwargs.get("parent_thread_id"),
-            client_request_id=kwargs.get("client_request_id"),
+            from_agent_slug=kwargs[FROM_AGENT_SLUG],
+            to_agent_slug=kwargs[TO_AGENT_SLUG],
+            message_text=kwargs[MESSAGE_TEXT],
+            thread_id=kwargs.get(THREAD_ID),
+            parent_thread_id=kwargs.get(PARENT_THREAD_ID),
+            client_request_id=kwargs.get(CLIENT_REQUEST_ID),
         )
         return await self._transport.request(
-            method="POST",
+            method=HTTP_POST,
             path="/api/v1/messages",
             json_payload={
-                "from_agent_slug": request.from_agent_slug,
-                "to_agent_slug": request.to_agent_slug,
-                "message_text": request.message_text,
-                "thread_id": request.thread_id,
-                "parent_thread_id": request.parent_thread_id,
-                "client_request_id": request.client_request_id or uuid.uuid4().hex,
+                FROM_AGENT_SLUG: request.from_agent_slug,
+                TO_AGENT_SLUG: request.to_agent_slug,
+                MESSAGE_TEXT: request.message_text,
+                THREAD_ID: request.thread_id,
+                PARENT_THREAD_ID: request.parent_thread_id,
+                CLIENT_REQUEST_ID: request.client_request_id or uuid.uuid4().hex,
             },
         )
 
@@ -226,23 +242,23 @@ class OrchestraThreadsClient:
 
     async def send_notification(self, **kwargs: Any) -> dict[str, Any]:
         request = SendNotificationRequest(
-            from_agent_slug=kwargs["from_agent_slug"],
-            to_agent_slug=kwargs["to_agent_slug"],
-            thread_id=kwargs["thread_id"],
+            from_agent_slug=kwargs[FROM_AGENT_SLUG],
+            to_agent_slug=kwargs[TO_AGENT_SLUG],
+            thread_id=kwargs[THREAD_ID],
             status=kwargs["status"],
-            message_text=kwargs["message_text"],
-            client_request_id=kwargs.get("client_request_id"),
+            message_text=kwargs[MESSAGE_TEXT],
+            client_request_id=kwargs.get(CLIENT_REQUEST_ID),
         )
         return await self._transport.request(
-            method="POST",
+            method=HTTP_POST,
             path="/api/v1/notifications",
             json_payload={
-                "from_agent_slug": request.from_agent_slug,
-                "to_agent_slug": request.to_agent_slug,
-                "thread_id": request.thread_id,
+                FROM_AGENT_SLUG: request.from_agent_slug,
+                TO_AGENT_SLUG: request.to_agent_slug,
+                THREAD_ID: request.thread_id,
                 "status": request.status,
-                "message_text": request.message_text,
-                "client_request_id": request.client_request_id or uuid.uuid4().hex,
+                MESSAGE_TEXT: request.message_text,
+                CLIENT_REQUEST_ID: request.client_request_id or uuid.uuid4().hex,
             },
         )
 

@@ -5,6 +5,9 @@ from typing import Protocol
 
 from core.scheduler_cron.bootstrap_data import job_definitions
 
+ENABLED_FIELD = "enabled"
+NAME_FIELD = "name"
+
 
 class _EngineProtocol(Protocol):
     async def add_job(self, job: dict[str, object]) -> None: ...
@@ -27,7 +30,7 @@ def _job_payload(job_def: dict[str, object]) -> dict[str, object]:
         "action_payload": dict(job_def["action_payload"])
         if isinstance(job_def["action_payload"], dict)
         else {},
-        "enabled": bool(job_def["enabled"]),
+        ENABLED_FIELD: bool(job_def[ENABLED_FIELD]),
         "auto_delete": bool(job_def["auto_delete"]),
         "misfire_policy": str(job_def["misfire_policy"]),
     }
@@ -37,7 +40,7 @@ def _create_payload(job_def: dict[str, object]) -> dict[str, object]:
     payload = _job_payload(job_def)
     payload.update(
         {
-            "name": str(job_def["name"]),
+            NAME_FIELD: str(job_def[NAME_FIELD]),
             "job_type": str(job_def["job_type"]),
             "created_by": str(job_def["created_by"]),
         }
@@ -62,7 +65,7 @@ async def _apply_job(
     engine: _EngineProtocol,
     job_def: dict[str, object],
 ) -> str | None:
-    name = str(job_def["name"])
+    name = str(job_def[NAME_FIELD])
     existing = await store.get_job_by_name(name)
     if existing is not None:
         await _refresh_existing(store, engine, name, _job_payload(job_def))

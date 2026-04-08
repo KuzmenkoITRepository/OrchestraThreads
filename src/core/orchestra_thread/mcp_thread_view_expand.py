@@ -5,6 +5,9 @@ from typing import Any
 from core.orchestra_thread.mcp_thread_context import resolve_thread_id
 from core.orchestra_thread.mcp_tools_common import JSON_MAP, result
 
+DEFAULT_EXPAND_LIMIT = 5
+MAX_EXPAND_LIMIT = 200
+
 
 def _normalize_view(view: Any) -> str:
     normalized_view = str(view or "latest").strip().lower() or "latest"
@@ -14,7 +17,7 @@ def _normalize_view(view: Any) -> str:
 
 
 def _normalized_limit(limit_value: Any) -> int:
-    return max(1, min(int(limit_value or 5), 200))
+    return max(1, min(int(limit_value or DEFAULT_EXPAND_LIMIT), MAX_EXPAND_LIMIT))
 
 
 def _thread_expand_result(payload: JSON_MAP, view: str, limit: int) -> JSON_MAP:

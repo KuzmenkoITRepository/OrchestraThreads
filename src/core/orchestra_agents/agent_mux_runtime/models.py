@@ -16,8 +16,8 @@ class AgentMuxRuntimeSettings:
     variant: str | None
     engine: str
     max_attempts: int
-    llm_proxy_url: str
-    llm_proxy_api_key: str
+    omniroute_url: str
+    omniroute_api_key: str
     llm_route_policy: str
     default_model: str
     agent_timeout_seconds: int

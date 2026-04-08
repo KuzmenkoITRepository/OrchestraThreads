@@ -10,6 +10,8 @@ from typing import Any, cast
 from core.orchestra_agents import runtime as runtime_contract
 from core.orchestra_agents.tests.template_helpers.fixture import TemplateFixture
 
+_POLL_INTERVAL = 0.05
+
 
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -24,10 +26,10 @@ async def _wait_for(predicate: Callable[[], object], *, timeout: float = 5.0) ->
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        value = predicate()
-        if value:
-            return value
-        await asyncio.sleep(0.05)
+        predicate_value = predicate()
+        if predicate_value:
+            return predicate_value
+        await asyncio.sleep(_POLL_INTERVAL)
     return None
 
 
@@ -89,8 +91,8 @@ def _build_backend(
         backend_type="agent_mux",
         working_dir=str(fixture.agent_dir),
         config={
-            "llm_proxy_url": f"http://127.0.0.1:{_free_port()}",
-            "llm_proxy_api_key": "llm-proxy-key",
+            "omniroute_url": f"http://127.0.0.1:{_free_port()}",
+            "omniroute_api_key": "omniroute-test-key",
             "llm_route_policy": "codex_only",
             "model": "cx/gpt-5.1-codex-mini",
             "agent_mux_binary": str(fixture.agent_mux_binary),
@@ -130,12 +132,12 @@ async def _run_backend_once(
     backend = _build_backend(fixture)
     await backend.on_start()
     try:
-        result = await action(backend)
+        action_result = await action(backend)
     except BaseException:
         await backend.on_shutdown()
         raise
     await backend.on_shutdown()
-    return result
+    return action_result
 
 
 def _delivery(

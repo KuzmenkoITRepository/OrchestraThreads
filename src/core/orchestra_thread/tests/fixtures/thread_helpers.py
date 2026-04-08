@@ -5,9 +5,12 @@ from typing import Any
 
 from core.orchestra_thread.tests.fixtures.e2e_harness import E2EHarness, FakeAgent
 
+_HTTP_OK = 200
+_EVENTS_LIMIT = 20
+
 
 async def send_message(harness: E2EHarness, **payload: Any) -> dict[str, Any]:
-    expected_status = int(payload.pop("expected_status", 200))
+    expected_status = int(payload.pop("expected_status", _HTTP_OK))
     return await harness.send_message(payload, expected_status=expected_status)
 
 
@@ -54,7 +57,7 @@ async def create_root_thread(
 async def load_ready_thread(harness: E2EHarness, thread_id: str) -> dict[str, Any] | None:
     threads_payload = await harness.list_threads(scope="active")
     thread_item = next(
-        (item for item in threads_payload["threads"] if item["thread_id"] == thread_id),
+        (entry for entry in threads_payload["threads"] if entry["thread_id"] == thread_id),
         None,
     )
     if not isinstance(thread_item, dict):
@@ -70,7 +73,9 @@ async def delivery_attempted(harness: E2EHarness, thread_id: str) -> bool:
     thread = await harness.service.store.get_thread(thread_id)
     if not thread:
         return False
-    events = await harness.service.store.list_thread_events(thread_id=thread_id, limit=20)
+    events = await harness.service.store.list_thread_events(
+        thread_id=thread_id, limit=_EVENTS_LIMIT
+    )
     if not events:
         return False
     return int(events[-1]["delivery_attempt_count"]) >= 1

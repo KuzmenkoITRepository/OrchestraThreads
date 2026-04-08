@@ -12,8 +12,9 @@ class SchedulerCronError(RuntimeError):
     __slots__ = ()
 
 
-def ensure_choice(value: str, *, field: str, allowed: tuple[str, ...]) -> str:
-    normalized = str(value or "").strip()
+def ensure_choice(raw_value: str, *, field: str, allowed: tuple[str, ...]) -> str:
+    normalized = str(raw_value or "").strip()
     if normalized not in allowed:
-        raise SchedulerCronError(f"{field} must be one of: {', '.join(allowed)}")
+        allowed_values = ", ".join(allowed)
+        raise SchedulerCronError(f"{field} must be one of: {allowed_values}")
     return normalized

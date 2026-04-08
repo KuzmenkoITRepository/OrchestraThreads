@@ -72,13 +72,13 @@ async def _reply_and_collect(
 async def main() -> None:
     async with E2EHarness(database_url=_smoke_database_url()) as harness:
         thread_id, secretary, orchestra = await _create_initial_thread(harness)
-        result = await _reply_and_collect(
+        smoke_result = await _reply_and_collect(
             harness,
             thread_id=thread_id,
             secretary=secretary,
             orchestra=orchestra,
         )
-    _emit_result(result)
+    _emit_result(smoke_result)
 
 
 if __name__ == "__main__":

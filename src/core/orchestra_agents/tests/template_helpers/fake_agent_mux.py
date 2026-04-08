@@ -29,7 +29,7 @@ def _fake_agent_mux_script() -> str:
             "stdin_payload": payload,
             "cwd": os.getcwd(),
             "home": os.getenv("HOME"),
-            "llm_proxy_api_key": os.getenv("LLM_PROXY_API_KEY"),
+            "omniroute_api_key": os.getenv("OMNIROUTE_API_KEY"),
             "context_id_env": os.getenv("ORCHESTRA_CONTEXT_ID"),
             "event_id_env": os.getenv("AGENT_MUX_EVENT_ID"),
             "event_kind_env": os.getenv("AGENT_MUX_EVENT_KIND"),

@@ -30,6 +30,9 @@ from core.orchestra_agents.tests.template_helpers.fixture import (
     build_template_fixture,
 )
 
+_FAKE_AGENT_MUX_MODE = "FAKE_AGENT_MUX_MODE"
+_FAKE_AGENT_MUX_SLEEP = "FAKE_AGENT_MUX_SLEEP"
+
 
 class AgentMuxTemplateBase(unittest.IsolatedAsyncioTestCase):
     fixture: TemplateFixture
@@ -40,7 +43,7 @@ class AgentMuxTemplateBase(unittest.IsolatedAsyncioTestCase):
 
 class AgentMuxTemplateDispatchTests(AgentMuxTemplateBase):
     async def test_direct_event_runs_mux_backend(self) -> None:
-        os.environ["FAKE_AGENT_MUX_MODE"] = "tool_call"
+        os.environ[_FAKE_AGENT_MUX_MODE] = "tool_call"
         backend = cast(
             Any,
             await _start_backend(
@@ -63,7 +66,7 @@ class AgentMuxTemplateDispatchTests(AgentMuxTemplateBase):
         _assert_completed_status(self, backend, status)
 
     async def test_mcp_servers_are_optional(self) -> None:
-        os.environ["FAKE_AGENT_MUX_MODE"] = "tool_call"
+        os.environ[_FAKE_AGENT_MUX_MODE] = "tool_call"
         backend = cast(Any, await _start_backend(self, self.fixture))
         await _dispatch_and_assert_completed(
             self,
@@ -74,7 +77,7 @@ class AgentMuxTemplateDispatchTests(AgentMuxTemplateBase):
         capture = _read_capture(self.fixture.capture_path)
         self.assertNotIn("[mcp_servers.", cast(str, capture["codex_config"]))
 
-    async def test_memory_mcp_server_rendered_into_codex_config(self) -> None:
+    async def test_memory_mcp_in_codex_config(self) -> None:
         os.environ["FAKE_AGENT_MUX_MODE"] = "tool_call"
         backend = cast(
             Any,
@@ -103,7 +106,7 @@ class AgentMuxTemplateDispatchTests(AgentMuxTemplateBase):
         )
 
     async def test_plain_text_rejected_by_tool_policy(self) -> None:
-        os.environ["FAKE_AGENT_MUX_MODE"] = "reply"
+        os.environ[_FAKE_AGENT_MUX_MODE] = "reply"
         backend = cast(
             Any,
             await _start_backend(
@@ -118,8 +121,8 @@ class AgentMuxTemplateDispatchTests(AgentMuxTemplateBase):
         self.assertIn("without any tool call", backend.last_dispatch_reason or "")
 
     async def test_stop_interrupts_active_dispatch(self) -> None:
-        os.environ["FAKE_AGENT_MUX_MODE"] = "reply"
-        os.environ["FAKE_AGENT_MUX_SLEEP"] = "5"
+        os.environ[_FAKE_AGENT_MUX_MODE] = "reply"
+        os.environ[_FAKE_AGENT_MUX_SLEEP] = "5"
         backend = cast(Any, await _start_backend(self, self.fixture))
         await backend.handle_events(_delivery())
         await _assert_process_active(self, backend)

@@ -1,6 +1,6 @@
 # WPS violation baseline report
 
-**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
+**Historical note:** legacy proxy routing has been replaced by `omniroute` + `wet`.
 
 **Generated:** 2026-04-04
 **Scope:** Active codebase (excluding `src/core/omniroute/` and `src/core/wet/`)

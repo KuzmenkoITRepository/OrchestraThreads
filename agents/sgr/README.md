@@ -1,28 +1,25 @@
 # SGR Minimax Example Agent
 
-`agents/sgr` is a manifest-driven example agent for the new Orchestra split:
+`agents/sgr` is a manifest-driven, event-driven example agent:
 
 - lifecycle via `core.orchestra_agents`
-- thread delivery via `core.orchestra_thread`
-- LLM routing via `omniroute + wet`
+- MCP tools loaded from manifest `backend.config.mcp_servers`
+- LLM routing via `omniroute`
 
 What it does:
 
 - starts behind the standard HTTP runtime contract
-- registers itself in `orchestra_thread` on startup
-- keeps agent heartbeat alive
-- receives `/event` callbacks from `orchestra_thread`
-- fetches compact thread state instead of full history
-- runs a proactive tool loop through the compact `orchestra-threads-mcp` surface
-- calls Minimax through `wet` using the OpenAI-compatible route
-- answers only through `thread_send` and `thread_status`, never by returning raw assistant text to `/event`
+- receives `/event` callbacks from the platform
+- runs a proactive tool loop: event → LLM → MCP tool response
+- calls LLM through the OmniRoute OpenAI-compatible route
+- answers only through injected MCP tools, never by returning raw assistant text to `/event`
 
 Default routing:
 
-- `route_policy`: `minimax_only`
-- `model`: `MiniMax-M2.7`
+- `route_policy`: `codex_only`
+- `model`: `cx/gpt-5.4-mini`
 
-The defaults are safe placeholders. Override them with env when your Minimax upstream uses another model id.
+The defaults target the Codex/GPT OmniRoute family. Override them with env to switch to other OmniRoute models.
 
 ## Files
 
@@ -36,18 +33,17 @@ The defaults are safe placeholders. Override them with env when your Minimax ups
 Start the platform services first:
 
 ```bash
-docker compose up --build -d postgres orchestra-threads orchestra-agents orchestra-omniroute orchestra-wet
+docker compose up --build -d postgres orchestra-threads orchestra-agents orchestra-omniroute
 ```
 
-If `wet` should forward Minimax traffic, set its fallback env before starting it:
+Configure OmniRoute credentials in `.env` before starting the stack:
 
 ```bash
-export LLM_PROXY_FALLBACK_OPENAI_API_BASE_URL="https://<your-openai-compatible-endpoint>/v1"
-export LLM_PROXY_FALLBACK_OPENAI_API_KEY="<api-key>"
-export LLM_PROXY_FALLBACK_OPENAI_MODEL="MiniMax-M2.7"
+export OMNIROUTE_INITIAL_PASSWORD="CHANGEME"
+export OMNIROUTE_API_KEY="<api-key>"
 ```
 
-In the current repo `wet` reads OpenAI-compatible Minimax creds from the local project `.env` through `OPENAI_API_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL`.
+Provider-specific upstream credentials stay in the local project `.env` through `OPENAI_API_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL`.
 
 Then reload manifests and start the agent:
 
@@ -72,17 +68,15 @@ curl http://127.0.0.1:8788/agents
 - `LLM_CLIENT_TIMEOUT_SECONDS`
 - `LLM_CLIENT_TEMPERATURE`
 - `LLM_CLIENT_MAX_TOKENS`
-- `ORCHESTRA_THREADS_URL`
-- `LLM_PROXY_URL`
-- `LLM_PROXY_ENABLED`
-- `SGR_HEARTBEAT_INTERVAL_SECONDS`
+- `OMNIROUTE_URL`
+- `OMNIROUTE_API_KEY`
 - `SGR_MAX_REASONING_STEPS`
 - `SGR_MAX_DIRECT_TEXT_RETRIES`
 - `LOG_LEVEL`
 
 ## Notes
 
-- The runtime is tool-only for outward actions: replies and lifecycle updates go through OrchestraThreads MCP tools.
-- It uses `thread_compact` plus the compact service guide to keep prompt size down.
+- The runtime is tool-only for outward actions: replies go through MCP tools configured in the manifest.
+- It uses compact event context to keep prompt size down.
 - `inactive` can wake the agent proactively when `react_to_inactive=true`.
 - Delivery dedupe still happens per incoming event id inside the runtime.

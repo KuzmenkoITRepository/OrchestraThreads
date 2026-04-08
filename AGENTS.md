@@ -70,6 +70,58 @@ OrchestraThreads/
 
 ## CODE QUALITY ENFORCEMENT
 
+## Copy-paste prompt for subagents
+
+Use this block when delegating Python code changes to a subagent.
+
+```text
+Before writing code, read `AGENTS.md` and `CODE-STYLE.md`.
+
+Your goal is to produce code that passes `ruff`, `wemake-python-styleguide`, and `mypy --strict` on the first try.
+
+Hard rules:
+- do not bypass linters or hooks
+- do not use blanket `# noqa`
+- do not use `# type: ignore` without explicit justification
+- do not change lint thresholds or config to make code pass
+- fix root causes by simplifying code
+
+Code shape requirements:
+- keep modules small and single-purpose
+- keep classes thin
+- keep functions small and single-purpose
+- split early when imports, module members, methods, locals, loops, branches, or nesting start to grow
+- use guard clauses instead of deep nesting
+- keep `try` blocks tiny: wrap only the risky operation
+- use typed objects (`dataclass`, `TypedDict`) instead of long argument lists or loose dicts
+- use package-correct imports for sibling modules
+- avoid clever unpacking and dense one-line logic
+
+Common failures to avoid explicitly:
+- `WPS221` high Jones Complexity
+- `WPS202` too many module members
+- `WPS300` local folder import
+- `WPS414` incorrect unpacking target
+- `WPS229` try body too long
+- `WPS214` too many methods
+- `WPS210` too many local variables
+- `WPS231` too much cognitive complexity
+- `WPS201` too many imports
+- `WPS211` too many arguments
+
+Preferred implementation strategy:
+1. Match existing nearby patterns.
+2. Write the smallest typed version first.
+3. If a file grows, split by operational role, not into generic helpers.
+4. If a class grows, move stateless logic into helper modules.
+5. If a function grows, split by phase: validate -> transform -> persist/return.
+6. If a line gets dense, split the decision into helpers.
+
+Do not create `utils.py` / `helpers.py` dumping grounds.
+Do not hide problems with suppressions.
+If the code is only valid after a bypass, it is not done.
+```
+
 ### CI/CD Checks (MANDATORY)
 All code MUST pass these checks before commit:
 

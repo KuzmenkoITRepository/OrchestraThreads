@@ -13,23 +13,8 @@ from core.orchestra_agents.templates.opencode.agent_runtime.backend import (
 
 
 class OpencodeMemoryE2ETests(unittest.IsolatedAsyncioTestCase):
-    async def test_memory_mcp_is_written_during_backend_startup(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            working_dir = str(Path(tmpdir) / "agent")
-            config = _backend_config()
-            backend = OpencodeOmoBackend(
-                agent_slug="secretary",
-                backend_type="opencode_omo",
-                working_dir=working_dir,
-                http_endpoint="http://secretary:8787",
-                config=config,
-            )
-
-            with _patched_opencode_runtime():
-                await backend.on_start()
-                config_path = backend._paths.config_dir / "opencode.json"  # noqa: SLF001
-                payload = _read_opencode_payload(config_path)
-                await backend.on_shutdown()
+    async def test_memory_mcp_written_on_start(self) -> None:
+        payload = await _start_and_read_config()
 
         mcp_block = cast(dict[str, Any], payload["mcp"])
         memory_block = cast(dict[str, Any], mcp_block["orchestra_memory"])
@@ -47,6 +32,25 @@ class OpencodeMemoryE2ETests(unittest.IsolatedAsyncioTestCase):
             memory_env["ORCHESTRA_AGENT_SLUG"],
             "secretary",
         )
+
+
+async def _start_and_read_config() -> dict[str, object]:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        working_dir = str(Path(tmpdir) / "agent")
+        backend = OpencodeOmoBackend(
+            agent_slug="secretary",
+            backend_type="opencode_omo",
+            working_dir=working_dir,
+            http_endpoint="http://secretary:8787",
+            config=_backend_config(),
+        )
+        with _patched_opencode_runtime():
+            await backend.on_start()
+            payload = _read_opencode_payload(
+                backend._paths.config_dir / "opencode.json",  # noqa: SLF001
+            )
+            await backend.on_shutdown()
+    return payload
 
 
 def _backend_config() -> dict[str, object]:
@@ -79,6 +83,9 @@ def _backend_config() -> dict[str, object]:
     }
 
 
+_NOOP_ASYNC = AsyncMock(return_value=None)
+
+
 def _patched_opencode_runtime() -> _PatchedRuntime:
     return _PatchedRuntime()
 
@@ -90,15 +97,15 @@ class _PatchedRuntime:
         self._patchers = [
             patch(
                 "core.orchestra_agents.templates.opencode.agent_runtime.opencode_process.OpencodeProcess.start",
-                new=AsyncMock(return_value=None),
+                new=_NOOP_ASYNC,
             ),
             patch(
                 "core.orchestra_agents.templates.opencode.agent_runtime.opencode_process.OpencodeProcess.wait_ready",
-                new=AsyncMock(return_value=None),
+                new=_NOOP_ASYNC,
             ),
             patch(
                 "core.orchestra_agents.templates.opencode.agent_runtime.opencode_process.OpencodeProcess.stop",
-                new=AsyncMock(return_value=None),
+                new=_NOOP_ASYNC,
             ),
             patch(
                 "core.orchestra_agents.templates.opencode.agent_runtime.opencode_client.OpencodeClient",
@@ -106,11 +113,11 @@ class _PatchedRuntime:
             ),
             patch(
                 "core.orchestra_agents.templates.opencode.agent_runtime.backend_registration.register_with_threads",
-                new=AsyncMock(return_value=None),
+                new=_NOOP_ASYNC,
             ),
             patch(
                 "core.orchestra_agents.templates.opencode.agent_runtime.backend_registration.stop_registration",
-                new=AsyncMock(return_value=None),
+                new=_NOOP_ASYNC,
             ),
         ]
         for patcher in self._patchers:

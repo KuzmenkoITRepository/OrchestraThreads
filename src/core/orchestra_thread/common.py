@@ -28,15 +28,15 @@ def utc_now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def normalize_status(value: str) -> str:
+def normalize_status(raw_status: str) -> str:
     """Normalize a status string for storage and comparisons."""
-    return str(value or "").strip().lower()
+    return str(raw_status or "").strip().lower()
 
 
-def normalize_participants(agent_a: str, agent_b: str) -> tuple[str, str]:
+def normalize_participants(first_participant: str, second_participant: str) -> tuple[str, str]:
     """Normalize a pair of participants so uniqueness is direction-agnostic."""
-    left = str(agent_a or "").strip()
-    right = str(agent_b or "").strip()
+    left = str(first_participant or "").strip()
+    right = str(second_participant or "").strip()
     return (left, right) if left <= right else (right, left)
 
 
@@ -53,8 +53,8 @@ def _is_printable_char(char: str) -> bool:
     return not unicodedata.category(char).startswith("C")
 
 
-def normalize_text_input(value: str) -> str:
+def normalize_text_input(raw_value: str) -> str:
     """Strip terminal/control garbage and lone surrogates from user-facing text."""
-    normalized = str(value or "")
+    normalized = str(raw_value or "")
     chars = [char for char in normalized if _is_printable_char(char)]
     return "".join(chars)

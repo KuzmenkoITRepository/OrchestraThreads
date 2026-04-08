@@ -21,8 +21,10 @@ _FULL_GUIDE: Final[Mapping[str, Any]] = MappingProxyType(
             "is insufficient."
         ),
         "workflow": (
-            "If there is an active invocation, call thread_current first.",
+            "If you are replying inside an existing active thread, call thread_current first.",
             "Reply to the current peer with thread_send(message).",
+            "If you are starting a new conversation with another agent, call thread_send(target_agent_slug=..., message=...) directly.",
+            "Do not call thread_current before a first-contact send just to discover a thread_id.",
             "Sending to a different target creates or reuses a child thread.",
             "Outside an active thread, thread_send creates or reuses the root pair thread.",
             "Use thread_status for in_progress, review, done, or closed updates.",
@@ -34,6 +36,7 @@ _FULL_GUIDE: Final[Mapping[str, Any]] = MappingProxyType(
             "Explicit parent_thread_id creates or reuses a child thread under that parent.",
             "No thread_id and no parent_thread_id create or reuse the active root thread.",
             "In MCP auto mode, replying stays in the current thread; different target creates child.",
+            "A first-contact send to another agent does not require knowing a thread_id in advance.",
         ),
         "status_rules": (
             "Statuses are open, in_progress, review, done, and closed.",
@@ -48,7 +51,8 @@ _FULL_GUIDE: Final[Mapping[str, Any]] = MappingProxyType(
             "Terminal parent threads cascade-close live child threads.",
         ),
         "recommended_mcp_tool_flow": (
-            "Call thread_current when you need to understand the active thread.",
+            "Call thread_current only when you need to understand an already active thread.",
+            "For a first message to another agent, call thread_send(target_agent_slug=..., message=...) directly.",
             "Use thread_send to reply in the current thread or delegate.",
             "Use thread_status to publish progress, review, done, or closed.",
             "Use agent_status to check whether another agent is busy before polling it.",
@@ -57,7 +61,7 @@ _FULL_GUIDE: Final[Mapping[str, Any]] = MappingProxyType(
         ),
         "mcp_tools": (
             "thread_current: fetch compact current-thread state from active context.",
-            "thread_send: reply in the current thread or route to a root or child thread.",
+            "thread_send: reply in the current thread or start/delegate work without prefetching a thread_id.",
             "thread_status: publish in_progress, review, done, or closed.",
             "agent_status: fetch online/busy state for a target agent without waking it.",
             "thread_expand: inspect latest, tail, related, or full thread data on demand.",

@@ -12,6 +12,14 @@ from typing import Any, Self, cast
 from aiohttp import ClientSession, ClientTimeout, web
 
 from core.orchestra_thread.service import OrchestraThreadsService, build_app
+from core.orchestra_thread.service_runtime_config import RuntimeConfigOverrides
+
+_HTTP_SERVICE_UNAVAILABLE = 503
+_HTTP_OK = 200
+_METHOD_POST = "POST"
+_METHOD_GET = "GET"
+_AGENT_LEASE_SECONDS = 30
+_DELIVERY_POLL_SECONDS = 0.2
 
 
 def free_port() -> int:
@@ -53,7 +61,9 @@ class FakeAgent:
 
     async def _handle_event(self, request: web.Request) -> web.Response:
         if self.fail_event_delivery:
-            return web.json_response({"accepted": False, "error": "forced failure"}, status=503)
+            return web.json_response(
+                {"accepted": False, "error": "forced failure"}, status=_HTTP_SERVICE_UNAVAILABLE
+            )
         payload = await request.json()
         self.events.extend(payload.get("events") or [])
         return web.json_response(
@@ -79,25 +89,25 @@ class HarnessRequestHelpers:
         method: str,
         path: str,
         payload: dict[str, Any] | None = None,
-        expected_status: int = 200,
+        expected_status: int = _HTTP_OK,
     ) -> dict[str, Any]:
         assert self.session is not None
         assert self.base_url is not None
         async with self.session.request(method, f"{self.base_url}{path}", json=payload) as response:
             raw = await response.text()
-            data = json.loads(raw) if raw else {}
+            parsed = json.loads(raw) if raw else {}
             if response.status != expected_status:
                 raise AssertionError(
-                    f"{method} {path} returned {response.status}, expected {expected_status}: {data}"
+                    f"{method} {path} returned {response.status}, expected {expected_status}: {parsed}"
                 )
-            return cast(dict[str, Any], data)
+            return cast(dict[str, Any], parsed)
 
     async def request_text(
         self,
         *,
         method: str,
         path: str,
-        expected_status: int = 200,
+        expected_status: int = _HTTP_OK,
     ) -> tuple[str, str]:
         assert self.session is not None
         assert self.base_url is not None
@@ -115,10 +125,10 @@ class HarnessApiHelpers(HarnessRequestHelpers):
         self,
         payload: dict[str, Any],
         *,
-        expected_status: int = 200,
+        expected_status: int = _HTTP_OK,
     ) -> dict[str, Any]:
         return await self.request_json(
-            method="POST",
+            method=_METHOD_POST,
             path="/api/v1/messages",
             payload=payload,
             expected_status=expected_status,
@@ -128,26 +138,26 @@ class HarnessApiHelpers(HarnessRequestHelpers):
         self,
         payload: dict[str, Any],
         *,
-        expected_status: int = 200,
+        expected_status: int = _HTTP_OK,
     ) -> dict[str, Any]:
         return await self.request_json(
-            method="POST",
+            method=_METHOD_POST,
             path="/api/v1/notifications",
             payload=payload,
             expected_status=expected_status,
         )
 
     async def get_thread(self, thread_id: str) -> dict[str, Any]:
-        return await self.request_json(method="GET", path=f"/api/v1/threads/{thread_id}")
+        return await self.request_json(method=_METHOD_GET, path=f"/api/v1/threads/{thread_id}")
 
     async def list_agents(self) -> dict[str, Any]:
-        return await self.request_json(method="GET", path="/agents")
+        return await self.request_json(method=_METHOD_GET, path="/agents")
 
     async def get_agent_status(self, agent_slug: str) -> dict[str, Any]:
         return await self.request_json(method="GET", path=f"/agents/{agent_slug}/status")
 
     async def list_threads(self, *, scope: str = "active") -> dict[str, Any]:
-        return await self.request_json(method="GET", path=f"/api/v1/threads?scope={scope}")
+        return await self.request_json(method=_METHOD_GET, path=f"/api/v1/threads?scope={scope}")
 
     async def get_instruction(
         self,
@@ -158,7 +168,7 @@ class HarnessApiHelpers(HarnessRequestHelpers):
         path = f"/api/v1/instructions?view={view}"
         if section:
             path = f"{path}&section={section}"
-        return await self.request_json(method="GET", path=path)
+        return await self.request_json(method=_METHOD_GET, path=path)
 
 
 class HarnessAgentHelpers(HarnessApiHelpers):
@@ -173,14 +183,14 @@ class HarnessAgentHelpers(HarnessApiHelpers):
 
     async def register_agent(self, agent: FakeAgent) -> dict[str, Any]:
         return await self.request_json(
-            method="POST",
+            method=_METHOD_POST,
             path="/agents/register",
             payload={"agent_slug": agent.slug, "base_url": agent.base_url},
         )
 
     async def heartbeat(self, slug: str) -> dict[str, Any]:
         return await self.request_json(
-            method="POST",
+            method=_METHOD_POST,
             path="/agents/heartbeat",
             payload={"agent_slug": slug},
         )
@@ -229,11 +239,11 @@ class HarnessLifecycleHelpers(HarnessAgentHelpers):
     ) -> Any:
         deadline = asyncio.get_running_loop().time() + timeout
         while True:
-            value = predicate()
-            if inspect.isawaitable(value):
-                value = await value
-            if value:
-                return value
+            check_result = predicate()
+            if inspect.isawaitable(check_result):
+                check_result = await check_result
+            if check_result:
+                return check_result
             if asyncio.get_running_loop().time() >= deadline:
                 raise AssertionError(message)
             await asyncio.sleep(interval)
@@ -269,22 +279,25 @@ class HarnessLifecycleHelpers(HarnessAgentHelpers):
 
 class E2EHarness(HarnessLifecycleHelpers):
     def __init__(self, *, database_url: str | None = None) -> None:
-        self.schema_name = f"test_{uuid.uuid4().hex}"
+        hex_suffix = uuid.uuid4().hex
+        self.schema_name = f"test_{hex_suffix}"
         self.service = OrchestraThreadsService(
-            database_url=(
-                database_url
-                or os.getenv("ORCHESTRA_THREADS_TEST_DATABASE_URL")
-                or os.getenv("ORCHESTRA_THREADS_DATABASE_URL")
-                or "postgresql://orchestra:orchestra@postgres:5432/orchestra_threads"
+            runtime_config_overrides=RuntimeConfigOverrides(
+                database_url=(
+                    database_url
+                    or os.getenv("ORCHESTRA_THREADS_TEST_DATABASE_URL")
+                    or os.getenv("ORCHESTRA_THREADS_DATABASE_URL")
+                    or "postgresql://orchestra:orchestra@postgres:5432/orchestra_threads"
+                ),
+                database_schema=self.schema_name,
+                db_min_pool_size=1,
+                db_max_pool_size=4,
+                agent_lease_seconds=_AGENT_LEASE_SECONDS,
+                delivery_poll_interval_seconds=_DELIVERY_POLL_SECONDS,
+                inactivity_timeout_seconds=10,
+                retry_base_seconds=1,
+                retry_max_seconds=2,
             ),
-            database_schema=self.schema_name,
-            db_min_pool_size=1,
-            db_max_pool_size=4,
-            agent_lease_seconds=30,
-            delivery_poll_interval_seconds=0.2,
-            inactivity_timeout_seconds=10,
-            retry_base_seconds=1,
-            retry_max_seconds=2,
         )
         self.service.delivery_poll_interval_seconds = 0.1
         self.service.inactivity_timeout_seconds = 2

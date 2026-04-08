@@ -12,7 +12,8 @@ def _tool_payload(result: dict[str, object]) -> dict[str, Any]:
     assert isinstance(content, list)
     item = content[0]
     assert isinstance(item, dict)
-    return cast(dict[str, Any], json.loads(str(item["text"])))
+    raw_text = str(item.get("text", ""))
+    return cast(dict[str, Any], json.loads(raw_text))
 
 
 class DockerMCPToolsTests(TestCase):

@@ -3,7 +3,7 @@ from __future__ import annotations
 from core.orchestra_agents.agent_mux_runtime.backend_settings import build_runtime_settings
 
 
-def test_default_model_falls_back_to_live_kiro_alias() -> None:
+def test_default_model_uses_kiro_alias() -> None:
     settings = build_runtime_settings(
         {},
         working_dir="/workspace/agents/orchestra",

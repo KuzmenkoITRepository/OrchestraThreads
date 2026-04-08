@@ -20,12 +20,14 @@ class AgentConfig:
     working_dir: str
     http_endpoint: str
     system_prompt_file: str | None = None
+    allowed_peer_agent_slugs: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "working_dir": self.working_dir,
             "http_endpoint": self.http_endpoint,
             "system_prompt_file": self.system_prompt_file,
+            "allowed_peer_agent_slugs": list(self.allowed_peer_agent_slugs),
         }
 
 
@@ -164,6 +166,7 @@ class AgentManifest:
                 working_dir=str(parsed.agent["working_dir"]),
                 http_endpoint=str(parsed.agent["http_endpoint"]),
                 system_prompt_file=parsed.agent["system_prompt_file"],
+                allowed_peer_agent_slugs=list(parsed.agent["allowed_peer_agent_slugs"]),
             ),
             runtime=RuntimeConfig(
                 driver=str(parsed.runtime["driver"]),

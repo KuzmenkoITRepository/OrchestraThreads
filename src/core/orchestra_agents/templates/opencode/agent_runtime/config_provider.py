@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-_DEFAULT_PROXY_URL = "http://orchestra-wet:8100"
+_DEFAULT_OMNIROUTE_URL = "http://orchestra-omniroute:20128"
 _CONTEXT_LIMIT = 1_000_000
 _OUTPUT_LIMIT = 32_768
 ProviderModel = dict[str, Any]
@@ -20,12 +20,12 @@ def build_provider_entry(model: str, cfg: dict[str, Any]) -> ProviderModel:
 
 
 def _provider_options(cfg: dict[str, Any]) -> dict[str, str]:
-    proxy_url = str(cfg.get("llm_proxy_url") or os.getenv("LLM_PROXY_URL") or _DEFAULT_PROXY_URL)
-    api_key = cfg.get("llm_proxy_api_key") or os.getenv("OMNIROUTE_API_KEY")
-    if not api_key:
-        api_key = os.getenv("LLM_PROXY_API_KEY") or "llm-proxy"
+    omniroute_url = str(
+        cfg.get("omniroute_url") or os.getenv("OMNIROUTE_URL") or _DEFAULT_OMNIROUTE_URL
+    )
+    api_key = cfg.get("omniroute_api_key") or os.getenv("OMNIROUTE_API_KEY") or ""
     return {
-        "baseURL": f"{proxy_url.rstrip('/')}/v1",
+        "baseURL": f"{omniroute_url.rstrip('/')}/v1",
         "apiKey": str(api_key).strip(),
     }
 

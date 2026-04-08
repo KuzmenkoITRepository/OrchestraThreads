@@ -6,17 +6,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+SHORT_CONTEXT_ID_LENGTH = 12
+ITEM_FALLBACK_NAME = "item"
+
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
 def sanitize_fragment(value: str) -> str:
-    sanitized_chars: list[str] = []
-    for char in str(value or "").strip():
-        sanitized_chars.append(_sanitized_char(char))
+    sanitized_chars = [_sanitized_char(char) for char in str(value or "").strip()]
     text = "".join(sanitized_chars)
-    return text.strip("._") or "item"
+    return text.strip("._") or ITEM_FALLBACK_NAME
 
 
 def _sanitized_char(char: str) -> str:
@@ -26,17 +27,17 @@ def _sanitized_char(char: str) -> str:
 
 
 def short_context_id() -> str:
-    return uuid.uuid4().hex[:12]
+    return uuid.uuid4().hex[:SHORT_CONTEXT_ID_LENGTH]
 
 
-def normalize_recent_entries(value: Any) -> list[dict[str, Any]]:
-    if not isinstance(value, list):
+def normalize_recent_entries(raw_entries: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_entries, list):
         return []
     entries: list[dict[str, Any]] = []
-    for item in value:
-        if not isinstance(item, dict):
+    for entry_item in raw_entries:
+        if not isinstance(entry_item, dict):
             continue
-        entries.append({str(key): item[key] for key in item})
+        entries.append({str(key): entry_item[key] for key in entry_item})
     return entries
 
 

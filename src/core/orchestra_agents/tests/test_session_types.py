@@ -47,4 +47,4 @@ def test_routing_key_type() -> None:
 
 def test_no_thread_references_in_types() -> None:
     lifecycle_values = [lc.value for lc in SessionLifecycle]
-    assert all("thread" not in val for val in lifecycle_values)
+    assert all("thread" not in lifecycle_val for lifecycle_val in lifecycle_values)

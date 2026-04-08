@@ -5,12 +5,17 @@ from __future__ import annotations
 import unittest
 from typing import Any
 
-from core.orchestra_thread.tests.fixtures import (
+from core.orchestra_thread.tests.fixtures.e2e_harness import E2EHarness, FakeAgent
+from core.orchestra_thread.tests.fixtures.e2e_test_case import send_notification
+from core.orchestra_thread.tests.fixtures.thread_helpers import (
     delivery_attempted,
     send_message,
-    send_notification,
 )
-from core.orchestra_thread.tests.fixtures.e2e_harness import E2EHarness, FakeAgent
+
+_INACTIVITY_WAIT_TIMEOUT = 6.0
+_RETRY_WAIT_TIMEOUT = 4.0
+_RESTART_DELIVERY_TIMEOUT = 6.0
+_THREAD_KEY = "thread"
 
 
 async def assert_child_cascade(
@@ -29,7 +34,7 @@ async def assert_child_cascade(
         peer=peer,
         thread_id=root_thread_id,
     )
-    case.assertEqual(closed["thread"]["status"], "closed")
+    case.assertEqual(closed[_THREAD_KEY]["status"], "closed")
     await harness.wait_for(
         lambda: specialist.stops,
         message="specialist did not receive stop from child cascade",
@@ -37,8 +42,8 @@ async def assert_child_cascade(
     case.assertEqual(specialist.stops[-1]["thread_id"], child_thread_id)
 
     child_state = await harness.get_thread(child_thread_id)
-    case.assertEqual(child_state["thread"]["status"], "closed")
-    case.assertEqual(child_state["thread"]["parent_thread_id"], root_thread_id)
+    case.assertEqual(child_state[_THREAD_KEY]["status"], "closed")
+    case.assertEqual(child_state[_THREAD_KEY]["parent_thread_id"], root_thread_id)
 
 
 async def _close_root_for_cascade(
@@ -86,7 +91,7 @@ async def _verify_inactivity_wakeup(
 ) -> None:
     await harness.wait_for(
         lambda: any(event.get("event_kind") == "inactive" for event in secretary.events),
-        timeout=6.0,
+        timeout=_INACTIVITY_WAIT_TIMEOUT,
         message="secretary did not receive inactivity wakeup",
     )
     inactivity_event = next(
@@ -110,12 +115,12 @@ async def _retry_after_restart(
         to_agent_slug=orchestra.slug,
         message_text="Deliver this after restart.",
     )
-    retry_thread_id = str(retry_payload["thread"]["thread_id"])
+    retry_thread_id = str(retry_payload[_THREAD_KEY]["thread_id"])
     case.assertEqual(retry_thread_id, thread_id)
 
     await harness.wait_for(
         lambda: delivery_attempted(harness, retry_thread_id),
-        timeout=4.0,
+        timeout=_RETRY_WAIT_TIMEOUT,
         message="pending event was not retried while orchestra was offline",
     )
     await _verify_restart_delivery(
@@ -138,7 +143,7 @@ async def _verify_restart_delivery(
     await harness.register_agent(orchestra)
     await harness.wait_for(
         lambda: len(orchestra.events) > event_count_before,
-        timeout=6.0,
+        timeout=_RESTART_DELIVERY_TIMEOUT,
         message="retried event was not delivered after orchestra restart",
     )
     case.assertEqual(orchestra.events[-1]["message_text"], "Deliver this after restart.")

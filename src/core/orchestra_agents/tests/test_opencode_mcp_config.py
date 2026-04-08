@@ -13,7 +13,7 @@ from core.orchestra_agents.templates.opencode.agent_runtime.opencode_config impo
 
 
 class OpencodeMcpConfigTests(unittest.TestCase):
-    def test_build_mcp_block_renders_arbitrary_servers(self) -> None:
+    def test_mcp_block_renders_servers(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / "runtime_state" / "opencode" / "config"
             payload = build_mcp_block(
@@ -37,7 +37,7 @@ class OpencodeMcpConfigTests(unittest.TestCase):
             "secretary",
         )
 
-    def test_write_opencode_config_includes_all_mcp_servers(self) -> None:
+    def test_config_includes_all_mcp(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = write_opencode_config(
                 config_dir=Path(tmpdir) / "runtime_state" / "opencode" / "config",

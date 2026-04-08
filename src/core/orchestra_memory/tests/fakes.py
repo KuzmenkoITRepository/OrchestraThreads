@@ -38,12 +38,10 @@ class FakeCollection:
             for memory_id, (document, metadata) in self._entries.items()
             if self._matches(memory_id=memory_id, metadata=metadata, ids=ids, where=where)
         ]
-        documents = [entry[1] for entry in rows] if "documents" in include else []
-        metadatas = [entry[2] for entry in rows] if "metadatas" in include else []
         return {
             "ids": [entry[0] for entry in rows],
-            "documents": documents,
-            "metadatas": metadatas,
+            "documents": [entry[1] for entry in rows] if "documents" in include else [],
+            "metadatas": [entry[2] for entry in rows] if "metadatas" in include else [],
         }
 
     def delete(self, *, ids: list[str]) -> None:
@@ -139,7 +137,10 @@ def metadata_matches(metadata: Metadata, where: dict[str, object]) -> bool:
         return all(
             metadata_matches(metadata, item) for item in and_clause if isinstance(item, dict)
         )
-    return all(metadata.get(key) == value for key, value in where.items() if key != "$and")
+    for key, expected in where.items():
+        if key != "$and" and metadata.get(key) != expected:
+            return False
+    return True
 
 
 def fake_import_module(name: str) -> Any:

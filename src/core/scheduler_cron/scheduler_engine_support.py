@@ -51,14 +51,14 @@ def duration_ms(started_at: datetime) -> int:
     return int((datetime.now(UTC) - started_at).total_seconds() * 1000)
 
 
-def coerce_int(value: object, *, fallback: int = 0) -> int:
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str) and value.strip():
+def coerce_int(raw_value: object, *, fallback: int = 0) -> int:
+    if isinstance(raw_value, bool):
+        return int(raw_value)
+    if isinstance(raw_value, int):
+        return raw_value
+    if isinstance(raw_value, str) and raw_value.strip():
         try:
-            return int(value)
+            return int(raw_value)
         except ValueError:
             return fallback
     return fallback

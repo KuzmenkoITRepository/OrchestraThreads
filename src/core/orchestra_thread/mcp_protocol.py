@@ -9,6 +9,7 @@ from core.orchestra_thread.mcp_thread_view_tools import (
     thread_current,
     thread_expand,
     thread_guide,
+    thread_peers,
 )
 from core.orchestra_thread.mcp_tools_common import JSON_MAP
 
@@ -19,6 +20,7 @@ TOOL_HANDLER_ITEMS = (
     ("thread_current", thread_current),
     ("thread_expand", thread_expand),
     ("thread_guide", thread_guide),
+    ("thread_peers", thread_peers),
 )
 
 

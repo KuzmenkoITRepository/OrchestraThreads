@@ -42,8 +42,18 @@ module = [
     "asyncpg",
     "telethon",
     "telethon.*",
+    "pytest",
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "core.task_registry.store_base",
+    "core.task_registry.store_tasks",
+    "core.task_registry.store_comments",
+    "core.task_registry.store_checklists",
+]
+disallow_any_unimported = false
 
 [[tool.mypy.overrides]]
 module = [

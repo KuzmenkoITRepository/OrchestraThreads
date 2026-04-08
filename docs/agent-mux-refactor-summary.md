@@ -1,6 +1,6 @@
 # agent-mux Refactor - Completion Summary
 
-**Historical note:** `llm-proxy` has been replaced by `omniroute` + `wet`.
+**Historical note:** legacy proxy routing has been replaced by `omniroute` + `wet`.
 
 **Date**: 2026-04-03
 **Status**: ✅ Completed
