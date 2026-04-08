@@ -1,143 +1,109 @@
+"""HTTP-based Telegram client that proxies sends to telegram-events."""
+
 from __future__ import annotations
 
-import inspect
 import logging
-from collections.abc import Callable
 from typing import Any
 
-from telethon import TelegramClient as TelethonClient
-from telethon.sessions import StringSession
-
-from telegram_mcp import SendAttempt, send_with_retries
-from telegram_mcp.send_request import SendRequest, validate_message_text
-from telegram_mcp.send_retry import rich_send_with_retries
+import httpx
 
 logger = logging.getLogger(__name__)
 
-
-class _RetryClientAdapter:
-    def __init__(self, client: TelethonClient) -> None:
-        self._client = client
-
-    async def get_entity(self, chat_id: int) -> Any:
-        return await self._client.get_entity(chat_id)
-
-    async def send_message(self, entity: Any, text: str) -> Any:
-        return await self._client.send_message(entity, text)
+_SEND_TIMEOUT = 30.0
+_MAX_MESSAGE_LENGTH = 4096
 
 
-def validate_send_inputs(chat_id: int, text: str) -> str | None:
+class TelegramHTTPClient:
+    """Thin HTTP proxy: delegates send_message to telegram-events /send."""
+
+    def __init__(self, base_url: str) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._client: httpx.AsyncClient | None = None
+
+    async def start(self) -> None:
+        """Initialize the underlying httpx client."""
+        if self._client is not None:
+            return
+        self._client = httpx.AsyncClient(
+            timeout=_SEND_TIMEOUT,
+            trust_env=False,
+        )
+        logger.info("Telegram HTTP client ready: %s", self._base_url)
+
+    async def close(self) -> None:
+        """Shut down the httpx client."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+    async def send_message(
+        self,
+        chat_id: int,
+        text: str,
+    ) -> dict[str, Any]:
+        """Send a message via telegram-events /send endpoint."""
+        error = _validate_send_inputs(chat_id, text)
+        if error:
+            return {"ok": False, "message_id": 0, "error": error}
+        return await self._post_send(chat_id, text)
+
+    async def _post_send(
+        self,
+        chat_id: int,
+        text: str,
+    ) -> dict[str, Any]:
+        client = self._client
+        if client is None:
+            return {"ok": False, "message_id": 0, "error": "HTTP client not started"}
+        url = f"{self._base_url}/send"
+        try:
+            response = await client.post(
+                url,
+                json={"chat_id": chat_id, "message": text},
+            )
+        except Exception as exc:
+            logger.error("HTTP request to telegram-events failed: %s", exc)
+            return {"ok": False, "message_id": 0, "error": str(exc)}
+        return _parse_response(response)
+
+
+def _validate_send_inputs(chat_id: int, text: str) -> str | None:
     if not isinstance(chat_id, int):
         return "chat_id must be an integer"
-    if not isinstance(text, str):
-        return "text must be a string"
-    if not text.strip():
-        return "text must not be empty or whitespace-only"
-    if len(text) > 4096:
-        return "text must be 4096 characters or fewer"
+    if not isinstance(text, str) or not text.strip():
+        return "text must be a non-empty string"
+    if len(text) > _MAX_MESSAGE_LENGTH:
+        return f"text must be {_MAX_MESSAGE_LENGTH} characters or fewer"
     return None
 
 
-async def ensure_client_started(client: TelethonClient) -> tuple[str, str]:
-    await client.connect()
-    is_authorized = await client.is_user_authorized()
-    if not is_authorized:
-        raise RuntimeError("Telegram client is not authorized; provide TELEGRAM_SESSION_STRING")
-    me = await client.get_me()
-    user_name = str(getattr(me, "first_name", "unknown"))
-    user_id = str(getattr(me, "id", "unknown"))
-    return user_name, user_id
+def _parse_response(response: httpx.Response) -> dict[str, Any]:
+    try:
+        raw = response.json()
+    except Exception:
+        return {
+            "ok": False,
+            "message_id": 0,
+            "error": f"HTTP {response.status_code}: {response.text}",
+        }
+    if not isinstance(raw, dict):
+        return {"ok": False, "message_id": 0, "error": "unexpected JSON shape"}
+    if response.status_code == 200:
+        return _extract_success(raw)
+    return {
+        "ok": False,
+        "message_id": 0,
+        "error": str(raw.get("error", f"HTTP {response.status_code}")),
+    }
 
 
-class TelegramClient:
-    def __init__(
-        self,
-        api_id: int,
-        api_hash: str,
-        session_string: str | None = None,
-        max_retries: int = 3,
-        timeout_seconds: float = 10.0,
-    ):
-        if not isinstance(api_id, int):
-            raise ValueError("api_id must be an integer")
-        if not isinstance(api_hash, str) or not api_hash.strip():
-            raise ValueError("api_hash must be a non-empty string")
-
-        self.api_id = api_id
-        self.api_hash = api_hash.strip()
-        self.session_string = session_string.strip() if session_string else None
-        self._client: TelethonClient | None = None
-        self._max_retries = max_retries
-        self._timeout = timeout_seconds
-
-    async def close(self) -> None:
-        client = self._client
-        if client is None:
-            return
-        disconnect_result = client.disconnect()
-        if inspect.isawaitable(disconnect_result):
-            await disconnect_result
-        logger.info("Telegram client disconnected")
-
-    async def send_message(self, chat_id: int, text: str) -> dict[str, Any]:
-        validation_error = validate_send_inputs(chat_id, text)
-        if validation_error is not None:
-            return {"ok": False, "message_id": 0, "error": validation_error}
-        client = await self.require_client()
-        if client is None:
-            return {"ok": False, "message_id": 0, "error": "Telegram client is not initialized"}
-        return await send_with_retries(
-            SendAttempt(
-                client=_RetryClientAdapter(client),
-                chat_id=chat_id,
-                text=text,
-                attempt=0,
-                max_retries=self._max_retries,
-            )
-        )
-
-    async def send_rich(
-        self,
-        chat_id: int,
-        request: SendRequest,
-        *,
-        on_flood_wait: Callable[[int], None] | None = None,
-    ) -> dict[str, Any]:
-        """Send a message with optional formatting, reply, or media."""
-        text_error = validate_message_text(request.message)
-        if text_error is not None:
-            return {"ok": False, "message_id": 0, "error": text_error}
-        client = await self.require_client()
-        if client is None:
-            return {"ok": False, "message_id": 0, "error": "Telegram client is not initialized"}
-        return await rich_send_with_retries(
-            client,
-            chat_id,
-            request,
-            max_retries=self._max_retries,
-            on_flood_wait=on_flood_wait,
-        )
-
-    async def require_client(self) -> TelethonClient | None:
-        """Return the raw Telethon client, starting if needed."""
-        if self._client is None:
-            await self.start()
-        return self._client
-
-    async def start(self) -> None:
-        if self._client is None:
-            self._client = self._create_client()
-        client = self._client
-        assert client is not None
-        logger.info("Starting Telegram client...")
-        user_name, user_id = await ensure_client_started(client)
-        logger.info("Logged in as: %s (ID: %s)", user_name, user_id)
-
-    def _create_client(self) -> TelethonClient:
-        session = StringSession(self.session_string) if self.session_string else StringSession()
-        return TelethonClient(
-            session,
-            self.api_id,
-            self.api_hash,
-            timeout=int(self._timeout),
-        )
+def _extract_success(raw: dict[str, Any]) -> dict[str, Any]:
+    try:
+        msg_id = int(raw.get("message_id", 0) or 0)
+    except (TypeError, ValueError):
+        msg_id = 0
+    return {
+        "ok": bool(raw.get("ok")),
+        "message_id": msg_id,
+        "error": str(raw.get("error", "")),
+    }

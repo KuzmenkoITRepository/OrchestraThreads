@@ -354,17 +354,9 @@ services:
       - default
     environment:
       PYTHONPATH: /app/src
-      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
-      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
-      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING:-}
       TELEGRAM_EVENTS_URL: http://telegram-events:8787
       TELEGRAM_CHAT_ID_IVAN: ${TELEGRAM_CHAT_ID_IVAN:-748976004}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      # Telethon uses raw MTProto — Docker Desktop proxy breaks it
-      HTTP_PROXY: ""
-      HTTPS_PROXY: ""
-      http_proxy: ""
-      https_proxy: ""
     command:
       - python
       - -m

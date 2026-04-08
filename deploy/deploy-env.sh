@@ -264,7 +264,7 @@ required_keys = (
     "TELEGRAM_API_ID",
     "TELEGRAM_API_HASH",
 )
-placeholder_markers = ("change-me", "changeme", "placeholder", "replace-me", "orchestra")
+placeholder_markers = ("change-me", "changeme", "placeholder", "replace-me")
 
 missing = []
 weak = []
@@ -480,10 +480,15 @@ main() {
 
   printf 'Deployed environment %s with project name %s\n' "${environment}" "${project_name}"
   printf 'OmniRoute bootstrap status: %s\n' "${omniroute_bootstrap_status}"
-  printf 'OmniRoute UI: %s\n' "${omniroute_base_url}"
-  printf 'OmniRoute password: %s\n' "${omniroute_password}"
-  printf 'OmniRoute runtime key name: %s\n' "${omniroute_api_key_name}"
-  printf 'Manual step remaining: log into OmniRoute and connect provider accounts.\n'
+  printf '\n'
+  printf '┌─────────────────────────────────────────────────────┐\n'
+  printf '│  OmniRoute — connect providers                      │\n'
+  printf '├─────────────────────────────────────────────────────┤\n'
+  printf '│  URL:      %-40s│\n' "${omniroute_base_url}"
+  printf '│  Password: %-40s│\n' "${omniroute_password}"
+  printf '│  API key:  %-40s│\n' "${omniroute_api_key_name}"
+  printf '└─────────────────────────────────────────────────────┘\n'
+  printf '\n'
   if [[ "${OT_KEEP_RUNTIME_ENV_FILE:-0}" == "1" ]]; then
     printf 'Rendered env file kept at: %s\n' "${output_env_file}"
   else

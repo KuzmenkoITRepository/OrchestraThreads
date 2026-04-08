@@ -16,7 +16,7 @@ OrchestraThreads/
 ├── src/core/events_engine/      # external-event -> agent delivery bridge (minimal)
 ├── src/core/events_engine/      # external-event -> agent delivery bridge (minimal)
 ├── src/core/telegram_events/    # Telegram ingestion -> secretary/event bridge
-├── src/telegram_mcp/            # MCP server for Telegram messaging via Telethon
+├── src/telegram_mcp/            # thin HTTP proxy MCP for Telegram messaging via telegram-events
 ├── agents/                      # local manifests and example runtimes
 ├── docs/                        # repo-level design notes and refactor plans
 ├── docker/                      # build patches (agent-mux binary)
@@ -37,7 +37,7 @@ OrchestraThreads/
 | Agent mux runtime | `src/core/orchestra_agents/agent_mux_runtime/` | queue, dispatch, state, codex config, bootstrap |
 | External event fan-in | `src/core/events_engine/` | minimal bridge into running agents |
 | Telegram ingress | `src/core/telegram_events/` | edge service; non-thread-native |
-| Telegram MCP server | `src/telegram_mcp/` | stdio MCP for `send_telegram_message`; shares Telethon session with telegram_events |
+| Telegram MCP server | `src/telegram_mcp/` | thin HTTP proxy MCP; proxies `send_telegram_message` to telegram-events `/send` |
 | Agent manifests and prompts | `agents/` | runtime examples, mux configs, system prompts |
 | Stack wiring and healthchecks | `docker-compose.yml` | canonical ports, env, service dependencies |
 
@@ -283,7 +283,7 @@ bash deploy/deploy-env.sh dev
 ## NOTES
 - Ignore `agents/orchestra/runtime_state/` during repo sweeps; it contains generated state and unreadable paths.
 - `src/core/events_engine/` and `src/core/telegram_events/` are small edge services, so keep their rules in root unless they grow.
-- `src/telegram_mcp/` is a standalone MCP server sharing Telethon auth with `telegram_events` — not a core service.
+- `src/telegram_mcp/` is a thin HTTP proxy MCP server that proxies sends to `telegram_events` — not a core service.
 - The root file is intentionally short; child `AGENTS.md` files below carry only domain-specific deltas.
 - All code must pass `make check` before commit — no exceptions.
 - `CODE-STYLE.md` is the authoritative quick cookbook for writing new Python that passes repo linters without bypasses.
