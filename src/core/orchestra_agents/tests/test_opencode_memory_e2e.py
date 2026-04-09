@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, _patch, patch
 
-from core.orchestra_agents.templates.opencode.agent_runtime.backend import (
+from core.orchestra_agents.backends.opencode.backend import (
     OpencodeOmoBackend,
 )
 
@@ -65,7 +65,7 @@ def _backend_config() -> dict[str, object]:
                 "command": "python",
                 "args": ["-m", "core.orchestra_thread.mcp_server"],
                 "env": {
-                    "PYTHONPATH": "/workspace/src:/workspace/agents/secretary",
+                    "PYTHONPATH": "/workspace/src",
                     "ORCHESTRA_THREADS_URL": "http://orchestra-threads:8788",
                 },
             },
@@ -74,7 +74,7 @@ def _backend_config() -> dict[str, object]:
                 "command": "python",
                 "args": ["-m", "core.orchestra_memory.mcp_server"],
                 "env": {
-                    "PYTHONPATH": "/workspace/src:/workspace/agents/secretary",
+                    "PYTHONPATH": "/workspace/src",
                     "ORCHESTRA_MEMORY_URL": "http://orchestra-memory:8793",
                     "ORCHESTRA_AGENT_SLUG": "secretary",
                 },
@@ -96,27 +96,27 @@ class _PatchedRuntime:
     def __enter__(self) -> None:
         self._patchers = [
             patch(
-                "core.orchestra_agents.templates.opencode.agent_runtime.opencode_process.OpencodeProcess.start",
+                "core.orchestra_agents.backends.opencode.opencode_process.OpencodeProcess.start",
                 new=_NOOP_ASYNC,
             ),
             patch(
-                "core.orchestra_agents.templates.opencode.agent_runtime.opencode_process.OpencodeProcess.wait_ready",
+                "core.orchestra_agents.backends.opencode.opencode_process.OpencodeProcess.wait_ready",
                 new=_NOOP_ASYNC,
             ),
             patch(
-                "core.orchestra_agents.templates.opencode.agent_runtime.opencode_process.OpencodeProcess.stop",
+                "core.orchestra_agents.backends.opencode.opencode_process.OpencodeProcess.stop",
                 new=_NOOP_ASYNC,
             ),
             patch(
-                "core.orchestra_agents.templates.opencode.agent_runtime.opencode_client.OpencodeClient",
+                "core.orchestra_agents.backends.opencode.opencode_client.OpencodeClient",
                 new=_FakeOpencodeClient,
             ),
             patch(
-                "core.orchestra_agents.templates.opencode.agent_runtime.backend_registration.register_with_threads",
+                "core.orchestra_agents.backends.opencode.backend_registration.register_with_threads",
                 new=_NOOP_ASYNC,
             ),
             patch(
-                "core.orchestra_agents.templates.opencode.agent_runtime.backend_registration.stop_registration",
+                "core.orchestra_agents.backends.opencode.backend_registration.stop_registration",
                 new=_NOOP_ASYNC,
             ),
         ]

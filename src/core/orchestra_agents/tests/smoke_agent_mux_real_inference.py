@@ -92,7 +92,7 @@ def _preview_text(result: dict[str, object]) -> str | None:
 
 
 def _build_settings(case: _SmokeCase, root_dir: Path) -> Any:
-    from core.orchestra_agents.agent_mux_runtime.backend_settings import (
+    from core.orchestra_agents.backends.agent_mux.backend_settings import (
         build_runtime_settings,  # noqa: WPS433
     )
 
@@ -123,7 +123,7 @@ def _request_prompt(case: _SmokeCase) -> str:
 
 
 def _build_request(case: _SmokeCase, root_dir: Path) -> Any:
-    from core.orchestra_agents.agent_mux_runtime.backend_types import (
+    from core.orchestra_agents.backends.agent_mux.backend_types import (
         AgentMuxRunRequest,  # noqa: WPS433
     )
 
@@ -145,7 +145,7 @@ def _build_request(case: _SmokeCase, root_dir: Path) -> Any:
 
 
 async def _collect_case_result(case: _SmokeCase, root_dir: Path) -> dict[str, object]:
-    from core.orchestra_agents.agent_mux_runtime.backend_process import (  # noqa: WPS433
+    from core.orchestra_agents.backends.agent_mux.backend_process import (  # noqa: WPS433
         collect_agent_mux_result,
         run_agent_mux,
     )

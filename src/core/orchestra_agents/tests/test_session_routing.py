@@ -6,10 +6,10 @@ import threading
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from core.orchestra_agents.agent_mux_runtime.event_types import NormalizedEvent
-from core.orchestra_agents.agent_mux_runtime.session_resolver import SessionResolver
-from core.orchestra_agents.agent_mux_runtime.session_store import SessionStore
-from core.orchestra_agents.agent_mux_runtime.session_types import RoutingKey
+from core.orchestra_agents.backends.agent_mux.internal.event_types import NormalizedEvent
+from core.orchestra_agents.backends.agent_mux.internal.session_resolver import SessionResolver
+from core.orchestra_agents.backends.agent_mux.internal.session_store import SessionStore
+from core.orchestra_agents.backends.agent_mux.internal.session_types import RoutingKey
 
 
 def _resolve_concurrent_session(resolver: SessionResolver, session_ids: list[str]) -> None:

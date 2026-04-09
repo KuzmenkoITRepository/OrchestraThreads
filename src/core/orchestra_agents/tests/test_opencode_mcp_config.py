@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 from typing import Any, cast
 
-from core.orchestra_agents.templates.opencode.agent_runtime.config_mcp import build_mcp_block
-from core.orchestra_agents.templates.opencode.agent_runtime.opencode_config import (
+from core.orchestra_agents.backends.opencode.config_mcp import build_mcp_block
+from core.orchestra_agents.backends.opencode.opencode_config import (
     write_opencode_config,
 )
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.orchestra_agents.agent_mux_runtime.event_types import NormalizedEvent
+from core.orchestra_agents.backends.agent_mux.internal.event_types import NormalizedEvent
 
 _TEST_SOURCE = "test"
 _MESSAGE_KIND = "message"
