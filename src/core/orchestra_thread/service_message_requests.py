@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from core.orchestra_thread import common
@@ -68,8 +69,25 @@ def message_request_context(*, request: MessageRequest) -> MessageRequest:
     }
 
 
+def legacy_message_input(*, kwargs: Mapping[str, object]) -> MessageRequestInput:
+    return MessageRequestInput(
+        from_agent_slug=str(kwargs.get(FROM_AGENT_SLUG) or ""),
+        to_agent_slug=str(kwargs.get(TO_AGENT_SLUG) or ""),
+        message_text=str(kwargs.get(MESSAGE_TEXT) or ""),
+        thread_id=_optional_text(_string_or_none(kwargs.get(THREAD_ID))),
+        parent_thread_id=_optional_text(_string_or_none(kwargs.get(PARENT_THREAD_ID))),
+        client_request_id=str(kwargs.get(CLIENT_REQUEST_ID) or ""),
+    )
+
+
 def _optional_text(raw_value: str | None) -> str | None:
     normalized_value = str(raw_value or "").strip()
     if normalized_value:
         return normalized_value
     return None
+
+
+def _string_or_none(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)

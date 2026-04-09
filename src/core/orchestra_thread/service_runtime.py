@@ -628,10 +628,41 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
     async def send_message(
         self,
         *,
-        request_input: Any,
+        request_input: Any | None = None,
+        legacy_kwargs: dict[str, object] | None = None,
     ) -> dict[str, Any]:
+        if request_input is None:
+            kwargs = dict(legacy_kwargs or {})
+            kwargs.setdefault(service_message_requests.CLIENT_REQUEST_ID, str(uuid.uuid4().hex))
+            request_input = self._legacy_message_input(kwargs)
         request = service_message_requests.build_message_request(request_input)
         return await self._send_message_locked(request=request)
+
+    def _legacy_message_input(
+        self,
+        kwargs: dict[str, object],
+    ) -> service_message_requests.MessageRequestInput:
+        thread_id = self._optional_legacy_text(kwargs.get(service_message_requests.THREAD_ID))
+        parent_thread_id = self._optional_legacy_text(
+            kwargs.get(service_message_requests.PARENT_THREAD_ID)
+        )
+        return service_message_requests.MessageRequestInput(
+            from_agent_slug=str(kwargs.get(service_message_requests.FROM_AGENT_SLUG) or ""),
+            to_agent_slug=str(kwargs.get(service_message_requests.TO_AGENT_SLUG) or ""),
+            message_text=str(kwargs.get(service_message_requests.MESSAGE_TEXT) or ""),
+            thread_id=thread_id,
+            parent_thread_id=parent_thread_id,
+            client_request_id=str(kwargs.get(service_message_requests.CLIENT_REQUEST_ID) or ""),
+        )
+
+    @staticmethod
+    def _optional_legacy_text(value: object) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        if normalized:
+            return normalized
+        return None
 
     async def _send_message_locked(self, *, request: dict[str, str | None]) -> JsonDict:
         message_context = service_message_requests.message_request_context(request=request)
@@ -768,17 +799,38 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
     async def send_notification(
         self,
         *,
-        request_input: Any,
+        request_input: Any | None = None,
+        legacy_kwargs: dict[str, object] | None = None,
     ) -> dict[str, Any]:
+        if request_input is None:
+            kwargs = dict(legacy_kwargs or {})
+            kwargs.setdefault(
+                service_notification_requests.CLIENT_REQUEST_ID, str(uuid.uuid4().hex)
+            )
+            request_input = self._legacy_notification_input(kwargs)
         request = service_notification_requests.build_notification_request(request_input)
         should_notify_stop = bool(request["status"] == "closed")
-        should_cascade_close = bool(request["status"] in common.THREAD_TERMINAL_STATUSES)
         response = await self._send_notification_locked(request=request)
         if should_notify_stop:
             await self._notify_closed_thread(request=request)
-        if should_cascade_close:
+        if request["status"] in common.THREAD_TERMINAL_STATUSES:
             await self._cascade_notification_close(request=request)
         return response
+
+    @staticmethod
+    def _legacy_notification_input(
+        kwargs: dict[str, object],
+    ) -> service_notification_requests.NotificationRequestInput:
+        return service_notification_requests.NotificationRequestInput(
+            from_agent_slug=str(kwargs.get(service_notification_requests.FROM_AGENT_SLUG) or ""),
+            to_agent_slug=str(kwargs.get(service_notification_requests.TO_AGENT_SLUG) or ""),
+            thread_id=str(kwargs.get(service_notification_requests.THREAD_ID) or ""),
+            status=str(kwargs.get(service_notification_requests.STATUS) or ""),
+            message_text=str(kwargs.get(service_notification_requests.MESSAGE_TEXT) or ""),
+            client_request_id=str(
+                kwargs.get(service_notification_requests.CLIENT_REQUEST_ID) or ""
+            ),
+        )
 
     async def _send_notification_locked(self, *, request: dict[str, str]) -> JsonDict:
         request_context = service_notification_requests.notification_context(request=request)
