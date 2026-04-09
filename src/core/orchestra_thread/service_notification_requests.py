@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -64,3 +65,14 @@ def notification_context(*, request: dict[str, str]) -> dict[str, Any]:
         "is_terminal": notification_status in common.THREAD_TERMINAL_STATUSES,
         CLIENT_REQUEST_ID: request[CLIENT_REQUEST_ID],
     }
+
+
+def legacy_notification_input(*, kwargs: Mapping[str, object]) -> NotificationRequestInput:
+    return NotificationRequestInput(
+        from_agent_slug=str(kwargs.get(FROM_AGENT_SLUG) or ""),
+        to_agent_slug=str(kwargs.get(TO_AGENT_SLUG) or ""),
+        thread_id=str(kwargs.get(THREAD_ID) or ""),
+        status=str(kwargs.get(STATUS) or ""),
+        message_text=str(kwargs.get(MESSAGE_TEXT) or ""),
+        client_request_id=str(kwargs.get(CLIENT_REQUEST_ID) or ""),
+    )

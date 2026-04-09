@@ -5,26 +5,26 @@
 **Branch:** master
 
 ## OVERVIEW
-OrchestraThreads is a Docker-first Python workspace for an autonomous assistant stack built around durable inter-agent threads. The main split is strict: `orchestra_thread` owns thread workflow, `orchestra_agents` owns manifest-driven lifecycles and the `agent_mux_runtime` subsystem. LLM routing is handled by external `omniroute` + `wet` services. `telegram_mcp` provides MCP-based Telegram messaging for agents.
+OrchestraThreads is a Docker-first Python workspace for an autonomous assistant stack built around durable inter-agent threads. The main split is strict: `orchestra_thread` owns thread workflow, `orchestra_agents` owns manifest-driven lifecycles and a unified backend contract for all agent backends. Three equal-status backends are supported: `sgr`, `agent_mux`, and `opencode`. LLM routing is handled by external `omniroute` + `wet` services. `telegram_mcp` provides MCP-based Telegram messaging for agents.
 
 ## STRUCTURE
 ```text
 OrchestraThreads/
 ├── src/core/orchestra_thread/   # durable thread service, UI, MCP surface (36 py files)
-├── src/core/orchestra_agents/   # manifest registry, Docker lifecycle, runtime contract
-│   └── agent_mux_runtime/       # 29-file multiplexed agent runtime subsystem
-├── src/core/events_engine/      # external-event -> agent delivery bridge (minimal)
+├── src/core/orchestra_agents/   # manifest registry, Docker lifecycle, unified runtime contract
+│   ├── runtime/                 # shared runtime kernel: app, backend contract, bootstrap
+│   ├── backends/                # equal-status backend adapters (sgr, agent_mux, opencode)
+│   └── agent_mux_runtime/       # agent_mux backend internals (queue, dispatch, state)
 ├── src/core/events_engine/      # external-event -> agent delivery bridge (minimal)
 ├── src/core/telegram_events/    # Telegram ingestion -> secretary/event bridge
 ├── src/telegram_mcp/            # thin HTTP proxy MCP for Telegram messaging via telegram-events
-├── agents/                      # local manifests and example runtimes
+├── agents/                      # agent definitions: manifest.yaml + system_prompt.md per agent
 ├── docs/                        # repo-level design notes and refactor plans
-├── docker/                      # build patches (agent-mux binary)
+├── docker/                      # build patches and backend-specific Docker assets
 ├── Dockerfile                   # main service image
-├── Dockerfile.agent_mux_runtime # Go agent-mux binary + Python runtime
-├── Dockerfile.agent_runtime     # lightweight agent runtime image
+├── Dockerfile.agent_mux_runtime # agent_mux backend image (Go binary + Python runtime)
+├── Dockerfile.agent_runtime     # lightweight agent runtime image (sgr, opencode)
 └── docker-compose.yml           # source of truth for local stack and tests
-```
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
@@ -34,11 +34,13 @@ OrchestraThreads/
 | MCP tool surface | `src/core/orchestra_thread/mcp_*.py` | 12+ files: routing, send, status, views, context |
 | HTTP handlers | `src/core/orchestra_thread/http_handlers.py` | read/write handler classes |
 | Agent registry, scaffold, Docker | `src/core/orchestra_agents/` | `service.py` delegates to `service_routes.py` + `service_state.py` |
-| Agent mux runtime | `src/core/orchestra_agents/agent_mux_runtime/` | queue, dispatch, state, codex config, bootstrap |
+| Unified runtime contract | `src/core/orchestra_agents/runtime/` | shared kernel: app, backend contract, bootstrap, capabilities |
+| Backend adapters (sgr, mux, opencode) | `src/core/orchestra_agents/backends/` | equal-status adapters; each backend implements the unified contract |
+| Agent_mux backend internals | `src/core/orchestra_agents/agent_mux_runtime/` | queue, dispatch, state, codex config — internal to mux adapter |
 | External event fan-in | `src/core/events_engine/` | minimal bridge into running agents |
 | Telegram ingress | `src/core/telegram_events/` | edge service; non-thread-native |
 | Telegram MCP server | `src/telegram_mcp/` | thin HTTP proxy MCP; proxies `send_telegram_message` to telegram-events `/send` |
-| Agent manifests and prompts | `agents/` | runtime examples, mux configs, system prompts |
+| Agent definitions | `agents/` | `manifest.yaml` + `system_prompt.md` per agent; no backend code |
 | Stack wiring and healthchecks | `docker-compose.yml` | canonical ports, env, service dependencies |
 
 ## CODE MAP
@@ -54,7 +56,7 @@ OrchestraThreads/
 | `OrchestraAgentsService` | class | `src/core/orchestra_agents/service.py` | manifest registry + agent control |
 | `ServiceState` | dataclass | `src/core/orchestra_agents/service_state.py` | registry + driver + lock |
 | `StandardAgentApplication` | class | `src/core/orchestra_agents/runtime/app.py` | `/healthz`, `/event`, `/stop`, `/last_status`, `/clear_context` |
-| `run_backend()` | function | `src/core/orchestra_agents/agent_mux_runtime/bootstrap.py` | mux runtime entry point |
+| `run_backend()` | function | `src/core/orchestra_agents/agent_mux_runtime/bootstrap.py` | agent_mux backend entry point |
 | `main()` | service entry | `src/core/events_engine/service_main.py` | starts external event bridge |
 | `main()` | service entry | `src/core/telegram_events/service_main.py` | starts Telegram listener |
 | `main()` | entry | `src/telegram_mcp/__main__.py` | stdio MCP server for Telegram messaging |
@@ -63,7 +65,7 @@ OrchestraThreads/
 - Preserve the module split; do not fold thread orchestration, agent lifecycle, and LLM routing into one service.
 - Favor compact thread state and on-demand expansion over replaying full histories into prompts.
 - Keep services HTTP-first: explicit JSON contracts, `/healthz`, and observable state.
-- Treat `agents/` as manifest-driven runtime examples, not as the place to re-implement core service logic.
+- Treat `agents/` as agent definitions only (`manifest.yaml` + `system_prompt.md`), not as the place to put backend code or core service logic.
 - Put behavior-changing docs next to the module they describe (`src/core/<module>/docs/`).
 - Facade files (`service.py`, `store.py`, `router.py`, `accounts.py`, `langfuse.py`) re-export from `_*_impl.py` or `*_runtime.py` — edit the implementation files, not the facades.
 - Any human or subagent that writes Python in this repo must read `CODE-STYLE.md` first and follow it as the shortest lint-passing cookbook.
@@ -187,14 +189,14 @@ make check          # Verify everything works
 ## ANTI-PATTERNS
 - Do not treat anything except `docker-compose.yml` as the source of truth for local runtime wiring.
 - Do not bypass Docker for the primary automated test story; canonical verification is `docker compose --profile test run --rm test`.
-- Do not move thread ownership into agent runtimes or `agent-mux`; `thread_id` semantics stay in `orchestra_thread`.
+- Do not move thread ownership into agent runtimes or backend adapters; `thread_id` semantics stay in `orchestra_thread`.
 - Do not expand specialist access by default; the architecture assumes minimal context and explicit escalation.
 - Do not ship major architectural changes as routine edits; incremental, reversible improvements are the default.
 - **Do not bypass code quality checks** — see CODE QUALITY ENFORCEMENT section above.
 
 ## UNIQUE STYLES
 - Product direction is autonomy-first, but with service-level observability, healthchecks, and rollback discipline.
-- The repo mixes service code with runnable agent examples; distinguish "platform service" changes from "agent behavior" changes.
+- The repo separates platform services from agent definitions; `agents/` contains only manifests and prompts, while backend adapters live in `src/core/orchestra_agents/backends/`.
 - Example agents are expected to communicate outward through thread tools/status flows, not free-form assistant prose.
 - Code quality is enforced via automated checks — no exceptions without explicit justification.
 - Heavy files use decomposition: `service_runtime.py` delegates to `http_handlers.py`, `store.py` composes 7 mixin stores, MCP logic is split across 12+ `mcp_thread_*` modules.
@@ -245,7 +247,7 @@ The `deploy/deploy-env.sh` script fetches secrets at deploy time, renders a temp
 | _(none)_ | postgres, orchestra-threads, orchestra-agents, events-engine, telegram-events, telegram-mcp, omniroute, wet, memory, scheduler-cron, task-registry | Always — core platform stack |
 | `vault` | HashiCorp Vault | Must be running before `deploy-env.sh` |
 | `user-agents` | odinykt, specialist | Manual testing / interactive agent sessions |
-| `test` | test runner, mux-smoke | CI and local test runs |
+| `test` | test runner, smoke tests | CI and local test runs |
 
 ### First-time Vault setup
 

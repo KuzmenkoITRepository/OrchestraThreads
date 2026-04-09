@@ -10,6 +10,7 @@ from pathlib import Path
 _LOG = logging.getLogger(__name__)
 
 DEFAULT_TEMPLATE_NAME = "agent"
+_SKIPPED_TEMPLATE_PARTS = frozenset(("__pycache__", "agent_runtime"))
 
 
 @dataclass(frozen=True)
@@ -42,14 +43,41 @@ class _TemplateRenderer:
         cls, template_root: Path, target_root: Path, replacements: dict[str, str]
     ) -> None:
         for source in template_root.rglob("*"):
-            if source.is_dir() or "__pycache__" in source.parts or source.suffix == ".pyc":
+            if cls._should_skip(source):
                 continue
-            target = target_root / source.relative_to(template_root)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            text = source.read_text(encoding="utf-8")
-            for placeholder, replacement in replacements.items():
-                text = text.replace(placeholder, replacement)
-            target.write_text(text, encoding="utf-8")
+
+            cls._copy_file(
+                source=source,
+                target_root=target_root,
+                template_root=template_root,
+                replacements=replacements,
+            )
+
+    @staticmethod
+    def _should_skip(source: Path) -> bool:
+        if source.is_dir() or source.suffix == ".pyc":
+            return True
+        return any(part in _SKIPPED_TEMPLATE_PARTS for part in source.parts)
+
+    @staticmethod
+    def _copy_file(
+        *,
+        source: Path,
+        target_root: Path,
+        template_root: Path,
+        replacements: dict[str, str],
+    ) -> None:
+        target = target_root / source.relative_to(template_root)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        rendered = _TemplateRenderer._render_text(source, replacements)
+        target.write_text(rendered, encoding="utf-8")
+
+    @staticmethod
+    def _render_text(source: Path, replacements: dict[str, str]) -> str:
+        text = source.read_text(encoding="utf-8")
+        for placeholder, replacement in replacements.items():
+            text = text.replace(placeholder, replacement)
+        return text
 
 
 def scaffold_agent(

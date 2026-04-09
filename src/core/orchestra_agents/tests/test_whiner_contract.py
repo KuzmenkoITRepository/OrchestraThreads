@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from core.orchestra_agents.templates.opencode.agent_runtime.config_mcp import build_mcp_block
+from core.orchestra_agents.backends.opencode.config_mcp import build_mcp_block
 
 
 def _load_whiner_manifest() -> dict[str, object]:

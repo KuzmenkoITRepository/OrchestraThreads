@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.orchestra_agents.agent_mux_runtime.backend_settings import build_runtime_settings
+from core.orchestra_agents.backends.agent_mux.backend_settings import build_runtime_settings
 
 
 def test_default_model_uses_kiro_alias() -> None:

@@ -6,20 +6,16 @@ from pathlib import Path
 from core.orchestra_agents.tests import docker_driver_test_data as data
 
 
-def _docker_prefix(command: data.DockerCommand, size: int) -> data.DockerCommand:
-    return command[:size]
-
-
 def assert_restart_commands(commands: data.DockerCommands) -> None:
-    assert _docker_prefix(commands[0], 2) == [data.DOCKER, "stop"]
+    assert commands[0][:2] == [data.DOCKER, "stop"]
     assert commands[0][2] == data.CODING_AGENT_CONTAINER
-    assert _docker_prefix(commands[1], 4) == [
+    assert commands[1][:4] == [
         data.DOCKER,
         "rm",
         "-f",
         data.CODING_AGENT_CONTAINER,
     ]
-    assert _docker_prefix(commands[-1], 3) == [
+    assert commands[-1][:3] == [
         data.DOCKER,
         data.RUN_COMMAND,
         data.DETACHED_FLAG,
@@ -31,14 +27,26 @@ def assert_build_cmds(
     root: Path,
     dockerfile_name: str,
 ) -> None:
-    assert _docker_prefix(commands[0], 3) == [data.DOCKER, "image", "inspect"]
-    assert _docker_prefix(commands[1], 2) == [data.DOCKER, "build"]
+    assert commands[0][:3] == [data.DOCKER, "image", "inspect"]
+    assert commands[1][:2] == [data.DOCKER, "build"]
     assert str(root / dockerfile_name) in commands[1]
-    assert _docker_prefix(commands[2], 3) == [
+    assert commands[2][:3] == [
         data.DOCKER,
         data.RUN_COMMAND,
         data.DETACHED_FLAG,
     ]
+
+
+def assert_runtime_resolution(
+    command: data.DockerCommand,
+    *,
+    image: str,
+    module: str,
+    pythonpath: str,
+) -> None:
+    assert image in command
+    assert module in command
+    assert f"PYTHONPATH={pythonpath}" in command
 
 
 def _assert_compose_service_metadata(compose_path: Path) -> None:

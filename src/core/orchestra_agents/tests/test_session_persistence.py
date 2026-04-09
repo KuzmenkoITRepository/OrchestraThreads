@@ -5,13 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from core.orchestra_agents.agent_mux_runtime.event_types import NormalizedEvent
-from core.orchestra_agents.agent_mux_runtime.session_state import (
+from core.orchestra_agents.backends.agent_mux.internal.event_types import NormalizedEvent
+from core.orchestra_agents.backends.agent_mux.internal.session_state import (
     RuntimeSession,
     load_session_state,
     save_session_state,
 )
-from core.orchestra_agents.agent_mux_runtime.session_types import (
+from core.orchestra_agents.backends.agent_mux.internal.session_types import (
     RoutingKey,
     SessionId,
     SessionLifecycle,

@@ -13,7 +13,7 @@ runtime:
   command:
     - python
     - -m
-    - agent_runtime.main
+    - core.orchestra_agents.backends.agent_mux.main
   mounts:
     - type: bind
       source: ../../
@@ -22,7 +22,7 @@ runtime:
   env:
     AGENT_HTTP_HOST: 0.0.0.0
     AGENT_HTTP_PORT: "8787"
-    PYTHONPATH: /workspace/src:/workspace/agents/__AGENT_SLUG__
+    PYTHONPATH: /workspace/src
     OMNIROUTE_URL: http://orchestra-omniroute:20128
     AGENT_MUX_BINARY: agent-mux
     AGENT_MUX_STATE_ROOT: /workspace/agents/__AGENT_SLUG__/runtime_state

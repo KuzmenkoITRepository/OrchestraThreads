@@ -5,8 +5,8 @@ import tempfile
 from typing import Any
 from unittest import IsolatedAsyncioTestCase, main, mock
 
-from agents.sgr.agent_runtime.backend import SGRMinimaxBackend, configure_mcp_tools
-from agents.sgr.agent_runtime.tool_exec import execute_single
+from core.orchestra_agents.backends.sgr import SGRMinimaxBackend, configure_mcp_tools
+from core.orchestra_agents.backends.sgr.tool_exec import execute_single
 from core.orchestra_agents.runtime import EventDelivery
 from core.orchestra_agents.tests.template_helpers.sgr_fake_omniroute import FakeOmniRoute
 from core.orchestra_agents.tests.template_helpers.sgr_responses import _text_response
@@ -121,7 +121,7 @@ class SGRMCPAndSessionTests(IsolatedAsyncioTestCase):
                 os.environ[key] = prev_val
 
     async def test_multi_tool_registration(self) -> None:
-        from agents.sgr.agent_runtime.mcp_loader import _register_server_tools
+        from core.orchestra_agents.backends.sgr.mcp_loader import _register_server_tools
 
         fake = _FakeMCPServer()
         servers: dict[str, Any] = {}
@@ -134,7 +134,7 @@ class SGRMCPAndSessionTests(IsolatedAsyncioTestCase):
         self.assertNotIn("fallback", servers)
 
     async def test_fallback_registration(self) -> None:
-        from agents.sgr.agent_runtime.mcp_loader import _register_server_tools
+        from core.orchestra_agents.backends.sgr.mcp_loader import _register_server_tools
 
         fake = _FakeMCPServer()
         servers: dict[str, Any] = {}

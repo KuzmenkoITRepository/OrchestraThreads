@@ -93,6 +93,7 @@ def _build_backend(
         config={
             "omniroute_url": f"http://127.0.0.1:{_free_port()}",
             "omniroute_api_key": "omniroute-test-key",
+            "threads_url": "http://127.0.0.1:8788",
             "llm_route_policy": "codex_only",
             "model": "cx/gpt-5.1-codex-mini",
             "agent_mux_binary": str(fixture.agent_mux_binary),
@@ -102,7 +103,7 @@ def _build_backend(
             "mcp_servers": mcp_servers,
         },
         system_prompt="Use configured tools for external actions.",
-        http_endpoint="http://orchestra-agent-generic_worker:8787",
+        http_endpoint=None,
     )
 
 

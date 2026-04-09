@@ -7,7 +7,10 @@ from pathlib import Path
 from core.orchestra_agents.scaffold import ScaffoldOptions, scaffold_agent
 
 _UTF8 = "utf-8"
-_AGENT_RUNTIME_DIR = "agent_runtime"
+
+
+def _command_block(module_name: str) -> str:
+    return f"- python\n    - -m\n    - {module_name}"
 
 
 class ScaffoldAgentTests(unittest.TestCase):
@@ -24,11 +27,14 @@ class ScaffoldAgentTests(unittest.TestCase):
             )
 
             manifest_text = (output_dir / "manifest.yaml").read_text(encoding=_UTF8)
-            main_text = (output_dir / _AGENT_RUNTIME_DIR / "main.py").read_text(encoding=_UTF8)
             self.assertIn("slug: coding_agent", manifest_text)
             self.assertIn("type: codex_framework", manifest_text)
             self.assertIn("Coding Agent", manifest_text)
-            self.assertIn("coding_agent", main_text)
+            self.assertIn(
+                _command_block("core.orchestra_agents.backends.example.main"),
+                manifest_text,
+            )
+            self.assertFalse((output_dir / "agent_runtime").exists())
 
     def test_scaffold_mux_template_creates_wrappers(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -44,13 +50,14 @@ class ScaffoldAgentTests(unittest.TestCase):
             )
 
             manifest_text = (output_dir / "manifest.yaml").read_text(encoding=_UTF8)
-            backend_text = (output_dir / _AGENT_RUNTIME_DIR / "backend.py").read_text(
-                encoding=_UTF8
-            )
 
             self.assertIn("slug: thread_worker", manifest_text)
             self.assertIn("type: agent_mux", manifest_text)
-            self.assertIn("class AgentMuxBackend", backend_text)
+            self.assertIn(
+                _command_block("core.orchestra_agents.backends.agent_mux.main"),
+                manifest_text,
+            )
+            self.assertFalse((output_dir / "agent_runtime").exists())
             self._assert_generated_configs(output_dir)
 
     def test_scaffold_opencode_creates_files(self) -> None:
@@ -67,14 +74,14 @@ class ScaffoldAgentTests(unittest.TestCase):
             )
 
             manifest_text = (output_dir / "manifest.yaml").read_text(encoding=_UTF8)
-            backend_text = (output_dir / _AGENT_RUNTIME_DIR / "backend.py").read_text(
-                encoding=_UTF8
-            )
 
             self.assertIn("slug: opencode_agent", manifest_text)
             self.assertIn("type: opencode_omo", manifest_text)
-            self.assertIn("OpencodeOmoBackend", backend_text)
-            self.assertTrue((output_dir / _AGENT_RUNTIME_DIR / "main.py").exists())
+            self.assertIn(
+                _command_block("core.orchestra_agents.backends.opencode.main"),
+                manifest_text,
+            )
+            self.assertFalse((output_dir / "agent_runtime").exists())
             self.assertTrue((output_dir / "system_prompt.md").exists())
 
     def _assert_generated_configs(self, output_dir: Path) -> None:

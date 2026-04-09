@@ -15,7 +15,7 @@ import unittest
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 from aiohttp import web
@@ -124,19 +124,34 @@ class TestSchedulerCronServiceE2E(unittest.TestCase):  # noqa: WPS214 - acceptan
     ) -> None:
         elapsed = _POLL_INTERVAL
         history: list[Any] = []
+        run: dict[str, object] | None = None
         while elapsed < _MAX_WAIT_SECONDS:
             history = await store.get_run_history(job_id)
-            if history:
+            run = self._successful_run(history)
+            if run is not None:
                 break
             await asyncio.sleep(_POLL_INTERVAL)
             elapsed += _POLL_INTERVAL
 
+        if run is None:
+            run = self._successful_run(history)
+
         self.assertGreaterEqual(len(history), 1)
-        run = history[0]
+        self.assertIsNotNone(run)
+        assert run is not None
         self.assertEqual(run["status"], "success")
         self.assertIsNotNone(run["finished_at"])
 
         await self._assert_run_count(store, job_name)
+
+    @staticmethod
+    def _successful_run(history: list[Any]) -> dict[str, object] | None:
+        if not history:
+            return None
+        candidate = cast(dict[str, object], history[0])
+        if candidate.get("status") == "success":
+            return candidate
+        return None
 
     async def _assert_run_count(self, store: Any, job_name: str) -> None:
         elapsed = _POLL_INTERVAL

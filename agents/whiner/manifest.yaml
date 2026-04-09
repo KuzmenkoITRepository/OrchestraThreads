@@ -13,7 +13,7 @@ runtime:
   command:
     - python
     - -m
-    - agent_runtime.main
+    - core.orchestra_agents.backends.opencode.main
   mounts:
     - type: bind
       source: ../../
@@ -27,7 +27,7 @@ runtime:
     AGENT_HTTP_HOST: 0.0.0.0
     AGENT_HTTP_PORT: "8787"
     OPENCODE_RUNTIME_STATE_ROOT: /tmp/opencode-runtime/whiner
-    PYTHONPATH: /workspace/src:/workspace/agents/whiner
+    PYTHONPATH: /workspace/src
     ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
     LLM_PROXY_URL: http://host.docker.internal:8100
     TASK_REGISTRY_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
@@ -55,7 +55,7 @@ backend:
         env:
           ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
           ORCHESTRA_THREADS_AGENT_SLUG: whiner
-          PYTHONPATH: /workspace/src:/workspace/agents/whiner
+          PYTHONPATH: /workspace/src
       - name: task_registry
         command: python
         args:
@@ -63,7 +63,7 @@ backend:
           - core.task_registry.mcp_server
         env:
           TASK_REGISTRY_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
-          PYTHONPATH: /workspace/src:/workspace/agents/whiner
+          PYTHONPATH: /workspace/src
           LOG_LEVEL: INFO
       - name: docker_mcp
         command: python
@@ -71,5 +71,5 @@ backend:
           - -m
           - core.docker_mcp.mcp_server
         env:
-          PYTHONPATH: /workspace/src:/workspace/agents/whiner
+          PYTHONPATH: /workspace/src
           LOG_LEVEL: INFO

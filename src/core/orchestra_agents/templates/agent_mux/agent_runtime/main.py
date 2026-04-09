@@ -1,11 +1,14 @@
+"""Thin agent-mux template entrypoint using shared runtime bootstrap."""
+
+from __future__ import annotations
+
+from core.orchestra_agents.runtime.bootstrap import run_backend
+from core.orchestra_agents.templates.agent_mux.agent_runtime.backend import (
+    AgentMuxBackend,
+)
+
+
 def main() -> None:
-    """Run the template agent-mux backend with shared bootstrap logic."""
-
-    from core.orchestra_agents.agent_mux_runtime.bootstrap import run_backend
-    from core.orchestra_agents.templates.agent_mux.agent_runtime.backend import (
-        AgentMuxBackend,
-    )
-
     run_backend(
         backend_factory=AgentMuxBackend,
         working_dir_fallback="/workspace/agents/__AGENT_SLUG__",

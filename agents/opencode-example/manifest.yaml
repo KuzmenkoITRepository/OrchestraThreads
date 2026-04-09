@@ -13,7 +13,7 @@ runtime:
   command:
     - python
     - -m
-    - agent_runtime.main
+    - core.orchestra_agents.backends.opencode.main
   mounts:
     - type: bind
       source: ../../
@@ -23,7 +23,7 @@ runtime:
     AGENT_HTTP_HOST: 0.0.0.0
     AGENT_HTTP_PORT: "8787"
     OPENCODE_RUNTIME_STATE_ROOT: /tmp/opencode-runtime/opencode-example
-    PYTHONPATH: /workspace/src:/workspace/agents/opencode-example
+    PYTHONPATH: /workspace/src
     ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
     OMNIROUTE_URL: http://host.docker.internal:8100
     LOG_LEVEL: INFO
@@ -50,4 +50,4 @@ backend:
         env:
           ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
           ORCHESTRA_THREADS_AGENT_SLUG: opencode-example
-          PYTHONPATH: /workspace/src:/workspace/agents/opencode-example
+          PYTHONPATH: /workspace/src

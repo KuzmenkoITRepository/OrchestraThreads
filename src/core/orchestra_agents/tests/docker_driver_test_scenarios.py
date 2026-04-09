@@ -171,6 +171,20 @@ class DockerScenarios:
         cmd_result, recorder = cls.start_with_build_capture(driver, manifest)
         return cmd_result, recorder.commands, root
 
+    @classmethod
+    def build_unified_run_command(
+        cls,
+        manifests_root: Path,
+        *,
+        backend_type: str,
+    ) -> data.DockerCommand:
+        manifest = data.create_unified_manifest(manifests_root, backend_type=backend_type)
+        driver = DockerDriver(manifests_root=manifests_root, default_network="agents-net")
+        return driver._build_run_command(  # noqa: SLF001
+            manifest,
+            container_name=data.CODING_AGENT_CONTAINER,
+        )
+
 
 class ComposeScenarios:
     @classmethod
@@ -199,7 +213,9 @@ class ComposeScenarios:
         compose_path.parent.mkdir(parents=True, exist_ok=True)
         compose_path.write_text("{}", encoding="utf-8")
         recorder = ComposeRunRecorder()
-        with patch(data.RUN_PATH, side_effect=recorder):
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(driver, "_container_exists", return_value=True))
+            stack.enter_context(patch(data.RUN_PATH, side_effect=recorder))
             cmd_result = driver.stop("coding_agent", remove=remove)
         return cmd_result, recorder.commands, compose_path
 
@@ -215,7 +231,9 @@ def mux_build_context(tmpdir: str) -> tuple[Path, AgentManifest, DockerDriver]:
     root = Path(tmpdir)
     agents_root = root / "agents"
     agents_root.mkdir()
-    (root / "Dockerfile.agent_mux_runtime").write_text("FROM scratch\n", encoding="utf-8")
+    dockerfile = root / "docker" / "backends" / "agent_mux" / "Dockerfile"
+    dockerfile.parent.mkdir(parents=True, exist_ok=True)
+    dockerfile.write_text("FROM scratch\n", encoding="utf-8")
     return (
         root,
         data.create_manifest(agents_root, image=data.MUX_RUNTIME_IMAGE),

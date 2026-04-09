@@ -1,26 +1,52 @@
 from __future__ import annotations
 
 import json
-import os
 import tempfile
-import unittest
+from pathlib import Path
 from subprocess import CompletedProcess
-from unittest.mock import patch
+from unittest import TestCase
+from unittest import mock as umock
 
-from core.orchestra_agents.docker_driver import DockerDriver
-from core.orchestra_agents.manifest import AgentManifest
+from core.orchestra_agents import (
+    docker_driver as docker_driver_module,
+)
+from core.orchestra_agents import (
+    manifest as manifest_module,
+)
 from core.orchestra_agents.tests import docker_driver_test_assertions as assertions
 from core.orchestra_agents.tests import docker_driver_test_data as data
 from core.orchestra_agents.tests import docker_driver_test_scenarios as scenarios
 
 _CORE_CONTEXT = scenarios.mux_build_context
-_COMPOSE_CONTEXT = scenarios.mux_build_context
 
 
-class DockerDriverCoreTests(unittest.TestCase):
+def _legacy_manifest(root: Path) -> manifest_module.AgentManifest:
+    return data.create_manifest(root, image=data.AGENT_IMAGE)
+
+
+def _legacy_rendered_env(
+    root: Path,
+) -> tuple[manifest_module.AgentManifest, dict[str, str]]:
+    legacy = _legacy_manifest(root)
+    driver = docker_driver_module.DockerDriver(manifests_root=root)
+    rendered = driver._render_env(  # noqa: SLF001
+        legacy,
+        docker_driver_module.resolve_backend_runtime(legacy),
+        container_name=data.CODING_AGENT_CONTAINER,
+    )
+    return legacy, rendered
+
+
+class _DockerDriverRootMixin:
+    @staticmethod
+    def root(tmpdir: str) -> Path:
+        return _CORE_CONTEXT(tmpdir)[0]
+
+
+class DockerDriverCoreTests(_DockerDriverRootMixin, TestCase):
     def test_build_run_cmd_env_mounts(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            root = _CORE_CONTEXT(tmpdir)[0]
+            root = self.root(tmpdir)
             command = scenarios.DockerScenarios.build_run_command(root)
             rendered = " ".join(command)
             for snippet in (
@@ -35,19 +61,19 @@ class DockerDriverCoreTests(unittest.TestCase):
                 self.assertIn(snippet, rendered)
 
     def test_status_combines_docker_and_health(self) -> None:
-        manifest = AgentManifest.from_dict(data.manifest_payload())
-        driver = DockerDriver(manifests_root="/tmp")
+        manifest = data.create_manifest(Path("/tmp"), image=data.AGENT_IMAGE)
+        driver = docker_driver_module.DockerDriver(manifests_root="/tmp")
         state = {
             "Running": True,
             "Status": data.RUNNING_KEY,
             "StartedAt": "2025-01-01T00:00:00Z",
             "Error": "",
         }
-        with patch(
+        with umock.patch(
             data.RUN_PATH,
             return_value=CompletedProcess([], 0, json.dumps(state), ""),
         ):
-            with patch.object(
+            with umock.patch.object(
                 driver,
                 "_probe_health",
                 return_value={"ok": True, "payload": {data.STATUS_KEY: "ok"}},
@@ -61,8 +87,8 @@ class DockerDriverCoreTests(unittest.TestCase):
 
     def test_start_uses_docker_run_for_new(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            root = _CORE_CONTEXT(tmpdir)[0]
-            driver = DockerDriver(manifests_root=root)
+            root = self.root(tmpdir)
+            driver = docker_driver_module.DockerDriver(manifests_root=root)
             cmd_result, command = scenarios.DockerScenarios.start_with_capture(
                 driver,
                 data.create_manifest(root),
@@ -79,21 +105,22 @@ class DockerDriverCoreTests(unittest.TestCase):
 
     def test_empty_passthrough_keeps_env(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            root = _CORE_CONTEXT(tmpdir)[0]
+            root = self.root(tmpdir)
             manifest = scenarios.DockerScenarios.manifest_with_passthrough(root)
-            driver = DockerDriver(manifests_root=root)
-            with patch.dict(os.environ, {data.OPENAI_API_KEY: ""}, clear=False):
+            driver = docker_driver_module.DockerDriver(manifests_root=root)
+            with umock.patch.dict("os.environ", {data.OPENAI_API_KEY: ""}, clear=False):
                 rendered = driver._render_env(  # noqa: SLF001
                     manifest,
+                    docker_driver_module.resolve_backend_runtime(manifest),
                     container_name=data.CODING_AGENT_CONTAINER,
                 )
             self.assertEqual(rendered[data.OPENAI_API_KEY], "manifest-secret")
 
     def test_restart_recreates_container(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            root = _CORE_CONTEXT(tmpdir)[0]
+            root = self.root(tmpdir)
             manifest = data.create_manifest(root)
-            driver = DockerDriver(manifests_root=root)
+            driver = docker_driver_module.DockerDriver(manifests_root=root)
             recorder = scenarios.DockerScenarios.restart_with_capture(driver, manifest)
             assertions.assert_restart_commands(recorder.commands)
 
@@ -101,15 +128,16 @@ class DockerDriverCoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             cmd_result, commands, root = scenarios.DockerScenarios.run_mux_build(tmpdir)
             self.assertTrue(cmd_result[data.EXISTS_KEY])
-            assertions.assert_build_cmds(commands, root, "Dockerfile.agent_mux_runtime")
+            assertions.assert_build_cmds(commands, root, "docker/backends/agent_mux/Dockerfile")
 
     def test_start_builds_missing_opencode(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            root = _CORE_CONTEXT(tmpdir)[0]
-            dockerfile = root / "Dockerfile.opencode_runtime"
+            root = self.root(tmpdir)
+            dockerfile = root / "docker" / "backends" / "opencode" / "Dockerfile"
+            dockerfile.parent.mkdir(parents=True, exist_ok=True)
             dockerfile.write_text("FROM scratch\n", encoding="utf-8")
             cmd_result, recorder = scenarios.DockerScenarios.start_with_build_capture(
-                DockerDriver(manifests_root=root, build_context_root=root),
+                docker_driver_module.DockerDriver(manifests_root=root, build_context_root=root),
                 data.create_manifest(
                     root,
                     image=data.OPENCODE_RUNTIME_IMAGE,
@@ -119,14 +147,69 @@ class DockerDriverCoreTests(unittest.TestCase):
             assertions.assert_build_cmds(
                 recorder.commands,
                 root,
-                "Dockerfile.opencode_runtime",
+                "docker/backends/opencode/Dockerfile",
             )
 
 
-class DockerDriverComposeTests(unittest.TestCase):
+class DockerDriverRuntimeResolutionTests(_DockerDriverRootMixin, TestCase):
+    def test_agent_mux_runtime_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = self.root(tmpdir)
+            command = scenarios.DockerScenarios.build_unified_run_command(
+                root,
+                backend_type="agent_mux",
+            )
+            assertions.assert_runtime_resolution(
+                command,
+                image=data.MUX_RUNTIME_IMAGE,
+                module="core.orchestra_agents.backends.agent_mux.main",
+                pythonpath="/workspace/src",
+            )
+
+    def test_sgr_runtime_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = self.root(tmpdir)
+            command = scenarios.DockerScenarios.build_unified_run_command(
+                root,
+                backend_type="sgr_minimax",
+            )
+            assertions.assert_runtime_resolution(
+                command,
+                image=data.SGR_RUNTIME_IMAGE,
+                module="core.orchestra_agents.backends.sgr.main",
+                pythonpath="/workspace/src:/workspace",
+            )
+
+    def test_opencode_runtime_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = self.root(tmpdir)
+            command = scenarios.DockerScenarios.build_unified_run_command(
+                root,
+                backend_type="opencode_omo",
+            )
+            assertions.assert_runtime_resolution(
+                command,
+                image=data.OPENCODE_RUNTIME_IMAGE,
+                module="core.orchestra_agents.backends.opencode.main",
+                pythonpath="/workspace/src",
+            )
+
+    def test_legacy_runtime_overrides_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = self.root(tmpdir)
+            legacy, rendered = _legacy_rendered_env(root)
+
+            self.assertEqual(legacy.runtime.image, data.AGENT_IMAGE)
+            self.assertEqual(
+                docker_driver_module.resolve_backend_runtime(legacy).image, data.AGENT_IMAGE
+            )
+            self.assertEqual(rendered["LOG_LEVEL"], "INFO")
+
+
+class DockerDriverComposeTests(_DockerDriverRootMixin, TestCase):
     def setUp(self) -> None:
-        self._compose_env_patch = patch.dict(
-            os.environ,
+        self._compose_env_patch = umock.patch.dict(
+            "os.environ",
             {data.COMPOSE_ENV_KEY: ""},
             clear=False,
         )
@@ -137,23 +220,23 @@ class DockerDriverComposeTests(unittest.TestCase):
 
     def test_start_uses_compose(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            root = _COMPOSE_CONTEXT(tmpdir)[0]
+            root = self.root(tmpdir)
             assertions.assert_compose_start(
                 scenarios.ComposeScenarios.start_with_capture(root),
             )
 
     def test_stop_uses_compose_rm(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            root = _COMPOSE_CONTEXT(tmpdir)[0]
+            root = self.root(tmpdir)
             assertions.assert_compose_stop(
                 scenarios.ComposeScenarios.stop_with_capture(root, remove=True),
             )
 
     def test_stop_fails_without_compose_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            root = _COMPOSE_CONTEXT(tmpdir)[0]
+            root = self.root(tmpdir)
             driver, recorder = scenarios.ComposeScenarios.stop_missing_file_with_capture(root)
-            with patch(data.RUN_PATH, side_effect=recorder):
+            with umock.patch(data.RUN_PATH, side_effect=recorder):
                 with self.assertRaisesRegex(RuntimeError, "compose metadata missing"):
                     driver.stop("coding_agent", remove=True)
             self.assertEqual(

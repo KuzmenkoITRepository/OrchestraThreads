@@ -95,15 +95,7 @@ class HttpWriteHandlers(_ServiceHandlerBase):
         payload = await request.json()
         try:
             return await self._json_from_service(
-                self._service.send_message(
-                    from_agent_slug=str(payload.get("from_agent_slug") or "").strip(),
-                    to_agent_slug=str(payload.get("to_agent_slug") or "").strip(),
-                    message_text=str(payload.get("message_text") or ""),
-                    thread_id=str(payload.get("thread_id") or "").strip() or None,
-                    parent_thread_id=str(payload.get("parent_thread_id") or "").strip() or None,
-                    client_request_id=str(payload.get("client_request_id") or "").strip()
-                    or uuid.uuid4().hex,
-                )
+                self._service.send_message(legacy_kwargs=_message_payload(payload))
             )
         except Exception as exc:
             return json_error(str(exc) or "internal server error", status=500)
@@ -112,18 +104,34 @@ class HttpWriteHandlers(_ServiceHandlerBase):
         payload = await request.json()
         try:
             return await self._json_from_service(
-                self._service.send_notification(
-                    from_agent_slug=str(payload.get("from_agent_slug") or "").strip(),
-                    to_agent_slug=str(payload.get("to_agent_slug") or "").strip(),
-                    thread_id=str(payload.get("thread_id") or "").strip(),
-                    status=str(payload.get("status") or "").strip(),
-                    message_text=str(payload.get("message_text") or ""),
-                    client_request_id=str(payload.get("client_request_id") or "").strip()
-                    or uuid.uuid4().hex,
-                )
+                self._service.send_notification(legacy_kwargs=_notification_payload(payload))
             )
         except Exception as exc:
             return json_error(str(exc) or "internal server error", status=500)
+
+
+def _message_payload(payload: dict[str, object]) -> dict[str, object]:
+    return {
+        "from_agent_slug": str(payload.get("from_agent_slug") or "").strip(),
+        "to_agent_slug": str(payload.get("to_agent_slug") or "").strip(),
+        "message_text": str(payload.get("message_text") or ""),
+        "thread_id": str(payload.get("thread_id") or "").strip() or None,
+        "parent_thread_id": str(payload.get("parent_thread_id") or "").strip() or None,
+        "client_request_id": str(payload.get("client_request_id") or "").strip()
+        or uuid.uuid4().hex,
+    }
+
+
+def _notification_payload(payload: dict[str, object]) -> dict[str, object]:
+    return {
+        "from_agent_slug": str(payload.get("from_agent_slug") or "").strip(),
+        "to_agent_slug": str(payload.get("to_agent_slug") or "").strip(),
+        "thread_id": str(payload.get("thread_id") or "").strip(),
+        "status": str(payload.get("status") or "").strip(),
+        "message_text": str(payload.get("message_text") or ""),
+        "client_request_id": str(payload.get("client_request_id") or "").strip()
+        or uuid.uuid4().hex,
+    }
 
 
 class HttpHandlers:

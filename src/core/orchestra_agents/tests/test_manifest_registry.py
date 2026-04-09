@@ -24,7 +24,11 @@ class AgentManifestTests(unittest.TestCase):
                 "runtime": {
                     "driver": "docker",
                     "image": "agent-image:latest",
-                    "command": ["python", "-m", "agent_runtime.main"],
+                    "command": [
+                        "python",
+                        "-m",
+                        "core.orchestra_agents.backends.example.main",
+                    ],
                     "mounts": [
                         {
                             "type": "bind",

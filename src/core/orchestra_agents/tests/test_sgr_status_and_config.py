@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from agents.sgr.agent_runtime import config_builder as _config_builder
-from agents.sgr.agent_runtime import status_tracking as _status_tracking
+from core.orchestra_agents.backends.sgr import config_builder as _config_builder
+from core.orchestra_agents.backends.sgr import status_tracking as _status_tracking
 
 
 class SGRStatusAndConfigTests(unittest.TestCase):

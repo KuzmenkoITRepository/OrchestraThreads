@@ -4,10 +4,10 @@ import os
 import tempfile
 import unittest
 
-from agents.sgr.agent_runtime import event_loop as _event_loop
-from agents.sgr.agent_runtime.backend import SGRMinimaxBackend
-from agents.sgr.agent_runtime.internal_tools import execute_internal_tool
-from agents.sgr.agent_runtime.support.outcomes import ParsedToolCall
+from core.orchestra_agents.backends.sgr import SGRMinimaxBackend
+from core.orchestra_agents.backends.sgr import event_loop as _event_loop
+from core.orchestra_agents.backends.sgr.internal_tools import execute_internal_tool
+from core.orchestra_agents.backends.sgr.support.outcomes import ParsedToolCall
 from core.orchestra_agents.runtime import EventDelivery
 from core.orchestra_agents.tests.template_helpers.sgr_fake_omniroute import FakeOmniRoute
 

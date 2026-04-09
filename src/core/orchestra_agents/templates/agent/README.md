@@ -12,11 +12,11 @@ What is fixed:
   - `GET /last_status`
   - `POST /clear_context`
 - backend adapter boundary behind `TemplateBackend`
+- runtime entrypoint comes from `core.orchestra_agents.backends.example.main`
 
 What you replace:
 
 - `backend_type` in `manifest.yaml`
-- `agent_runtime/backend.py`
 - optional prompt in `system_prompt.md`
 - runtime `env` and mounts in `manifest.yaml`
 

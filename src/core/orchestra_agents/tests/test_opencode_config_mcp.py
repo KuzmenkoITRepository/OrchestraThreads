@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.orchestra_agents.templates.opencode.agent_runtime.config_mcp import build_mcp_block
+from core.orchestra_agents.backends.opencode.config_mcp import build_mcp_block
 
 
 class OpencodeMCPConfigTests(unittest.TestCase):
@@ -21,7 +21,7 @@ class OpencodeMCPConfigTests(unittest.TestCase):
                             "args": ["-m", "core.orchestra_thread.mcp_server"],
                             "env": {
                                 "ORCHESTRA_THREADS_URL": "http://orchestra-threads:8788",
-                                "PYTHONPATH": "/workspace/src:/workspace/agents/whiner",
+                                "PYTHONPATH": "/workspace/src",
                             },
                         },
                         {
@@ -30,7 +30,7 @@ class OpencodeMCPConfigTests(unittest.TestCase):
                             "args": ["-m", "core.task_registry.mcp_server"],
                             "env": {
                                 "TASK_REGISTRY_DATABASE_URL": "postgresql://example",
-                                "PYTHONPATH": "/workspace/src:/workspace/agents/whiner",
+                                "PYTHONPATH": "/workspace/src",
                             },
                         },
                     ]

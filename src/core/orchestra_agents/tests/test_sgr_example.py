@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from typing import Any
 
-from agents.sgr.agent_runtime.backend import SGRMinimaxBackend
+from core.orchestra_agents.backends.sgr import SGRMinimaxBackend, configure_mcp_tools
 from core.orchestra_agents.tests.template_helpers.sgr_assertions import (
     _assert_inactive_delivery_result,
     _assert_message_event_result,
@@ -55,8 +55,6 @@ class _SGRMinimaxBackendBase(unittest.IsolatedAsyncioTestCase):
             system_prompt="Use thread_send or thread_status via OrchestraThreads MCP tools.",
         )
         self._fake_mcp = FakeToolMCPServer(self.thread_service)
-        from agents.sgr.agent_runtime.backend import configure_mcp_tools
-
         configure_mcp_tools(
             self.backend,
             {

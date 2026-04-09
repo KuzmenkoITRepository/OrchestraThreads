@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core.orchestra_agents.agent_mux_runtime.session_types import (
+from core.orchestra_agents.backends.agent_mux.internal.session_types import (
     RoutingKey,
     SessionId,
     SessionLifecycle,
