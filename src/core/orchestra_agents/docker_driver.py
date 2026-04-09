@@ -5,53 +5,16 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from dataclasses import dataclass
+import typing as t
 from pathlib import Path
-from types import MappingProxyType
-from typing import Any, TypedDict, Unpack
-from urllib import error as urlerror
-from urllib import request as urlrequest
-from urllib.parse import urlparse
 
-from core.orchestra_agents.manifest import AgentManifest, RuntimeMount
-
-_LOCAL_RUNTIME_IMAGE_DOCKERFILES = MappingProxyType(
-    {
-        "orchestra-agent-runtime:latest": "Dockerfile.agent_runtime",
-        "orchestra-agent-mux-runtime:latest": "Dockerfile.agent_mux_runtime",
-        "orchestra-opencode-runtime:latest": "Dockerfile.opencode_runtime",
-    }
+from core.orchestra_agents import (
+    _docker_driver_support as driver_support,
 )
-
-
-@dataclass(frozen=True)
-class _StatusContext:
-    slug: str
-    backend_type: str | None
-    endpoint: str | None
-    container_name: str
-
-
-class _InitOptions(TypedDict, total=False):
-    container_name_prefix: str | None
-    default_network: str | None
-    manifest_mount_path: str | None
-    health_timeout_seconds: float | None
-    build_context_root: str | Path | None
-    auto_build_local_images: bool | None
-    compose_project_name: str | None
-    compose_runtime_dir: str | Path | None
-
-
-_JSON = dict[str, Any]
-_HealthResult = tuple[_JSON | None, bool, str | None, bool]
-_LabelMap = dict[str, str]
-_COMPOSE_SERVICE_PREFIX = "agent-"
-_COMPOSE_RUNTIME_DIRNAME = ".orchestra_agents_compose"
-_COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
-_COMPOSE_SERVICE_LABEL = "com.docker.compose.service"
-_COMPOSE_RUNTIME_DIR_MODE = 0o777
-_COMPOSE_RUNTIME_FILE_MODE = 0o666
+from core.orchestra_agents import (
+    _docker_runtime_resolution as runtime_resolution,
+)
+from core.orchestra_agents import manifest as manifest_module
 
 
 def _run(cmd: list[str], *, timeout: int = 120) -> subprocess.CompletedProcess[str]:
@@ -63,6 +26,23 @@ def _run(cmd: list[str], *, timeout: int = 120) -> subprocess.CompletedProcess[s
     )
 
 
+def _endpoint_port(endpoint: str) -> int | None:
+    without_scheme = endpoint.split("://", maxsplit=1)[-1]
+    host_and_path = without_scheme.split("/", maxsplit=1)[0]
+    if ":" not in host_and_path:
+        return None
+    raw_port = host_and_path.rsplit(":", maxsplit=1)[-1].strip()
+    if not raw_port.isdigit():
+        return None
+    return int(raw_port)
+
+
+def resolve_backend_runtime(
+    manifest: manifest_module.AgentManifest,
+) -> runtime_resolution.ResolvedRuntimeConfig:
+    return runtime_resolution.resolve_backend_runtime(manifest)
+
+
 class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intentionally a single stateful orchestration boundary.
     """Start, stop, and inspect agent containers through Docker."""
 
@@ -70,7 +50,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         self,
         *,
         manifests_root: str | Path,
-        **options: Unpack[_InitOptions],
+        **options: t.Unpack[driver_support.InitOptions],
     ) -> None:
         self.manifests_root = Path(manifests_root).expanduser().resolve()
         self.container_name_prefix = str(
@@ -121,7 +101,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
     def container_name(self, slug: str) -> str:
         return f"{self.container_name_prefix}{str(slug).strip()}"
 
-    def start(self, manifest: AgentManifest) -> dict[str, Any]:
+    def start(self, manifest: manifest_module.AgentManifest) -> dict[str, t.Any]:
         self._ensure_startable(manifest)
         container_name = self.container_name(manifest.slug)
         if self._compose_enabled():
@@ -130,7 +110,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             return self._start_existing(manifest, container_name=container_name)
         return self._start_new(manifest, container_name=container_name)
 
-    def stop(self, slug: str, *, remove: bool = False) -> dict[str, Any]:
+    def stop(self, slug: str, *, remove: bool = False) -> dict[str, t.Any]:
         container_name = self.container_name(slug)
         if self._compose_enabled():
             return self._stop_compose_service(slug, container_name=container_name, remove=remove)
@@ -151,7 +131,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             removed = True
         return self._stop_result(slug, container_name=container_name, removed=removed)
 
-    def restart(self, manifest: AgentManifest) -> dict[str, Any]:
+    def restart(self, manifest: manifest_module.AgentManifest) -> dict[str, t.Any]:
         self._ensure_startable(manifest)
         container_name = self.container_name(manifest.slug)
         if self._compose_enabled():
@@ -163,7 +143,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         status["message"] = "container recreated"
         return status
 
-    def status(self, manifest_or_slug: AgentManifest | str) -> dict[str, Any]:
+    def status(self, manifest_or_slug: manifest_module.AgentManifest | str) -> dict[str, t.Any]:
         context = self._status_context(manifest_or_slug)
         inspect_result = _run(
             ["docker", "inspect", context.container_name, "--format", "{{json .State}}"],
@@ -174,22 +154,29 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         state = json.loads(inspect_result.stdout.strip() or "{}")
         return self._running_status(context, state)
 
-    def _status_context(self, manifest_or_slug: AgentManifest | str) -> _StatusContext:
-        if isinstance(manifest_or_slug, AgentManifest):
+    def _status_context(
+        self,
+        manifest_or_slug: manifest_module.AgentManifest | str,
+    ) -> driver_support.StatusContext:
+        if isinstance(manifest_or_slug, manifest_module.AgentManifest):
             slug = manifest_or_slug.slug
             container_name = self.container_name(slug)
-            return _StatusContext(
+            return driver_support.StatusContext(
                 slug=slug,
                 backend_type=manifest_or_slug.backend.type,
                 endpoint=manifest_or_slug.resolve_http_endpoint(container_name=container_name),
                 container_name=container_name,
             )
         slug = str(manifest_or_slug).strip()
-        return _StatusContext(
+        return driver_support.StatusContext(
             slug=slug, backend_type=None, endpoint=None, container_name=self.container_name(slug)
         )
 
-    def _missing_status(self, context: _StatusContext, stderr: str) -> dict[str, Any]:
+    def _missing_status(
+        self,
+        context: driver_support.StatusContext,
+        stderr: str,
+    ) -> dict[str, t.Any]:
         return {
             "slug": context.slug,
             "container_name": context.container_name,
@@ -204,7 +191,11 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             "last_error": stderr.strip() or None,
         }
 
-    def _running_status(self, context: _StatusContext, state: dict[str, Any]) -> dict[str, Any]:
+    def _running_status(
+        self,
+        context: driver_support.StatusContext,
+        state: dict[str, t.Any],
+    ) -> dict[str, t.Any]:
         health_status, healthy, last_error, running = self._resolve_health(
             state, endpoint=context.endpoint
         )
@@ -224,10 +215,10 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
 
     def _resolve_health(
         self,
-        state: dict[str, Any],
+        state: dict[str, t.Any],
         *,
         endpoint: str | None,
-    ) -> _HealthResult:
+    ) -> driver_support.HealthResult:
         running = bool(state.get("Running"))
         last_error = str(state.get("Error") or "").strip() or None
         docker_health_status = self._docker_health_status(state)
@@ -239,7 +230,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             return self._http_health_status(endpoint, last_error)
         return None, False, last_error, running
 
-    def _docker_health_status(self, state: dict[str, Any]) -> str:
+    def _docker_health_status(self, state: dict[str, t.Any]) -> str:
         health_state = state.get("Health")
         if isinstance(health_state, dict):
             return str(health_state.get("Status") or "").strip().lower()
@@ -249,7 +240,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         self,
         last_error: str | None,
         docker_health_status: str,
-    ) -> _HealthResult:
+    ) -> driver_support.HealthResult:
         return (
             {
                 "ok": True,
@@ -266,7 +257,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         self,
         last_error: str | None,
         docker_health_status: str,
-    ) -> _HealthResult:
+    ) -> driver_support.HealthResult:
         return (
             {
                 "ok": False,
@@ -283,14 +274,20 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         self,
         endpoint: str,
         last_error: str | None,
-    ) -> _HealthResult:
+    ) -> driver_support.HealthResult:
         health_status = self._probe_health(endpoint)
         healthy = bool(health_status.get("ok"))
         if not healthy and last_error is None:
             last_error = str(health_status.get("error") or "").strip() or None
         return health_status, healthy, last_error, True
 
-    def _build_run_command(self, manifest: AgentManifest, *, container_name: str) -> list[str]:
+    def _build_run_command(
+        self,
+        manifest: manifest_module.AgentManifest,
+        *,
+        container_name: str,
+    ) -> list[str]:
+        resolved_runtime = runtime_resolution.resolve_backend_runtime(manifest)
         command = [
             "docker",
             "run",
@@ -342,22 +339,29 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
                 ["-e", f"ORCHESTRA_AGENT_SYSTEM_PROMPT_FILE={manifest.agent.system_prompt_file}"]
             )
 
-        for key, value in self._render_env(manifest, container_name=container_name).items():
+        for key, value in self._render_env(
+            manifest,
+            resolved_runtime,
+            container_name=container_name,
+        ).items():
             command.extend(["-e", f"{key}={value}"])
 
-        for mount in manifest.runtime.mounts:
+        for mount in resolved_runtime.mounts:
             command.extend(
                 ["-v", self._render_mount_spec(manifest, mount, container_name=container_name)]
             )
 
-        if manifest.runtime.entrypoint:
-            command.extend(["--entrypoint", manifest.runtime.entrypoint])
+        if resolved_runtime.entrypoint:
+            command.extend(["--entrypoint", resolved_runtime.entrypoint])
 
-        command.append(manifest.runtime.image)
-        command.extend(manifest.runtime.command)
+        command.append(resolved_runtime.image)
+        command.extend(resolved_runtime.command)
         return command
 
-    def _resolve_compose_project_name(self, options: _InitOptions) -> str | None:
+    def _resolve_compose_project_name(
+        self,
+        options: driver_support.InitOptions,
+    ) -> str | None:
         project_name = str(
             options.get("compose_project_name")
             or os.getenv("ORCHESTRA_AGENTS_COMPOSE_PROJECT_NAME")
@@ -365,11 +369,14 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         ).strip()
         return project_name or None
 
-    def _resolve_compose_runtime_dir(self, options: _InitOptions) -> Path:
+    def _resolve_compose_runtime_dir(
+        self,
+        options: driver_support.InitOptions,
+    ) -> Path:
         runtime_dir = Path(
             options.get("compose_runtime_dir")
             or os.getenv("ORCHESTRA_AGENTS_COMPOSE_RUNTIME_DIR")
-            or self.manifests_root.parent / _COMPOSE_RUNTIME_DIRNAME
+            or self.manifests_root.parent / driver_support.COMPOSE_RUNTIME_DIRNAME
         )
         return runtime_dir.expanduser().resolve()
 
@@ -378,7 +385,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
 
     def _compose_service_name(self, slug: str) -> str:
         normalized_slug = str(slug).strip().replace("_", "-")
-        return f"{_COMPOSE_SERVICE_PREFIX}{normalized_slug}"
+        return f"{driver_support.COMPOSE_SERVICE_PREFIX}{normalized_slug}"
 
     def _compose_file_path(self, slug: str) -> Path:
         return self._compose_runtime_dir / f"{slug}.yaml"
@@ -396,9 +403,10 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         ]
 
     def _start_with_compose(
-        self, manifest: AgentManifest, *, container_name: str
-    ) -> dict[str, Any]:
-        self._ensure_image_available(manifest.runtime.image)
+        self, manifest: manifest_module.AgentManifest, *, container_name: str
+    ) -> dict[str, t.Any]:
+        resolved_runtime = runtime_resolution.resolve_backend_runtime(manifest)
+        self._ensure_image_available(resolved_runtime.image)
         compose_file = self._write_compose_file(manifest, container_name=container_name)
         self._remove_legacy_container_if_needed(manifest, container_name=container_name)
         self._run_checked(
@@ -417,9 +425,10 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         return status
 
     def _restart_with_compose(
-        self, manifest: AgentManifest, *, container_name: str
-    ) -> dict[str, Any]:
-        self._ensure_image_available(manifest.runtime.image)
+        self, manifest: manifest_module.AgentManifest, *, container_name: str
+    ) -> dict[str, t.Any]:
+        resolved_runtime = runtime_resolution.resolve_backend_runtime(manifest)
+        self._ensure_image_available(resolved_runtime.image)
         compose_file = self._write_compose_file(manifest, container_name=container_name)
         self._remove_legacy_container_if_needed(manifest, container_name=container_name)
         self._run_checked(
@@ -444,7 +453,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         *,
         container_name: str,
         remove: bool,
-    ) -> dict[str, Any]:
+    ) -> dict[str, t.Any]:
         compose_file = self._compose_file_path(slug)
         container_exists = self._container_exists(container_name)
         self._ensure_compose_metadata(
@@ -485,7 +494,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         if remove and compose_file.exists():
             compose_file.unlink()
 
-    def _stop_result(self, slug: str, *, container_name: str, removed: bool) -> dict[str, Any]:
+    def _stop_result(self, slug: str, *, container_name: str, removed: bool) -> dict[str, t.Any]:
         return {
             "slug": slug,
             "container_name": container_name,
@@ -494,7 +503,13 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             "removed": removed,
         }
 
-    def _stop_with_docker(self, slug: str, *, container_name: str, remove: bool) -> dict[str, Any]:
+    def _stop_with_docker(
+        self,
+        slug: str,
+        *,
+        container_name: str,
+        remove: bool,
+    ) -> dict[str, t.Any]:
         self._run_checked(
             ["docker", "stop", container_name],
             timeout=120,
@@ -510,47 +525,70 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             removed = True
         return self._stop_result(slug, container_name=container_name, removed=removed)
 
-    def _write_compose_file(self, manifest: AgentManifest, *, container_name: str) -> Path:
+    def _write_compose_file(
+        self,
+        manifest: manifest_module.AgentManifest,
+        *,
+        container_name: str,
+    ) -> Path:
         compose_file = self._compose_file_path(manifest.slug)
         compose_file.parent.mkdir(
             parents=True,
             exist_ok=True,
-            mode=_COMPOSE_RUNTIME_DIR_MODE,
+            mode=driver_support.COMPOSE_RUNTIME_DIR_MODE,
         )
-        os.chmod(compose_file.parent, _COMPOSE_RUNTIME_DIR_MODE)
+        os.chmod(compose_file.parent, driver_support.COMPOSE_RUNTIME_DIR_MODE)
         payload = self._compose_payload(manifest, container_name=container_name)
         compose_file.write_text(
             json.dumps(payload, indent=2),
             encoding="utf-8",
         )
-        os.chmod(compose_file, _COMPOSE_RUNTIME_FILE_MODE)
+        os.chmod(compose_file, driver_support.COMPOSE_RUNTIME_FILE_MODE)
         return compose_file
 
-    def _compose_payload(self, manifest: AgentManifest, *, container_name: str) -> dict[str, Any]:
+    def _compose_payload(
+        self,
+        manifest: manifest_module.AgentManifest,
+        *,
+        container_name: str,
+    ) -> dict[str, t.Any]:
+        resolved_runtime = runtime_resolution.resolve_backend_runtime(manifest)
         service_name = self._compose_service_name(manifest.slug)
-        service: dict[str, Any] = {
-            "image": manifest.runtime.image,
+        service: dict[str, t.Any] = {
+            "image": resolved_runtime.image,
             "container_name": container_name,
             "restart": "no",
             "working_dir": manifest.agent.working_dir,
             "labels": self._orchestra_labels(manifest),
-            "environment": self._compose_environment(manifest, container_name=container_name),
+            "environment": self._compose_environment(
+                manifest,
+                resolved_runtime,
+                container_name=container_name,
+            ),
             "healthcheck": self._compose_healthcheck(manifest, container_name=container_name),
-            "volumes": self._compose_volumes(manifest, container_name=container_name),
-            "command": list(manifest.runtime.command),
+            "volumes": self._compose_volumes(
+                manifest,
+                resolved_runtime,
+                container_name=container_name,
+            ),
+            "command": list(resolved_runtime.command),
         }
-        if manifest.runtime.entrypoint:
-            service["entrypoint"] = manifest.runtime.entrypoint
+        if resolved_runtime.entrypoint:
+            service["entrypoint"] = resolved_runtime.entrypoint
         return {"services": {service_name: service}}
 
-    def _orchestra_labels(self, manifest: AgentManifest) -> dict[str, str]:
+    def _orchestra_labels(self, manifest: manifest_module.AgentManifest) -> dict[str, str]:
         return {
             "orchestra.agent_slug": manifest.slug,
             "orchestra.backend_type": manifest.backend.type,
         }
 
     def _compose_environment(
-        self, manifest: AgentManifest, *, container_name: str
+        self,
+        manifest: manifest_module.AgentManifest,
+        resolved_runtime: runtime_resolution.ResolvedRuntimeConfig,
+        *,
+        container_name: str,
     ) -> dict[str, str]:
         environment = {
             "ORCHESTRA_AGENT_SLUG": manifest.slug,
@@ -567,12 +605,18 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         }
         if manifest.agent.system_prompt_file:
             environment["ORCHESTRA_AGENT_SYSTEM_PROMPT_FILE"] = manifest.agent.system_prompt_file
-        environment.update(self._render_env(manifest, container_name=container_name))
+        environment.update(
+            self._render_env(
+                manifest,
+                resolved_runtime,
+                container_name=container_name,
+            )
+        )
         return environment
 
     def _compose_healthcheck(
-        self, manifest: AgentManifest, *, container_name: str
-    ) -> dict[str, Any]:
+        self, manifest: manifest_module.AgentManifest, *, container_name: str
+    ) -> dict[str, t.Any]:
         return {
             "test": [
                 "CMD-SHELL",
@@ -584,15 +628,21 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             "retries": 3,
         }
 
-    def _compose_volumes(self, manifest: AgentManifest, *, container_name: str) -> list[str]:
+    def _compose_volumes(
+        self,
+        manifest: manifest_module.AgentManifest,
+        resolved_runtime: runtime_resolution.ResolvedRuntimeConfig,
+        *,
+        container_name: str,
+    ) -> list[str]:
         volumes = [f"{self.manifests_root}:{self.manifest_mount_path}:ro"]
-        for mount in manifest.runtime.mounts:
+        for mount in resolved_runtime.mounts:
             volumes.append(self._render_mount_spec(manifest, mount, container_name=container_name))
         return volumes
 
     def _remove_legacy_container_if_needed(
         self,
-        manifest: AgentManifest,
+        manifest: manifest_module.AgentManifest,
         *,
         container_name: str,
     ) -> None:
@@ -608,18 +658,23 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
 
     def _container_matches_compose_service(
         self,
-        manifest: AgentManifest,
+        manifest: manifest_module.AgentManifest,
         *,
         container_name: str,
     ) -> bool:
         labels = self._container_labels(container_name)
         if not labels:
             return False
-        return labels.get(_COMPOSE_PROJECT_LABEL) == self.compose_project_name and labels.get(
-            _COMPOSE_SERVICE_LABEL
+        return labels.get(
+            driver_support.COMPOSE_PROJECT_LABEL
+        ) == self.compose_project_name and labels.get(
+            driver_support.COMPOSE_SERVICE_LABEL
         ) == self._compose_service_name(manifest.slug)
 
-    def _container_labels(self, container_name: str) -> _LabelMap:
+    def _container_labels(
+        self,
+        container_name: str,
+    ) -> driver_support.LabelMap:
         result = _run(
             ["docker", "inspect", container_name, "--format", "{{json .Config.Labels}}"],
             timeout=30,
@@ -631,7 +686,12 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             return {}
         return {str(key): str(value) for key, value in raw_labels.items()}
 
-    def _healthcheck_command(self, manifest: AgentManifest, *, container_name: str) -> str:
+    def _healthcheck_command(
+        self,
+        manifest: manifest_module.AgentManifest,
+        *,
+        container_name: str,
+    ) -> str:
         health_url = self._internal_health_url(manifest, container_name=container_name)
         return (
             "python -c "
@@ -639,7 +699,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             f"sys.exit(0 if urllib.request.urlopen('{health_url}').status == 200 else 1)\""
         )
 
-    def _ensure_startable(self, manifest: AgentManifest) -> None:
+    def _ensure_startable(self, manifest: manifest_module.AgentManifest) -> None:
         if manifest.runtime.driver != "docker":
             raise RuntimeError(f"unsupported runtime driver {manifest.runtime.driver!r}")
         if not manifest.is_active:
@@ -647,28 +707,39 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         if manifest.manifest_path is None or not manifest.manifest_path.exists():
             raise RuntimeError(f"manifest path is missing or invalid for {manifest.slug}")
 
-    def _container_manifest_path(self, manifest: AgentManifest) -> str:
+    def _container_manifest_path(self, manifest: manifest_module.AgentManifest) -> str:
         assert manifest.manifest_path is not None
         relative_path = manifest.manifest_path.relative_to(self.manifests_root)
         return f"{self.manifest_mount_path}/{relative_path.as_posix()}"
 
-    def _render_env(self, manifest: AgentManifest, *, container_name: str) -> dict[str, str]:
+    def _render_env(
+        self,
+        manifest: manifest_module.AgentManifest,
+        resolved_runtime: runtime_resolution.ResolvedRuntimeConfig,
+        *,
+        container_name: str,
+    ) -> dict[str, str]:
         values = {
             "slug": manifest.slug,
             "container_name": container_name,
             "backend_type": manifest.backend.type,
+            "working_dir": manifest.agent.working_dir,
         }
         rendered: dict[str, str] = {}
-        for key, value in manifest.runtime.env.items():
+        for key, value in resolved_runtime.env.items():
             rendered[key] = str(value).format(**values)
-        for key in manifest.runtime.env_passthrough:
+        for key in resolved_runtime.env_passthrough:
             host_value = os.getenv(key)
             if host_value is not None and host_value != "":
                 rendered[key] = host_value
         return rendered
 
     def _render_mount_spec(
-        self, manifest: AgentManifest, mount: RuntimeMount, *, container_name: str
+        self,
+        manifest: manifest_module.AgentManifest,
+        mount: manifest_module.RuntimeMount,
+        *,
+        container_name: str,
     ) -> str:
         values = {
             "slug": manifest.slug,
@@ -681,8 +752,8 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
 
     def _resolve_mount_source(
         self,
-        manifest: AgentManifest,
-        mount: RuntimeMount,
+        manifest: manifest_module.AgentManifest,
+        mount: manifest_module.RuntimeMount,
         values: dict[str, str],
     ) -> str:
         source = str(mount.source).format(**values)
@@ -690,7 +761,11 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             return source
         return str(self._resolve_bind_source_path(manifest, source))
 
-    def _resolve_bind_source_path(self, manifest: AgentManifest, source: str) -> Path:
+    def _resolve_bind_source_path(
+        self,
+        manifest: manifest_module.AgentManifest,
+        source: str,
+    ) -> Path:
         source_path = Path(source)
         if source_path.is_absolute():
             resolved_path = source_path
@@ -728,10 +803,12 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         return result.returncode == 0
 
     def _ensure_image_available(self, image: str) -> None:
+        from core.orchestra_agents import _docker_runtime_specs as runtime_specs
+
         normalized = str(image or "").strip()
         if not normalized or self._image_exists(normalized):
             return
-        dockerfile_name = _LOCAL_RUNTIME_IMAGE_DOCKERFILES.get(normalized)
+        dockerfile_name = runtime_specs.local_runtime_dockerfile(normalized)
         if dockerfile_name is None:
             return
         if not self.auto_build_local_images:
@@ -766,7 +843,9 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             line.strip() for line in result.stdout.splitlines() if line.strip()
         }
 
-    def _probe_health(self, endpoint: str) -> dict[str, Any]:
+    def _probe_health(self, endpoint: str) -> dict[str, t.Any]:
+        from urllib import error as urlerror
+
         url = f"{endpoint.rstrip('/')}/healthz"
         try:
             payload = self._read_health_payload(url)
@@ -794,19 +873,30 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             "payload": {"raw": payload},
         }
 
-    def _read_health_payload(self, url: str) -> Any:
+    def _read_health_payload(self, url: str) -> t.Any:
+        from urllib import request as urlrequest
+
         with urlrequest.urlopen(url, timeout=self.health_timeout_seconds) as response:
             return json.loads(response.read().decode("utf-8") or "{}")
 
-    def _internal_health_url(self, manifest: AgentManifest, *, container_name: str) -> str:
+    def _internal_health_url(
+        self,
+        manifest: manifest_module.AgentManifest,
+        *,
+        container_name: str,
+    ) -> str:
         endpoint = manifest.resolve_http_endpoint(container_name=container_name)
-        parsed = urlparse(endpoint)
-        port = parsed.port
+        port = _endpoint_port(endpoint)
         if port is None:
-            port = 443 if parsed.scheme == "https" else 80
+            port = 443 if endpoint.startswith("https://") else 80
         return f"http://127.0.0.1:{port}/healthz"
 
-    def _start_existing(self, manifest: AgentManifest, *, container_name: str) -> dict[str, Any]:
+    def _start_existing(
+        self,
+        manifest: manifest_module.AgentManifest,
+        *,
+        container_name: str,
+    ) -> dict[str, t.Any]:
         if not self._container_running(container_name):
             self._run_checked(
                 ["docker", "start", container_name],
@@ -817,8 +907,14 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         status["message"] = "container already exists"
         return status
 
-    def _start_new(self, manifest: AgentManifest, *, container_name: str) -> dict[str, Any]:
-        self._ensure_image_available(manifest.runtime.image)
+    def _start_new(
+        self,
+        manifest: manifest_module.AgentManifest,
+        *,
+        container_name: str,
+    ) -> dict[str, t.Any]:
+        resolved_runtime = runtime_resolution.resolve_backend_runtime(manifest)
+        self._ensure_image_available(resolved_runtime.image)
         result = self._run_checked(
             self._build_run_command(manifest, container_name=container_name),
             timeout=300,

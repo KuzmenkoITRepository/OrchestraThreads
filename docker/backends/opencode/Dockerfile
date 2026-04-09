@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+WORKDIR /workspace
+
+COPY requirements.txt /tmp/requirements.txt
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bash ca-certificates curl docker.io docker-cli git \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir -r /tmp/requirements.txt \
+    && useradd --create-home --uid 10001 appuser
+
+# opencode is a self-contained ELF binary (~160 MB); copy from host build context.
+COPY docker/opencode-bin/opencode /usr/local/bin/opencode
+RUN chmod +x /usr/local/bin/opencode
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+USER root
+
+CMD ["python", "-m", "core.orchestra_agents.backends.opencode.main"]
