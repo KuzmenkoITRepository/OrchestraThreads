@@ -25,8 +25,7 @@ The defaults target the Codex/GPT OmniRoute family. Override them with env to sw
 
 - `manifest.yaml`: lifecycle and runtime wiring for `orchestra_agents`
 - `system_prompt.md`: prompt used for the Minimax call
-- `agent_runtime/backend.py`: runtime/backend adapter
-- `agent_runtime/main.py`: agent entrypoint
+- canonical backend/runtime code: `src/core/orchestra_agents/backends/sgr/`
 
 ## Run
 
@@ -80,3 +79,4 @@ curl http://127.0.0.1:8788/agents
 - It uses compact event context to keep prompt size down.
 - `inactive` can wake the agent proactively when `react_to_inactive=true`.
 - Delivery dedupe still happens per incoming event id inside the runtime.
+- The manifest starts the shared canonical entrypoint `core.orchestra_agents.backends.sgr.main` rather than local agent code.

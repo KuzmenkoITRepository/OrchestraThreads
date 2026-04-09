@@ -16,7 +16,7 @@ runtime:
   command:
     - python
     - -m
-    - agent_runtime.main
+    - core.orchestra_agents.backends.sgr.main
   mounts:
     - type: bind
       source: ../../
