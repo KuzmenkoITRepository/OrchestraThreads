@@ -33,6 +33,8 @@ services:
 
   postgres:
     image: postgres:16-alpine
+    ports:
+      - "127.0.0.1:${OT_PORT_POSTGRES:-5432}:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-orchestra_threads}
       POSTGRES_USER: ${POSTGRES_USER:-orchestra}
@@ -264,6 +266,38 @@ services:
       - python
       - -m
       - core.scheduler_cron.service_main
+    restart: unless-stopped
+
+  agent-log-analysis:
+    build: .
+    image: orchestra-threads:${OT_TAG:-local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${OT_PORT_AGENT_LOG_ANALYSIS:-8794}:8794"
+    environment:
+      PYTHONPATH: /app/src
+      AGENT_LOG_ANALYSIS_HOST: ${AGENT_LOG_ANALYSIS_HOST:-0.0.0.0}
+      AGENT_LOG_ANALYSIS_PORT: ${AGENT_LOG_ANALYSIS_PORT:-8794}
+      AGENT_LOG_ANALYSIS_DATABASE_URL: ${AGENT_LOG_ANALYSIS_DATABASE_URL:-postgresql://orchestra:orchestra@postgres:5432/orchestra_threads}
+      AGENT_LOG_ANALYSIS_DB_SCHEMA: ${AGENT_LOG_ANALYSIS_DB_SCHEMA:-agent_log_analysis}
+      AGENT_LOG_ANALYSIS_INGEST_TOKEN: ${AGENT_LOG_ANALYSIS_INGEST_TOKEN:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import os,sys,urllib.request; os.environ['no_proxy']='127.0.0.1,localhost'; os.environ['NO_PROXY']='127.0.0.1,localhost'; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8794/healthz').status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command:
+      - python
+      - -m
+      - core.agent_log_analysis.service_main
     restart: unless-stopped
 
   events-engine:
@@ -501,6 +535,30 @@ services:
       - core.scheduler_cron.tests.test_executor_runtime
       - core.scheduler_cron.tests.test_scheduler_engine
       - core.scheduler_cron.tests.test_e2e_acceptance
+      - core.agent_log_analysis.tests.test_config
+      - core.agent_log_analysis.tests.test_validation_ingest
+      - core.agent_log_analysis.tests.test_validation_query
+      - core.agent_log_analysis.tests.test_store_base
+      - core.agent_log_analysis.tests.test_store_composition
+      - core.agent_log_analysis.tests.test_store_ingest
+      - core.agent_log_analysis.tests.test_store_query
+      - core.agent_log_analysis.tests.test_store_query_filters
+      - core.agent_log_analysis.tests.test_store_correlation
+      - core.agent_log_analysis.tests.test_store_raw_logs
+      - core.agent_log_analysis.tests.test_store_aggregates
+      - core.agent_log_analysis.tests.test_ingest_service
+      - core.agent_log_analysis.tests.test_event_query_service
+      - core.agent_log_analysis.tests.test_timeline_service
+      - core.agent_log_analysis.tests.test_correlation_service
+      - core.agent_log_analysis.tests.test_raw_log_service
+      - core.agent_log_analysis.tests.test_aggregation_service
+      - core.agent_log_analysis.tests.test_mcp_tools_events
+      - core.agent_log_analysis.tests.test_mcp_tools_timeline
+      - core.agent_log_analysis.tests.test_mcp_tools_correlation
+      - core.agent_log_analysis.tests.test_mcp_tools_aggregates
+      - core.agent_log_analysis.tests.test_mcp_tools_raw_logs
+      - core.agent_log_analysis.tests.test_mcp_server
+      - core.agent_log_analysis.tests.test_service_integration
     init: true
     restart: "no"
     profiles:
