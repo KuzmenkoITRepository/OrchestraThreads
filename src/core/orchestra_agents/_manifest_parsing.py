@@ -1,18 +1,21 @@
 from __future__ import annotations
 
-import shlex
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from core.orchestra_agents._backend_validation import is_known_backend, validate_backend_config
+from core.orchestra_agents._manifest_field_parsing import (
+    _detect_mount_type,
+    _FieldParsers,
+    _merge_runtime_env,
+    _parse_mounts_list,
+    _validate_driver,
+)
 from core.orchestra_agents.errors import ManifestValidationError
 
-
-def _detect_mount_type(source: str) -> str:
-    normalized = str(source).strip()
-    if normalized.startswith("/") or normalized.startswith("."):
-        return "bind"
-    return "volume"
+_logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -25,156 +28,6 @@ class ParsedManifest:
     backend: dict[str, Any]
     manifest_path: Path | None
     auto_start: bool
-
-
-class _FieldParsers:
-    @staticmethod
-    def as_dict(value: Any, field_name: str, *, errors: list[str]) -> dict[str, Any]:
-        if value is None:
-            return {}
-        if not isinstance(value, dict):
-            errors.append(f"{field_name} must be an object")
-            return {}
-        return dict(value)
-
-    @staticmethod
-    def as_bool(
-        value: Any,
-        field_name: str,
-        *,
-        errors: list[str],
-        default: bool = False,
-    ) -> bool:
-        if value is None:
-            return default
-        if isinstance(value, bool):
-            return value
-        errors.append(f"{field_name} must be a boolean")
-        return default
-
-    @staticmethod
-    def as_string(
-        value: Any,
-        field_name: str,
-        *,
-        errors: list[str],
-        required: bool = True,
-    ) -> str:
-        if value is None:
-            if required:
-                errors.append(f"{field_name} is required")
-            return ""
-        normalized = str(value).strip()
-        if required and not normalized:
-            errors.append(f"{field_name} is required")
-        return normalized
-
-    @staticmethod
-    def as_command(value: Any, field_name: str, *, errors: list[str]) -> list[str]:
-        if value is None or value == "":
-            return []
-        if isinstance(value, str):
-            return [item for item in shlex.split(value) if item]
-        if isinstance(value, list):
-            command = []
-            for index, item in enumerate(value):
-                normalized = str(item).strip()
-                if not normalized:
-                    errors.append(f"{field_name}[{index}] must not be empty")
-                    continue
-                command.append(normalized)
-            return command
-        errors.append(f"{field_name} must be a string or list of strings")
-        return []
-
-    @staticmethod
-    def allowed_peers(raw: Any, *, errors: list[str]) -> list[str]:
-        if raw is None:
-            return []
-        if not isinstance(raw, list):
-            errors.append("agent.allowed_peer_agent_slugs must be a list")
-            return []
-        allowed: list[str] = []
-        for index, item in enumerate(raw):
-            slug = str(item or "").strip()
-            if not slug:
-                errors.append(f"agent.allowed_peer_agent_slugs[{index}] must not be empty")
-                continue
-            allowed.append(slug)
-        return allowed
-
-
-class _EnvParser:
-    @staticmethod
-    def parse(
-        runtime_raw: dict[str, Any], *, errors: list[str]
-    ) -> tuple[dict[str, str], list[str]]:
-        env = _EnvParser._parse_env(runtime_raw.get("env"), errors=errors)
-        env_passthrough = _EnvParser._parse_env_passthrough(
-            runtime_raw.get("env_passthrough"),
-            errors=errors,
-        )
-        return env, env_passthrough
-
-    @staticmethod
-    def _parse_env(raw_value: Any, *, errors: list[str]) -> dict[str, str]:
-        env_raw = raw_value or {}
-        if not isinstance(env_raw, dict):
-            errors.append("runtime.env must be an object")
-            return {}
-        env: dict[str, str] = {}
-        for key, value in env_raw.items():
-            normalized_key = str(key).strip()
-            if normalized_key:
-                env[normalized_key] = str(value)
-        return env
-
-    @staticmethod
-    def _parse_env_passthrough(raw_value: Any, *, errors: list[str]) -> list[str]:
-        passthrough_raw = raw_value or []
-        if not isinstance(passthrough_raw, list):
-            errors.append("runtime.env_passthrough must be a list")
-            return []
-        env_passthrough: list[str] = []
-        for item in passthrough_raw:
-            normalized = str(item).strip()
-            if normalized:
-                env_passthrough.append(normalized)
-        return env_passthrough
-
-
-class _MountParser:
-    @staticmethod
-    def parse(raw: Any, index: int, *, errors: list[str]) -> dict[str, str]:
-        mount_raw = _FieldParsers.as_dict(raw, f"runtime.mounts[{index}]", errors=errors)
-        mount_type = _FieldParsers.as_string(
-            mount_raw.get("type", _detect_mount_type(str(mount_raw.get("source") or ""))),
-            f"runtime.mounts[{index}].type",
-            errors=errors,
-        ).lower()
-        if mount_type not in {"bind", "volume"}:
-            errors.append(f"runtime.mounts[{index}].type must be bind or volume")
-        mount_mode = _FieldParsers.as_string(
-            mount_raw.get("mode", "rw"),
-            f"runtime.mounts[{index}].mode",
-            errors=errors,
-        ).lower()
-        if mount_mode not in {"rw", "ro"}:
-            errors.append(f"runtime.mounts[{index}].mode must be rw or ro")
-        return {
-            "type": mount_type or "bind",
-            "source": _FieldParsers.as_string(
-                mount_raw.get("source"),
-                f"runtime.mounts[{index}].source",
-                errors=errors,
-            ),
-            "target": _FieldParsers.as_string(
-                mount_raw.get("target"),
-                f"runtime.mounts[{index}].target",
-                errors=errors,
-            ),
-            "mode": mount_mode or "rw",
-        }
 
 
 class _LegacyNormalizer:
@@ -251,9 +104,11 @@ class _ManifestParser:
         self.raw = raw
         self.manifest_path = manifest_path
         self.errors: list[str] = []
+        self._backend_type: str = ""
 
     def parse(self) -> ParsedManifest:
         normalized = self._normalize_legacy()
+        self._backend_type = _extract_backend_type(normalized)
         status = _FieldParsers.as_string(
             normalized.get("status", "active"),
             "status",
@@ -307,6 +162,7 @@ class _ManifestParser:
 
     def _parse_runtime(self, raw: Any) -> dict[str, Any]:
         runtime_raw = _FieldParsers.as_dict(raw, "runtime", errors=self.errors)
+        image_required = not is_known_backend(self._backend_type)
         runtime_payload: dict[str, Any] = {
             "driver": _FieldParsers.as_string(
                 runtime_raw.get("driver", "docker"),
@@ -317,6 +173,7 @@ class _ManifestParser:
                 runtime_raw.get("image"),
                 "runtime.image",
                 errors=self.errors,
+                required=image_required,
             ),
             "entrypoint": str(runtime_raw.get("entrypoint") or "").strip() or None,
             "command": _FieldParsers.as_command(
@@ -324,25 +181,11 @@ class _ManifestParser:
                 "runtime.command",
                 errors=self.errors,
             ),
-            "mounts": self._parse_mounts(runtime_raw.get("mounts")),
+            "mounts": _parse_mounts_list(runtime_raw.get("mounts"), errors=self.errors),
         }
-        runtime_driver = str(runtime_payload["driver"] or "")
-        if runtime_driver and runtime_driver != "docker":
-            self.errors.append("runtime.driver must be docker in v1")
-        env, env_passthrough = _EnvParser.parse(runtime_raw, errors=self.errors)
-        runtime_payload["env"] = env
-        runtime_payload["env_passthrough"] = env_passthrough
+        _validate_driver(runtime_payload, errors=self.errors)
+        _merge_runtime_env(runtime_payload, runtime_raw, errors=self.errors)
         return runtime_payload
-
-    def _parse_mounts(self, raw: Any) -> list[dict[str, str]]:
-        mounts_raw = raw or []
-        if isinstance(mounts_raw, list):
-            mounts: list[dict[str, str]] = []
-            for index, item in enumerate(mounts_raw):
-                mounts.append(_MountParser.parse(item, index, errors=self.errors))
-            return mounts
-        self.errors.append("runtime.mounts must be a list")
-        return []
 
     def _parse_backend(self, raw: Any) -> dict[str, Any]:
         backend_raw = _FieldParsers.as_dict(raw, "backend", errors=self.errors)
@@ -350,14 +193,28 @@ class _ManifestParser:
         if not isinstance(backend_config, dict):
             self.errors.append("backend.config must be an object")
             backend_config = {}
+        backend_type = _FieldParsers.as_string(
+            backend_raw.get("type"),
+            "backend.type",
+            errors=self.errors,
+        )
+        validate_backend_config(
+            backend_type,
+            dict(backend_config),
+            errors=self.errors,
+        )
         return {
-            "type": _FieldParsers.as_string(
-                backend_raw.get("type"),
-                "backend.type",
-                errors=self.errors,
-            ),
+            "type": backend_type,
             "config": backend_config,
         }
 
     def _normalize_legacy(self) -> dict[str, Any]:
         return _LegacyNormalizer.normalize(self.raw)
+
+
+def _extract_backend_type(normalized: dict[str, Any]) -> str:
+    """Extract backend type string from a normalized manifest dict."""
+    backend_raw = normalized.get("backend")
+    if not isinstance(backend_raw, dict):
+        return ""
+    return str(backend_raw.get("type") or "").strip()
