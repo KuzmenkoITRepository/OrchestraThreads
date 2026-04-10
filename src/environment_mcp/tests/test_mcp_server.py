@@ -6,7 +6,7 @@ from pathlib import Path
 
 from environment_mcp.command_runner import CommandResult
 from environment_mcp.config import EnvironmentMCPConfig
-from environment_mcp.mcp_server import EnvironmentMCPServer
+from environment_mcp.mcp.server import EnvironmentMCPServer
 
 
 class _FakeRunner:
@@ -64,7 +64,7 @@ class EnvironmentMCPServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("environment_create", structured["tools"])
         self.assertIn("Use only environment_* MCP tools", result["content"][0]["text"])
 
-    async def test_environment_list_enriches_paths_and_ports(self) -> None:
+    async def test_environment_list_enriches_ports(self) -> None:
         env_dir = self.envs_root / "qa"
         workspace_dir = env_dir / "workspace"
         workspace_dir.mkdir(parents=True)
@@ -88,7 +88,7 @@ class EnvironmentMCPServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(environment["workspace_exists"])
         self.assertEqual(environment["urls"]["threads"], "http://127.0.0.1:30123")
 
-    async def test_environment_create_invokes_provision_script(self) -> None:
+    async def test_environment_create_invokes_script(self) -> None:
         env_dir = self.envs_root / "sandbox"
         (env_dir / "workspace").mkdir(parents=True)
         self.runner.results["provision-environment.sh"] = CommandResult(

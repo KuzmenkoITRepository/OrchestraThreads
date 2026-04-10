@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from environment_mcp.command_runner import AsyncCommandRunner, CommandResult
 from environment_mcp.config import EnvironmentMCPConfig
 from environment_mcp.environment_state import enrich_environment_rows, environment_payload
-from environment_mcp.mcp_protocol import JsonDict
+from environment_mcp.mcp.protocol import JsonDict
 
 
 class _ArgumentParser:

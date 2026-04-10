@@ -6,10 +6,10 @@ import os
 import sys
 from typing import Any
 
-from core.orchestra_thread.mcp_transport import encode_message, read_message
+from core.orchestra_thread.mcp.transport import encode_message, read_message
 from environment_mcp.command_runner import CommandRunner
 from environment_mcp.config import EnvironmentMCPConfig, load_config
-from environment_mcp.mcp_protocol import Payloads, ServerHelpers
+from environment_mcp.mcp.protocol import Payloads, ServerHelpers
 from environment_mcp.tools import EnvironmentTools
 
 logger = logging.getLogger(__name__)

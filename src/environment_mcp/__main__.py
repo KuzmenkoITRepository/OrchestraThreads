@@ -1,4 +1,4 @@
-from environment_mcp.mcp_server import main
+from environment_mcp.mcp.server import main
 
 if __name__ == "__main__":
     main()
