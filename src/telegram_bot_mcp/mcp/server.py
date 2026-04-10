@@ -8,8 +8,8 @@ from typing import Any, cast
 
 from telegram_bot_mcp.client import TelegramBotListenerClient
 from telegram_bot_mcp.config import TelegramBotMCPConfig, load_config
-from telegram_bot_mcp.mcp_protocol import JsonDict, Payloads, ServerHelpers
-from telegram_bot_mcp.mcp_transport import ProtocolIO
+from telegram_bot_mcp.mcp.protocol import JsonDict, Payloads, ServerHelpers
+from telegram_bot_mcp.mcp.transport import ProtocolIO
 from telegram_bot_mcp.request_parsing import required_text, required_user_id
 
 logger = logging.getLogger(__name__)

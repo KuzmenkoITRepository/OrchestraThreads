@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from telegram_bot_mcp.mcp_protocol import JsonDict
+from telegram_bot_mcp.mcp.protocol import JsonDict
 
 
 def required_user_id(arguments: JsonDict) -> int:

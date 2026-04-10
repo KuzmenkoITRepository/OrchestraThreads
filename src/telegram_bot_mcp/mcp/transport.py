@@ -4,7 +4,7 @@ import asyncio
 import json
 from typing import Any, cast
 
-from telegram_bot_mcp.mcp_protocol import JsonDict
+from telegram_bot_mcp.mcp.protocol import JsonDict
 
 
 class ProtocolIO:
