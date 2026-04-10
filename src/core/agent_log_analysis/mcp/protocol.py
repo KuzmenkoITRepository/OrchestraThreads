@@ -6,7 +6,7 @@ from importlib import import_module
 from typing import Any, Protocol, cast
 
 from core.agent_log_analysis.errors import EventNotFoundError, ValidationError
-from core.agent_log_analysis.mcp_tools_events import handle_tools_call as handle_event_tools_call
+from core.agent_log_analysis.mcp.tools.events import handle_tools_call as handle_event_tools_call
 
 JSON_MAP = dict[str, Any]
 PROTOCOL_VERSION = "2024-11-05"
@@ -173,15 +173,15 @@ class MCPProtocol:
         if name in {"get_event", "query_agent_events"}:
             return await handle_event_tools_call(runtime, name=name, arguments=arguments)
         if name in {"aggregate_agent_events", "get_agent_raw_logs"}:
-            module_name = "core.agent_log_analysis.mcp_tools_aggregates"
+            module_name = "core.agent_log_analysis.mcp.tools.aggregates"
             if name == "get_agent_raw_logs":
-                module_name = "core.agent_log_analysis.mcp_tools_raw_logs"
+                module_name = "core.agent_log_analysis.mcp.tools.raw_logs"
             tool_module = import_module(module_name)
             tool_handler = cast(Any, getattr(tool_module, name))
             return cast(JSON_MAP, await tool_handler(runtime, arguments))
         if name not in {"get_agent_timeline", "get_agent_correlation_chain"}:
             raise RuntimeError(f"Unknown tool: {name}")
-        timeline_module = import_module("core.agent_log_analysis.mcp_tools_timeline")
+        timeline_module = import_module("core.agent_log_analysis.mcp.tools.timeline")
         tool_handler = cast(Any, getattr(timeline_module, name))
         return cast(JSON_MAP, await tool_handler(runtime, arguments))
 

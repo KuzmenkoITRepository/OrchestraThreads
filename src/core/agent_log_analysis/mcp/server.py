@@ -8,14 +8,14 @@ import os
 import sys
 from typing import Any, Protocol
 
-from core.agent_log_analysis.mcp_protocol import (
+from core.agent_log_analysis.mcp.protocol import (
     INVALID_REQUEST_CODE,
     PROTOCOL_VERSION,
     MCPProtocol,
     list_tools,
 )
-from core.agent_log_analysis.service_runtime import AgentLogAnalysisService
-from core.orchestra_thread.mcp_transport import encode_message, read_message
+from core.agent_log_analysis.service import AgentLogAnalysisService
+from core.orchestra_thread.mcp.transport import encode_message, read_message
 
 logger = logging.getLogger(__name__)
 

@@ -6,7 +6,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import cast
 
-from core.agent_log_analysis.service_runtime import AgentLogAnalysisService
+from core.agent_log_analysis.service import AgentLogAnalysisService
 from core.agent_log_analysis.tests.service_integration_fixtures import analysis_payloads
 
 

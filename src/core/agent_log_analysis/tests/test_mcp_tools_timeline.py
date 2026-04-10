@@ -49,5 +49,5 @@ class _TimelineToolsProtocol(Protocol):
 
 
 def _tools() -> _TimelineToolsProtocol:
-    tools_module = import_module("core.agent_log_analysis.mcp_tools_timeline")
+    tools_module = import_module("core.agent_log_analysis.mcp.tools.timeline")
     return cast(_TimelineToolsProtocol, tools_module)

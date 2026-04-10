@@ -62,5 +62,5 @@ class _RawLogToolsProtocol(Protocol):
 
 
 def _tools() -> _RawLogToolsProtocol:
-    tools_module = import_module("core.agent_log_analysis.mcp_tools_raw_logs")
+    tools_module = import_module("core.agent_log_analysis.mcp.tools.raw_logs")
     return cast(_RawLogToolsProtocol, tools_module)

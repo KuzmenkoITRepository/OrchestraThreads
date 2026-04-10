@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 
-from core.agent_log_analysis.service_runtime import run_service
+from core.agent_log_analysis.service import run_service
 
 
 def configure_logging() -> None:

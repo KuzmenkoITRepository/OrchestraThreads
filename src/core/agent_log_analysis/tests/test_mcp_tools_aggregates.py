@@ -50,5 +50,5 @@ class _AggregateToolsProtocol(Protocol):
 
 
 def _tools() -> _AggregateToolsProtocol:
-    tools_module = import_module("core.agent_log_analysis.mcp_tools_aggregates")
+    tools_module = import_module("core.agent_log_analysis.mcp.tools.aggregates")
     return cast(_AggregateToolsProtocol, tools_module)
