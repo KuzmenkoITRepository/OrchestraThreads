@@ -6,7 +6,7 @@ import asyncio
 import json
 from typing import Any, cast
 
-from telegram_mcp.mcp_protocol import JsonDict
+from telegram_mcp.mcp.protocol import JsonDict
 
 
 def encode_message(payload: JsonDict, *, framing: str) -> bytes:

@@ -48,7 +48,7 @@ Optional:
 ```yaml
 mcp_servers:
   - name: send_telegram_message
-    module: telegram_mcp.mcp_server
+    module: telegram_mcp.mcp.server
     class: TelegramMCPServer
     schema_fn: telegram_tool_definitions
 ```

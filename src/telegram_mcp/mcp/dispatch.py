@@ -5,22 +5,22 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from telegram_mcp.mcp_payloads import (
+from telegram_mcp.mcp.payloads import (
     resource_templates_result,
     resources_result,
     tools_result,
 )
-from telegram_mcp.mcp_protocol import (
+from telegram_mcp.mcp.protocol import (
     JsonDict,
     initialize_result,
     jsonrpc_error,
     jsonrpc_result,
     mcp_content,
 )
-from telegram_mcp.mcp_send import safe_handle_send
+from telegram_mcp.mcp.send import safe_handle_send
 
 if TYPE_CHECKING:
-    from telegram_mcp.mcp_server import TelegramMCPServer
+    from telegram_mcp.mcp.server import TelegramMCPServer
 
 logger = logging.getLogger(__name__)
 

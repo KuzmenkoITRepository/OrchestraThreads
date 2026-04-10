@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from telegram_mcp.mcp_payloads import ensure_text, normalize_optional_str
-from telegram_mcp.mcp_protocol import JsonDict, mcp_content
+from telegram_mcp.mcp.payloads import ensure_text, normalize_optional_str
+from telegram_mcp.mcp.protocol import JsonDict, mcp_content
 
 if TYPE_CHECKING:
-    from telegram_mcp.mcp_server import TelegramMCPServer
+    from telegram_mcp.mcp.server import TelegramMCPServer
 
 logger = logging.getLogger(__name__)
 

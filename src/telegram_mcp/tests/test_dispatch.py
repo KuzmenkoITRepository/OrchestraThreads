@@ -4,8 +4,8 @@ import unittest
 from typing import Any
 
 from telegram_mcp.config import TelegramDefaults, TelegramMCPConfig
-from telegram_mcp.mcp_dispatch import dispatch_request
-from telegram_mcp.mcp_server import TelegramMCPServer, telegram_tool_definitions
+from telegram_mcp.mcp.dispatch import dispatch_request
+from telegram_mcp.mcp.server import TelegramMCPServer, telegram_tool_definitions
 
 
 class TelegramMCPDispatchTests(unittest.IsolatedAsyncioTestCase):

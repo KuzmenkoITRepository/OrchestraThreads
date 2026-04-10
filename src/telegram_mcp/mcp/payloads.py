@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from telegram_mcp.mcp_protocol import JsonDict
+from telegram_mcp.mcp.protocol import JsonDict
 
 
 def tools_result() -> JsonDict:

@@ -6,9 +6,9 @@ import logging
 from typing import Any
 
 from telegram_mcp.config import TelegramMCPConfig, load_config
-from telegram_mcp.mcp_payloads import tools_result
-from telegram_mcp.mcp_protocol import mcp_content
-from telegram_mcp.mcp_send import safe_handle_send
+from telegram_mcp.mcp.payloads import tools_result
+from telegram_mcp.mcp.protocol import mcp_content
+from telegram_mcp.mcp.send import safe_handle_send
 from telegram_mcp.telegram_client import TelegramHTTPClient
 
 logger = logging.getLogger(__name__)
