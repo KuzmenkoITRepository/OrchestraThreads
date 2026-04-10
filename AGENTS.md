@@ -46,9 +46,9 @@ OrchestraThreads/
 ## CODE MAP
 | Symbol / Entry | Type | Location | Role |
 |----------------|------|----------|------|
-| `main()` | service entry | `src/core/orchestra_thread/service_main.py` | boots thread service + aiohttp app |
-| `OrchestraThreadsService` | class | `src/core/orchestra_thread/service_runtime.py` | threads, agents, notifications, guide endpoints (1724 lines) |
-| `build_app()` | function | `src/core/orchestra_thread/service_runtime.py` | wires HTTP routes via `http_handlers.py` |
+| `main()` | service entry | `src/core/orchestra_thread/service/main.py` | boots thread service + aiohttp app |
+| `OrchestraThreadsService` | class | `src/core/orchestra_thread/service/runtime.py` | threads, agents, notifications, guide endpoints (1724 lines) |
+| `build_app()` | function | `src/core/orchestra_thread/service/runtime.py` | wires HTTP routes via `http_handlers.py` |
 | `ThreadStore` | class | `src/core/orchestra_thread/store.py` | mixin composition of 7 store modules |
 | `OrchestraThreadsMCPServer` | class | `src/core/orchestra_thread/mcp_server.py` | compact MCP server delegating to `mcp_thread_*` tools |
 | `HttpReadHandlers` / `HttpWriteHandlers` | classes | `src/core/orchestra_thread/http_handlers.py` | HTTP endpoint handler classes |

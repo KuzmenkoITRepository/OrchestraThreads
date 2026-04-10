@@ -61,14 +61,14 @@ backend:
     max_direct_text_retries: 2
     mcp_servers:
       - name: send_telegram_message
-        module: telegram_mcp.mcp_server
+        module: telegram_mcp.mcp.server
         class: TelegramMCPServer
         schema_fn: telegram_tool_definitions
       - name: orchestra_threads
         command: python
         args:
           - -m
-          - core.orchestra_thread.mcp_server
+          - core.orchestra_thread.mcp.server
         cwd: "{working_dir}"
         startup_timeout_sec: 15
         required: false
@@ -88,7 +88,7 @@ backend:
         command: python
         args:
           - -m
-          - core.orchestra_memory.mcp_server
+          - core.orchestra_memory.mcp.server
         cwd: "{working_dir}"
         startup_timeout_sec: 15
         required: false

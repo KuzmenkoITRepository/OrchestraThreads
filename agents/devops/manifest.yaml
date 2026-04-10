@@ -49,7 +49,7 @@ backend:
         command: python
         args:
           - -m
-          - core.orchestra_thread.mcp_server
+          - core.orchestra_thread.mcp.server
         env:
           ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
           ORCHESTRA_THREADS_AGENT_SLUG: devops

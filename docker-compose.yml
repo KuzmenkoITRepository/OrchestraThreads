@@ -504,6 +504,9 @@ services:
     environment:
       PYTHONPATH: /app/src
       ORCHESTRA_THREADS_TEST_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
+    volumes:
+      - ./src:/app/src:ro
+      - ./agents:/app/agents:ro
     command:
       - python
       - -m

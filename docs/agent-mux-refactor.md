@@ -151,7 +151,7 @@ If an agent uses OrchestraThreads tools, that is a property of the agent configu
            command: python
            args:
              - "-m"
-             - "core.orchestra_thread.mcp_server"
+             - "core.orchestra_thread.mcp.server"
            env:
              ORCHESTRA_THREADS_URL: "{ORCHESTRA_THREADS_URL}"
              PYTHONPATH: "{pythonpath}"
