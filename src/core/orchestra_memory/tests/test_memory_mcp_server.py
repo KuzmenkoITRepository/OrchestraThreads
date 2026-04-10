@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from typing import Any
 
-from core.orchestra_memory.mcp_server import OrchestraMemoryMCPServer
+from core.orchestra_memory.mcp.server import OrchestraMemoryMCPServer
 
 
 class _FakeMemoryClient:

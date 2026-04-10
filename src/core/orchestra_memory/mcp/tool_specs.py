@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.orchestra_memory.mcp_tools_common import JSON_MAP, tool
+from core.orchestra_memory.mcp.tools_common import JSON_MAP, tool
 
 
 def _string_schema() -> JSON_MAP:

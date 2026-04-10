@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.orchestra_memory.mcp_tools_common import (
+from core.orchestra_memory.mcp.tools_common import (
     JSON_MAP,
     ensure_positive_int,
     ensure_text,

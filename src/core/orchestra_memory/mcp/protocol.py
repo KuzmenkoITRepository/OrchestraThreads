@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.orchestra_memory.mcp_tool_specs import list_memory_tools
-from core.orchestra_memory.mcp_tools import (
+from core.orchestra_memory.mcp.tool_specs import list_memory_tools
+from core.orchestra_memory.mcp.tools import (
     memory_clear,
     memory_delete,
     memory_remember,
     memory_search,
 )
-from core.orchestra_memory.mcp_tools_common import JSON_MAP
+from core.orchestra_memory.mcp.tools_common import JSON_MAP
 
 TOOL_HANDLER_ITEMS = (
     ("memory_remember", memory_remember),
