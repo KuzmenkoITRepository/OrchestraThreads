@@ -48,7 +48,7 @@ backend:
         command: python
         args:
           - -m
-          - core.orchestra_memory.mcp_server
+          - core.orchestra_memory.mcp.server
         cwd: "{working_dir}"
         startup_timeout_sec: 15
         required: false

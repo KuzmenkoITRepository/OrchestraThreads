@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import AsyncMock
 
-from core.orchestra_thread.mcp_server import OrchestraThreadsMCPServer
+from core.orchestra_thread.mcp.server import OrchestraThreadsMCPServer
 
 
 def _structured(result: dict[str, object]) -> dict[str, object]:

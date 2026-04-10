@@ -2,20 +2,20 @@ from __future__ import annotations
 
 import json
 import tempfile
+from importlib import import_module
 from pathlib import Path
 from subprocess import CompletedProcess
 from unittest import TestCase
 from unittest import mock as umock
 
 from core.orchestra_agents import (
-    docker_driver as docker_driver_module,
-)
-from core.orchestra_agents import (
     manifest as manifest_module,
 )
 from core.orchestra_agents.tests import docker_driver_test_assertions as assertions
 from core.orchestra_agents.tests import docker_driver_test_data as data
 from core.orchestra_agents.tests import docker_driver_test_scenarios as scenarios
+
+docker_driver_module = import_module("core.orchestra_agents.docker_driver.driver")
 
 _CORE_CONTEXT = scenarios.mux_build_context
 

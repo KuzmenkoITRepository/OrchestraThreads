@@ -56,7 +56,7 @@ The service bootstraps its schema automatically on startup.
 
 ```bash
 export ORCHESTRA_THREADS_DATABASE_URL=postgresql://orchestra:orchestra@127.0.0.1:5432/orchestra_threads
-PYTHONPATH=src python -m core.orchestra_thread.service_main
+PYTHONPATH=src python -m core.orchestra_thread.service.main
 ```
 
 The service listens on `http://127.0.0.1:8788` by default.

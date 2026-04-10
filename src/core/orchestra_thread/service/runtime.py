@@ -5,25 +5,28 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import Any
+from importlib import import_module
+from typing import Any, cast
 
 from aiohttp import ClientSession, ClientTimeout, web
 
-from core.orchestra_thread import (
-    common,
-    guide,
-    http_handlers,
-    service_message_requests,
-    service_notification_requests,
-    service_shared,
-    store_thread_creation,
-    store_thread_events,
-)
+from core.orchestra_thread.common import ServiceError
+from core.orchestra_thread.service_message_requests import MessageRequestInput
+from core.orchestra_thread.service_notification_requests import NotificationRequestInput
 from core.orchestra_thread.service_runtime_config import (
     RuntimeConfigOverrides,
     load_runtime_config,
 )
 from core.orchestra_thread.store import ThreadStore
+
+common = import_module("core.orchestra_thread.common")
+guide = import_module("core.orchestra_thread.guide")
+http_handlers = import_module("core.orchestra_thread.http_handlers")
+service_message_requests = import_module("core.orchestra_thread.service_message_requests")
+service_notification_requests = import_module("core.orchestra_thread.service_notification_requests")
+service_shared = import_module("core.orchestra_thread.service_shared")
+store_thread_creation = import_module("core.orchestra_thread.store_thread_creation")
+store_thread_events = import_module("core.orchestra_thread.store_thread_events")
 
 logger = logging.getLogger(__name__)
 SERVICE_APP_KEY: web.AppKey[OrchestraThreadsService] = web.AppKey("OrchestraThreadsService")
@@ -39,7 +42,7 @@ def _json_success(payload: dict[str, Any]) -> web.Response:
     return web.json_response(payload)
 
 
-def _service_error_response(exc: common.ServiceError) -> web.Response:
+def _service_error_response(exc: ServiceError) -> web.Response:
     return _json_error(exc.message, status=exc.status)
 
 
@@ -641,18 +644,21 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
     def _legacy_message_input(
         self,
         kwargs: dict[str, object],
-    ) -> service_message_requests.MessageRequestInput:
+    ) -> MessageRequestInput:
         thread_id = self._optional_legacy_text(kwargs.get(service_message_requests.THREAD_ID))
         parent_thread_id = self._optional_legacy_text(
             kwargs.get(service_message_requests.PARENT_THREAD_ID)
         )
-        return service_message_requests.MessageRequestInput(
-            from_agent_slug=str(kwargs.get(service_message_requests.FROM_AGENT_SLUG) or ""),
-            to_agent_slug=str(kwargs.get(service_message_requests.TO_AGENT_SLUG) or ""),
-            message_text=str(kwargs.get(service_message_requests.MESSAGE_TEXT) or ""),
-            thread_id=thread_id,
-            parent_thread_id=parent_thread_id,
-            client_request_id=str(kwargs.get(service_message_requests.CLIENT_REQUEST_ID) or ""),
+        return cast(
+            MessageRequestInput,
+            service_message_requests.MessageRequestInput(
+                from_agent_slug=str(kwargs.get(service_message_requests.FROM_AGENT_SLUG) or ""),
+                to_agent_slug=str(kwargs.get(service_message_requests.TO_AGENT_SLUG) or ""),
+                message_text=str(kwargs.get(service_message_requests.MESSAGE_TEXT) or ""),
+                thread_id=thread_id,
+                parent_thread_id=parent_thread_id,
+                client_request_id=str(kwargs.get(service_message_requests.CLIENT_REQUEST_ID) or ""),
+            ),
         )
 
     @staticmethod
@@ -820,15 +826,20 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
     @staticmethod
     def _legacy_notification_input(
         kwargs: dict[str, object],
-    ) -> service_notification_requests.NotificationRequestInput:
-        return service_notification_requests.NotificationRequestInput(
-            from_agent_slug=str(kwargs.get(service_notification_requests.FROM_AGENT_SLUG) or ""),
-            to_agent_slug=str(kwargs.get(service_notification_requests.TO_AGENT_SLUG) or ""),
-            thread_id=str(kwargs.get(service_notification_requests.THREAD_ID) or ""),
-            status=str(kwargs.get(service_notification_requests.STATUS) or ""),
-            message_text=str(kwargs.get(service_notification_requests.MESSAGE_TEXT) or ""),
-            client_request_id=str(
-                kwargs.get(service_notification_requests.CLIENT_REQUEST_ID) or ""
+    ) -> NotificationRequestInput:
+        return cast(
+            NotificationRequestInput,
+            service_notification_requests.NotificationRequestInput(
+                from_agent_slug=str(
+                    kwargs.get(service_notification_requests.FROM_AGENT_SLUG) or ""
+                ),
+                to_agent_slug=str(kwargs.get(service_notification_requests.TO_AGENT_SLUG) or ""),
+                thread_id=str(kwargs.get(service_notification_requests.THREAD_ID) or ""),
+                status=str(kwargs.get(service_notification_requests.STATUS) or ""),
+                message_text=str(kwargs.get(service_notification_requests.MESSAGE_TEXT) or ""),
+                client_request_id=str(
+                    kwargs.get(service_notification_requests.CLIENT_REQUEST_ID) or ""
+                ),
             ),
         )
 
@@ -941,8 +952,8 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
         owner_agent_slug: str,
     ) -> frozenset[str]:
         if from_agent_slug == owner_agent_slug:
-            return common.OWNER_NOTIFICATION_STATUSES
-        return common.CALLEE_NOTIFICATION_STATUSES
+            return cast(frozenset[str], common.OWNER_NOTIFICATION_STATUSES)
+        return cast(frozenset[str], common.CALLEE_NOTIFICATION_STATUSES)
 
     async def _notify_closed_thread(self, *, request: dict[str, str]) -> None:
         await self.notify_stop(

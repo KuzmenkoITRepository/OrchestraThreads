@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from core.orchestra_thread import common
+from core.orchestra_thread.common import ServiceError, normalize_text_input
 
 MessageRequest = dict[str, str | None]
 
@@ -30,7 +30,7 @@ def build_message_request(request_input: MessageRequestInput) -> MessageRequest:
     request = {
         FROM_AGENT_SLUG: str(request_input.from_agent_slug or "").strip(),
         TO_AGENT_SLUG: str(request_input.to_agent_slug or "").strip(),
-        MESSAGE_TEXT: common.normalize_text_input(str(request_input.message_text or "")).strip(),
+        MESSAGE_TEXT: normalize_text_input(str(request_input.message_text or "")).strip(),
         THREAD_ID: _optional_text(request_input.thread_id),
         PARENT_THREAD_ID: _optional_text(request_input.parent_thread_id),
         CLIENT_REQUEST_ID: request_input.client_request_id,
@@ -44,16 +44,14 @@ def validate_message_request(*, request: MessageRequest) -> None:
     to_agent_slug = str(request[TO_AGENT_SLUG] or "")
     message_text = str(request[MESSAGE_TEXT] or "")
     if not from_agent_slug or not to_agent_slug:
-        raise common.ServiceError(
+        raise ServiceError(
             BAD_REQUEST_STATUS,
             f"{FROM_AGENT_SLUG} and {TO_AGENT_SLUG} are required",
         )
     if from_agent_slug == to_agent_slug:
-        raise common.ServiceError(
-            BAD_REQUEST_STATUS, "agent cannot send a thread message to itself"
-        )
+        raise ServiceError(BAD_REQUEST_STATUS, "agent cannot send a thread message to itself")
     if not message_text:
-        raise common.ServiceError(BAD_REQUEST_STATUS, f"{MESSAGE_TEXT} is required")
+        raise ServiceError(BAD_REQUEST_STATUS, f"{MESSAGE_TEXT} is required")
 
 
 def message_request_context(*, request: MessageRequest) -> MessageRequest:

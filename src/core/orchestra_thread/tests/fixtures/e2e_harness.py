@@ -7,12 +7,17 @@ import os
 import socket
 import uuid
 from collections.abc import Awaitable, Callable
+from importlib import import_module
 from typing import Any, Self, cast
 
 from aiohttp import ClientSession, ClientTimeout, web
 
-from core.orchestra_thread.service import OrchestraThreadsService, build_app
 from core.orchestra_thread.service_runtime_config import RuntimeConfigOverrides
+
+thread_service_runtime = import_module("core.orchestra_thread.service.runtime")
+OrchestraThreadsService = cast(type[Any], thread_service_runtime.OrchestraThreadsService)
+build_app = thread_service_runtime.build_app
+
 
 _HTTP_SERVICE_UNAVAILABLE = 503
 _HTTP_OK = 200
@@ -197,7 +202,7 @@ class HarnessAgentHelpers(HarnessApiHelpers):
 
 
 class HarnessLifecycleHelpers(HarnessAgentHelpers):
-    service: OrchestraThreadsService
+    service: Any
     app_runner: web.AppRunner | None
 
     async def __aenter__(self) -> Self:
@@ -281,22 +286,25 @@ class E2EHarness(HarnessLifecycleHelpers):
     def __init__(self, *, database_url: str | None = None) -> None:
         hex_suffix = uuid.uuid4().hex
         self.schema_name = f"test_{hex_suffix}"
-        self.service = OrchestraThreadsService(
-            runtime_config_overrides=RuntimeConfigOverrides(
-                database_url=(
-                    database_url
-                    or os.getenv("ORCHESTRA_THREADS_TEST_DATABASE_URL")
-                    or os.getenv("ORCHESTRA_THREADS_DATABASE_URL")
-                    or "postgresql://orchestra:orchestra@postgres:5432/orchestra_threads"
+        self.service = cast(
+            Any,
+            OrchestraThreadsService(
+                runtime_config_overrides=RuntimeConfigOverrides(
+                    database_url=(
+                        database_url
+                        or os.getenv("ORCHESTRA_THREADS_TEST_DATABASE_URL")
+                        or os.getenv("ORCHESTRA_THREADS_DATABASE_URL")
+                        or "postgresql://orchestra:orchestra@postgres:5432/orchestra_threads"
+                    ),
+                    database_schema=self.schema_name,
+                    db_min_pool_size=1,
+                    db_max_pool_size=4,
+                    agent_lease_seconds=_AGENT_LEASE_SECONDS,
+                    delivery_poll_interval_seconds=_DELIVERY_POLL_SECONDS,
+                    inactivity_timeout_seconds=10,
+                    retry_base_seconds=1,
+                    retry_max_seconds=2,
                 ),
-                database_schema=self.schema_name,
-                db_min_pool_size=1,
-                db_max_pool_size=4,
-                agent_lease_seconds=_AGENT_LEASE_SECONDS,
-                delivery_poll_interval_seconds=_DELIVERY_POLL_SECONDS,
-                inactivity_timeout_seconds=10,
-                retry_base_seconds=1,
-                retry_max_seconds=2,
             ),
         )
         self.service.delivery_poll_interval_seconds = 0.1

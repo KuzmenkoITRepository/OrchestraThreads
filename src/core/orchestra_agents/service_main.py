@@ -5,11 +5,25 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from importlib import import_module
+from typing import Any, cast
 
 from aiohttp import web
 
 from core.orchestra_agents.manifest import AgentManifest
-from core.orchestra_agents.service import OrchestraAgentsService, build_app
+
+_service_runtime = import_module("core.orchestra_agents.service.runtime")
+OrchestraAgentsService = cast(type[Any], _service_runtime.OrchestraAgentsService)
+build_app = _service_runtime.build_app
+
+
+class _ServiceProtocol:
+    state: Any
+
+    @classmethod
+    def create(cls) -> Any: ...
+
+    async def start_agent(self, slug: str) -> Any: ...
 
 
 def configure_logging() -> None:
@@ -19,7 +33,7 @@ def configure_logging() -> None:
     )
 
 
-async def _build_runner() -> tuple[web.AppRunner, OrchestraAgentsService]:
+async def _build_runner() -> tuple[web.AppRunner, _ServiceProtocol]:
     service = OrchestraAgentsService.create()
     runner = web.AppRunner(build_app(service))
     await runner.setup()
@@ -27,7 +41,7 @@ async def _build_runner() -> tuple[web.AppRunner, OrchestraAgentsService]:
 
 
 async def _auto_start_one(
-    service: OrchestraAgentsService,
+    service: _ServiceProtocol,
     manifest: AgentManifest,
     logger: logging.Logger,
 ) -> bool:
@@ -41,7 +55,9 @@ async def _auto_start_one(
     return True
 
 
-async def _auto_start_agents(service: OrchestraAgentsService) -> None:  # noqa: WPS476 — agents must start sequentially to avoid resource contention
+async def _auto_start_agents(
+    service: _ServiceProtocol,
+) -> None:  # noqa: WPS476 — agents must start sequentially to avoid resource contention
     logger = logging.getLogger(__name__)
     eligible = service.state.registry.auto_start_manifests()
     logger.info("auto-start pass started eligible=%d", len(eligible))

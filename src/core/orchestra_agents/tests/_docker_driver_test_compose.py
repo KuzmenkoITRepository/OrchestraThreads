@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from core.orchestra_agents.docker_driver import DockerDriver
+from core.orchestra_agents.docker_driver.driver import DockerDriver
 from core.orchestra_agents.tests import _docker_driver_test_constants as const
 
 

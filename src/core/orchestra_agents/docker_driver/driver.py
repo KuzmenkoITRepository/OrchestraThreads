@@ -8,12 +8,8 @@ import subprocess
 import typing as t
 from pathlib import Path
 
-from core.orchestra_agents import (
-    _docker_driver_support as driver_support,
-)
-from core.orchestra_agents import (
-    _docker_runtime_resolution as runtime_resolution,
-)
+from core.orchestra_agents import _docker_driver_support as driver_support
+from core.orchestra_agents import _docker_runtime_resolution as runtime_resolution
 from core.orchestra_agents import manifest as manifest_module
 
 

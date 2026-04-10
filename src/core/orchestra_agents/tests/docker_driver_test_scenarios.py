@@ -7,7 +7,7 @@ from subprocess import CompletedProcess
 from typing import Any
 from unittest.mock import patch
 
-from core.orchestra_agents.docker_driver import DockerDriver
+from core.orchestra_agents.docker_driver.driver import DockerDriver
 from core.orchestra_agents.manifest import AgentManifest
 from core.orchestra_agents.tests import docker_driver_test_data as data
 

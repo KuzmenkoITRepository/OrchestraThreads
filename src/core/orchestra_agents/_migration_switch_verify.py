@@ -13,7 +13,7 @@ from core.orchestra_agents._migration_contract import (
     status_ok,
 )
 from core.orchestra_agents._migration_types import BackendSwitchSummary
-from core.orchestra_agents.docker_driver import DockerDriver
+from core.orchestra_agents.docker_driver.driver import DockerDriver
 from core.orchestra_agents.manifest import AgentManifest
 
 

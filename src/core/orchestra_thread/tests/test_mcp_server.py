@@ -12,7 +12,7 @@ from typing import Any
 from core.orchestra_thread import active_context as active_context_module
 from core.orchestra_thread.active_context import clear_active_context, write_active_context
 from core.orchestra_thread.client import OrchestraThreadsClient
-from core.orchestra_thread.mcp_server import OrchestraThreadsMCPServer
+from core.orchestra_thread.mcp.server import OrchestraThreadsMCPServer
 from core.orchestra_thread.tests.fixtures.e2e_harness import E2EHarness
 
 _SLUG_SECRETARY = "secretary"

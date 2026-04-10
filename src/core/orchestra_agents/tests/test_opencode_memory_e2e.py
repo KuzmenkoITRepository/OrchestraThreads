@@ -22,7 +22,7 @@ class OpencodeMemoryE2ETests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("orchestra_memory", mcp_block)
         self.assertEqual(
             memory_block["command"],
-            ["python", "-m", "core.orchestra_memory.mcp_server"],
+            ["python", "-m", "core.orchestra_memory.mcp.server"],
         )
         self.assertEqual(
             memory_env["ORCHESTRA_MEMORY_URL"],
@@ -63,7 +63,7 @@ def _backend_config() -> dict[str, object]:
             {
                 "name": "orchestra_threads",
                 "command": "python",
-                "args": ["-m", "core.orchestra_thread.mcp_server"],
+                "args": ["-m", "core.orchestra_thread.mcp.server"],
                 "env": {
                     "PYTHONPATH": "/workspace/src",
                     "ORCHESTRA_THREADS_URL": "http://orchestra-threads:8788",
@@ -72,7 +72,7 @@ def _backend_config() -> dict[str, object]:
             {
                 "name": "orchestra_memory",
                 "command": "python",
-                "args": ["-m", "core.orchestra_memory.mcp_server"],
+                "args": ["-m", "core.orchestra_memory.mcp.server"],
                 "env": {
                     "PYTHONPATH": "/workspace/src",
                     "ORCHESTRA_MEMORY_URL": "http://orchestra-memory:8793",

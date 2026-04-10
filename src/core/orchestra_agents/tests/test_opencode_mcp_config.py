@@ -26,7 +26,7 @@ class OpencodeMcpConfigTests(unittest.TestCase):
         self.assertEqual(sorted(payload.keys()), ["orchestra_memory", "orchestra_threads"])
         self.assertEqual(
             payload["orchestra_memory"]["command"],
-            ["python", "-m", "core.orchestra_memory.mcp_server"],
+            ["python", "-m", "core.orchestra_memory.mcp.server"],
         )
         self.assertEqual(
             payload["orchestra_memory"]["environment"]["ORCHESTRA_MEMORY_URL"],
@@ -61,13 +61,13 @@ def _mcp_servers_payload() -> list[dict[str, Any]]:
         {
             "name": "orchestra_threads",
             "command": "python",
-            "args": ["-m", "core.orchestra_thread.mcp_server"],
+            "args": ["-m", "core.orchestra_thread.mcp.server"],
             "env": {"PYTHONPATH": "/workspace/src"},
         },
         {
             "name": "orchestra_memory",
             "command": "python",
-            "args": ["-m", "core.orchestra_memory.mcp_server"],
+            "args": ["-m", "core.orchestra_memory.mcp.server"],
             "env": {
                 "PYTHONPATH": "/workspace/src",
                 "ORCHESTRA_MEMORY_URL": "http://orchestra-memory:8793",

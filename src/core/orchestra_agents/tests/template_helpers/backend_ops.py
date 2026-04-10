@@ -46,7 +46,7 @@ def _build_backend(
             {
                 "name": "orchestra_threads",
                 "command": "python",
-                "args": ["-m", "core.orchestra_thread.mcp_server"],
+                "args": ["-m", "core.orchestra_thread.mcp.server"],
                 "cwd": "{working_dir}",
                 "startup_timeout_sec": 15,
                 "required": False,
@@ -68,7 +68,7 @@ def _build_backend(
             {
                 "name": "orchestra_memory",
                 "command": "python",
-                "args": ["-m", "core.orchestra_memory.mcp_server"],
+                "args": ["-m", "core.orchestra_memory.mcp.server"],
                 "cwd": "{working_dir}",
                 "startup_timeout_sec": 15,
                 "required": False,

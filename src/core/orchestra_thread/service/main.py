@@ -5,11 +5,22 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from importlib import import_module
+from typing import Any, cast
 
 from aiohttp import web
 
-from core.orchestra_thread.service_runtime import OrchestraThreadsService, build_app
 from core.orchestra_thread.service_runtime_config import RuntimeConfigOverrides
+
+_runtime_module = import_module("core.orchestra_thread.service.runtime")
+OrchestraThreadsService = cast(type[Any], _runtime_module.OrchestraThreadsService)
+build_app = _runtime_module.build_app
+
+
+class _ServiceProtocol:
+    database_schema: str
+
+    async def stop(self) -> None: ...
 
 
 def configure_logging() -> None:
@@ -26,7 +37,7 @@ async def _start_site(runner: web.AppRunner) -> tuple[str, int]:
     return host, port
 
 
-def _log_started(service: OrchestraThreadsService, host: str, port: int) -> None:
+def _log_started(service: _ServiceProtocol, host: str, port: int) -> None:
     logging.getLogger(__name__).info(
         "OrchestraThreads listening on %s:%s (schema=%s)",
         host,
@@ -35,7 +46,7 @@ def _log_started(service: OrchestraThreadsService, host: str, port: int) -> None
     )
 
 
-async def _stop_runtime(runner: web.AppRunner, service: OrchestraThreadsService) -> None:
+async def _stop_runtime(runner: web.AppRunner, service: _ServiceProtocol) -> None:
     await runner.cleanup()
     await service.stop()
 

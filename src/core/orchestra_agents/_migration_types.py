@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from core.orchestra_agents.docker_driver import resolve_backend_runtime
+from core.orchestra_agents.docker_driver.driver import resolve_backend_runtime
 from core.orchestra_agents.manifest import AgentManifest
 
 

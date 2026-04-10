@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 _DEFAULT_THREADS_URL = "http://127.0.0.1:8788"
-_DEFAULT_THREADS_COMMAND = ("python", "-m", "core.orchestra_thread.mcp_server")
+_DEFAULT_THREADS_COMMAND = ("python", "-m", "core.orchestra_thread.mcp.server")
 
 
 def render_server_config(

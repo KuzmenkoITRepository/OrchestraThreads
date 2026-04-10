@@ -18,7 +18,7 @@ class OpencodeMCPConfigTests(unittest.TestCase):
                         {
                             "name": "orchestra_threads",
                             "command": "python",
-                            "args": ["-m", "core.orchestra_thread.mcp_server"],
+                            "args": ["-m", "core.orchestra_thread.mcp.server"],
                             "env": {
                                 "ORCHESTRA_THREADS_URL": "http://orchestra-threads:8788",
                                 "PYTHONPATH": "/workspace/src",
@@ -27,7 +27,7 @@ class OpencodeMCPConfigTests(unittest.TestCase):
                         {
                             "name": "task_registry",
                             "command": "python",
-                            "args": ["-m", "core.task_registry.mcp_server"],
+                            "args": ["-m", "core.task_registry.mcp.server"],
                             "env": {
                                 "TASK_REGISTRY_DATABASE_URL": "postgresql://example",
                                 "PYTHONPATH": "/workspace/src",
@@ -45,6 +45,6 @@ class OpencodeMCPConfigTests(unittest.TestCase):
         self.assertEqual(payload["task_registry"]["type"], "local")
         self.assertEqual(
             payload["task_registry"]["command"],
-            ["python", "-m", "core.task_registry.mcp_server"],
+            ["python", "-m", "core.task_registry.mcp.server"],
         )
         self.assertIn("environment", payload["task_registry"])

@@ -7,8 +7,8 @@ import sys
 from typing import Any
 
 from core.orchestra_thread.client import OrchestraThreadsClient
-from core.orchestra_thread.mcp_protocol import handle_tools_call, list_tools, resolve_request
-from core.orchestra_thread.mcp_transport import encode_message, read_message
+from core.orchestra_thread.mcp.protocol import handle_tools_call, list_tools, resolve_request
+from core.orchestra_thread.mcp.transport import encode_message, read_message
 
 logger = logging.getLogger(__name__)
 

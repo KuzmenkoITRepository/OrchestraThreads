@@ -4,7 +4,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from core.orchestra_thread import common
+from core.orchestra_thread.common import (
+    DELIVERED_NOTIFICATION_STATUSES,
+    THREAD_NOTIFICATION_STATUSES,
+    THREAD_TERMINAL_STATUSES,
+    ServiceError,
+    normalize_status,
+    normalize_text_input,
+)
 
 BAD_REQUEST_STATUS = 400
 FROM_AGENT_SLUG = "from_agent_slug"
@@ -30,8 +37,8 @@ def build_notification_request(request_input: NotificationRequestInput) -> dict[
         FROM_AGENT_SLUG: str(request_input.from_agent_slug or "").strip(),
         TO_AGENT_SLUG: str(request_input.to_agent_slug or "").strip(),
         THREAD_ID: str(request_input.thread_id or "").strip(),
-        STATUS: common.normalize_status(request_input.status),
-        MESSAGE_TEXT: common.normalize_text_input(str(request_input.message_text or "")).strip(),
+        STATUS: normalize_status(request_input.status),
+        MESSAGE_TEXT: normalize_text_input(str(request_input.message_text or "")).strip(),
         CLIENT_REQUEST_ID: request_input.client_request_id,
     }
     validate_notification_request(request=request)
@@ -40,17 +47,17 @@ def build_notification_request(request_input: NotificationRequestInput) -> dict[
 
 def validate_notification_request(*, request: dict[str, str]) -> None:
     if not request[FROM_AGENT_SLUG] or not request[TO_AGENT_SLUG] or not request[THREAD_ID]:
-        raise common.ServiceError(
+        raise ServiceError(
             BAD_REQUEST_STATUS,
             f"{FROM_AGENT_SLUG}, {TO_AGENT_SLUG}, and {THREAD_ID} are required",
         )
-    if request[STATUS] not in common.THREAD_NOTIFICATION_STATUSES:
-        raise common.ServiceError(
+    if request[STATUS] not in THREAD_NOTIFICATION_STATUSES:
+        raise ServiceError(
             BAD_REQUEST_STATUS,
             f"Unsupported notification status: {request[STATUS]}",
         )
     if not request[MESSAGE_TEXT]:
-        raise common.ServiceError(BAD_REQUEST_STATUS, f"{MESSAGE_TEXT} is required")
+        raise ServiceError(BAD_REQUEST_STATUS, f"{MESSAGE_TEXT} is required")
 
 
 def notification_context(*, request: dict[str, str]) -> dict[str, Any]:
@@ -61,8 +68,8 @@ def notification_context(*, request: dict[str, str]) -> dict[str, Any]:
         TO_AGENT_SLUG: request[TO_AGENT_SLUG],
         STATUS: notification_status,
         MESSAGE_TEXT: request[MESSAGE_TEXT],
-        "requires_delivery": notification_status in common.DELIVERED_NOTIFICATION_STATUSES,
-        "is_terminal": notification_status in common.THREAD_TERMINAL_STATUSES,
+        "requires_delivery": notification_status in DELIVERED_NOTIFICATION_STATUSES,
+        "is_terminal": notification_status in THREAD_TERMINAL_STATUSES,
         CLIENT_REQUEST_ID: request[CLIENT_REQUEST_ID],
     }
 

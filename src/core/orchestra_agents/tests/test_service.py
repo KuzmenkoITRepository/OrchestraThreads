@@ -4,13 +4,17 @@ import json
 import socket
 import tempfile
 import unittest
+from importlib import import_module
 from pathlib import Path
 from typing import Any, cast
 
 from aiohttp import ClientSession, ClientTimeout, web
 
 from core.orchestra_agents.registry import AgentManifestRegistry
-from core.orchestra_agents.service import OrchestraAgentsService, build_app
+
+_service_runtime = import_module("core.orchestra_agents.service.runtime")
+OrchestraAgentsService = cast(type[Any], _service_runtime.OrchestraAgentsService)
+build_app = _service_runtime.build_app
 
 _STATUS_RUNNING = "running"
 
