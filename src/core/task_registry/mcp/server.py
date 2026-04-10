@@ -5,11 +5,11 @@ import logging
 import os
 from typing import Any
 
-from core.task_registry import mcp_server_support
 from core.task_registry.config import load_config
-from core.task_registry.mcp_tool_payloads import JsonDict
-from core.task_registry.mcp_tool_specs import tool_specs
-from core.task_registry.mcp_tools import TaskRegistryTools
+from core.task_registry.mcp import server_support as mcp_server_support
+from core.task_registry.mcp.tool_payloads import JsonDict
+from core.task_registry.mcp.tool_specs import tool_specs
+from core.task_registry.mcp.tools import TaskRegistryTools
 from core.task_registry.store import TaskStore
 
 logger = logging.getLogger(__name__)

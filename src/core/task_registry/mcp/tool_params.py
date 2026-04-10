@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.task_registry.mcp_tool_payloads import JsonDict
+from core.task_registry.mcp.tool_payloads import JsonDict
 
 ERROR_KEY = "error"
 OK_KEY = "ok"

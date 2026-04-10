@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.task_registry import mcp_tool_specs_common as _common
+from core.task_registry.mcp import tool_specs_common as _common
 
 DESCRIPTION_FIELD = _common.DESCRIPTION_FIELD
 TYPE_FIELD = _common.TYPE_FIELD

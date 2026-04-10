@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import logging
 
-from core.task_registry.mcp_tool_params import ERROR_KEY, OK_KEY, MissingParam
-from core.task_registry.mcp_tool_payloads import JsonDict, text_result
-from core.task_registry.mcp_tools_create import TaskRegistryToolsCreateMixin
-from core.task_registry.mcp_tools_update import TaskRegistryToolsUpdateMixin
+from core.task_registry.mcp.tool_params import ERROR_KEY, OK_KEY, MissingParam
+from core.task_registry.mcp.tool_payloads import JsonDict, text_result
+from core.task_registry.mcp.tools_create import TaskRegistryToolsCreateMixin
+from core.task_registry.mcp.tools_update import TaskRegistryToolsUpdateMixin
 from core.task_registry.store import TaskStore
 
 logger = logging.getLogger(__name__)

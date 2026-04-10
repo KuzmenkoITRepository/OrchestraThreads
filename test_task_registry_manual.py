@@ -7,7 +7,7 @@ import sys
 from typing import Any
 
 from core.task_registry.config import load_config
-from core.task_registry.mcp_tools import TaskRegistryTools
+from core.task_registry.mcp.tools import TaskRegistryTools
 from core.task_registry.store import TaskStore
 
 JsonDict = dict[str, Any]

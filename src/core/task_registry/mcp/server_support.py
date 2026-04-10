@@ -5,7 +5,7 @@ import json
 import sys
 from typing import Any, cast
 
-from core.task_registry.mcp_tool_payloads import JsonDict
+from core.task_registry.mcp.tool_payloads import JsonDict
 
 JSONRPC_VERSION = "2.0"
 PROTOCOL_VERSION = "2024-11-05"

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.task_registry.mcp_tool_params import OK_KEY, TASK_ID_KEY, require
-from core.task_registry.mcp_tool_payloads import JsonDict, text_result
+from core.task_registry.mcp.tool_params import OK_KEY, TASK_ID_KEY, require
+from core.task_registry.mcp.tool_payloads import JsonDict, text_result
 
 
 class TaskRegistryToolsUpdateMixin:
