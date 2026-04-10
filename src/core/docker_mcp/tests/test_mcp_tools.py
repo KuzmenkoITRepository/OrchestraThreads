@@ -4,7 +4,7 @@ import json
 from typing import Any, cast
 from unittest import TestCase, mock
 
-from core.docker_mcp.mcp_tools import DockerMCPTools
+from core.docker_mcp.mcp.tools import DockerMCPTools
 
 
 def _tool_payload(result: dict[str, object]) -> dict[str, Any]:
@@ -25,7 +25,7 @@ class DockerMCPToolsTests(TestCase):
             stderr="",
         )
 
-        with mock.patch("core.docker_mcp.mcp_tools.docker_api_get", return_value=process_result):
+        with mock.patch("core.docker_mcp.mcp.tools.docker_api_get", return_value=process_result):
             result = tool.dispatch("docker_ps", {})
 
         payload = _tool_payload(result)
@@ -49,7 +49,7 @@ class DockerMCPToolsTests(TestCase):
             stderr="",
         )
 
-        with mock.patch("core.docker_mcp.mcp_tools.docker_api_get", return_value=process_result):
+        with mock.patch("core.docker_mcp.mcp.tools.docker_api_get", return_value=process_result):
             result = tool.dispatch("docker_inspect", {"container_name": "orchestra-whiner"})
 
         payload = _tool_payload(result)
@@ -63,7 +63,7 @@ class DockerMCPToolsTests(TestCase):
         process_result = mock.Mock(returncode=0, stdout=frame, stderr=b"")
 
         with mock.patch(
-            "core.docker_mcp.mcp_tools.docker_api_get_bytes", return_value=process_result
+            "core.docker_mcp.mcp.tools.docker_api_get_bytes", return_value=process_result
         ):
             result = tool.dispatch("docker_logs", {"container_name": "orchestra-whiner", "tail": 5})
 

@@ -7,8 +7,8 @@ import os
 import sys
 from typing import Any, cast
 
-from core.docker_mcp.mcp_tool_specs import tool_specs
-from core.docker_mcp.mcp_tools import DockerMCPTools
+from core.docker_mcp.mcp.tool_specs import tool_specs
+from core.docker_mcp.mcp.tools import DockerMCPTools
 
 logger = logging.getLogger(__name__)
 
