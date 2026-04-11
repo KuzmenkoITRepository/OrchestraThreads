@@ -1,15 +1,9 @@
-"""Stable facade for agent_mux dispatch helpers."""
+"""Dispatch internals for the canonical agent_mux backend."""
 
 from __future__ import annotations
 
 from core.orchestra_agents.backends.agent_mux.dispatch.engine import (
     AgentMuxDispatchSpec as AgentMuxDispatchSpec,
-)
-from core.orchestra_agents.backends.agent_mux.dispatch.engine import (
-    _nonempty_lines as _nonempty_lines,
-)
-from core.orchestra_agents.backends.agent_mux.dispatch.engine import (
-    _parse_json_object as _parse_json_object,
 )
 from core.orchestra_agents.backends.agent_mux.dispatch.engine import (
     build_agent_mux_command as build_agent_mux_command,
