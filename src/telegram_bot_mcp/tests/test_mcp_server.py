@@ -4,7 +4,7 @@ import asyncio
 import unittest
 
 from telegram_bot_mcp.config import TelegramBotMCPConfig
-from telegram_bot_mcp.mcp_server import TelegramBotMCPServer
+from telegram_bot_mcp.mcp.server import TelegramBotMCPServer
 
 ButtonRows = list[list[dict[str, str]]]
 
