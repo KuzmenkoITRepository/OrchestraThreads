@@ -7,9 +7,9 @@ import logging
 import os
 import sys
 
-from telegram_mcp.mcp_dispatch import dispatch_request
-from telegram_mcp.mcp_server import TelegramMCPServer
-from telegram_mcp.mcp_transport import encode_message, read_message
+from telegram_mcp.mcp.dispatch import dispatch_request
+from telegram_mcp.mcp.server import TelegramMCPServer
+from telegram_mcp.mcp.transport import encode_message, read_message
 
 
 async def _run_server() -> None:

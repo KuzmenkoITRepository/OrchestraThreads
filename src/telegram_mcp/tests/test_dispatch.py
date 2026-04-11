@@ -4,8 +4,9 @@ import unittest
 from typing import Any
 
 from telegram_mcp.config import TelegramDefaults, TelegramMCPConfig
-from telegram_mcp.mcp_dispatch import dispatch_request
-from telegram_mcp.mcp_server import TelegramMCPServer, telegram_tool_definitions
+from telegram_mcp.mcp.dispatch import dispatch_request
+from telegram_mcp.mcp.payloads import SEND_TELEGRAM_MESSAGE_TOOL
+from telegram_mcp.mcp.server import TelegramMCPServer, telegram_tool_definitions
 
 
 class TelegramMCPDispatchTests(unittest.IsolatedAsyncioTestCase):
@@ -37,7 +38,7 @@ class TelegramMCPDispatchTests(unittest.IsolatedAsyncioTestCase):
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "tools/call",
-                "params": {"name": "send_telegram_message", "arguments": {}},
+                "params": {"name": SEND_TELEGRAM_MESSAGE_TOOL, "arguments": {}},
             },
         )
         assert response is not None
@@ -57,7 +58,7 @@ class TelegramMCPDispatchTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_handle_tools_call_missing_message(self) -> None:
         response = await self.server.handle_tools_call(
-            name="send_telegram_message",
+            name=SEND_TELEGRAM_MESSAGE_TOOL,
             arguments={},
         )
         self.assertFalse(response["structuredContent"]["ok"])
@@ -65,4 +66,4 @@ class TelegramMCPDispatchTests(unittest.IsolatedAsyncioTestCase):
     def test_telegram_tool_definitions_returns_list(self) -> None:
         tools = telegram_tool_definitions()
         self.assertIsInstance(tools, list)
-        self.assertTrue(any(item["name"] == "send_telegram_message" for item in tools))
+        self.assertTrue(any(item["name"] == SEND_TELEGRAM_MESSAGE_TOOL for item in tools))
