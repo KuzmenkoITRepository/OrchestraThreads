@@ -1,0 +1,1 @@
+"""Task registry MCP package."""
