@@ -13,10 +13,9 @@ from core.scheduler_cron.scheduler_engine import SchedulerEngine
 from core.scheduler_cron.service_runtime_support import (
     DEFAULT_EVENTS_ENGINE_URL,
     SERVICE_UNAVAILABLE,
-    start_engine,
-    start_executor,
-    start_web_runner,
-    stop_optional,
+    StartedRuntime,
+    start_runtime,
+    stop_runtime,
 )
 from core.scheduler_cron.store import SchedulerCronStore
 
@@ -29,24 +28,29 @@ class SchedulerCronService:
         self.store = SchedulerCronStore(self.config.database_url, schema_name=self.config.db_schema)
         self._engine: SchedulerEngine | None = None
         self._executor: JobExecutor | None = None
+        self._runtime: StartedRuntime | None = None
         self._started = False
 
     async def start(self) -> None:
         if self._started:
             return
         await self.store.start()
-        self._executor = await start_executor(_events_engine_url())
-        self._engine = await start_engine(self.store, self.config.database_url, self._executor)
-        await bootstrap_jobs(self.store, self._engine)
+        runtime = await start_runtime(
+            store=self.store,
+            database_url=self.config.database_url,
+            events_engine_url=_events_engine_url(),
+            executor_type=JobExecutor,
+            engine_type=SchedulerEngine,
+        )
+        self._set_runtime(runtime)
+        await bootstrap_jobs(self.store, runtime.engine)
         self._started = True
 
     async def stop(self) -> None:
         if not self._started:
             return
-        await stop_optional(self._engine)
-        await stop_optional(self._executor)
-        self._engine = None
-        self._executor = None
+        await stop_runtime(self._runtime)
+        self._clear_runtime()
         await self.store.close()
         self._started = False
 
@@ -58,6 +62,16 @@ class SchedulerCronService:
             return web.json_response({"status": "error"}, status=SERVICE_UNAVAILABLE)
         return web.json_response({"status": "ok"})
 
+    def _set_runtime(self, runtime: StartedRuntime) -> None:
+        self._runtime = runtime
+        self._executor = runtime.executor
+        self._engine = runtime.engine
+
+    def _clear_runtime(self) -> None:
+        self._runtime = None
+        self._engine = None
+        self._executor = None
+
 
 def build_app(service: SchedulerCronService) -> web.Application:
     app = web.Application()
@@ -66,22 +80,30 @@ def build_app(service: SchedulerCronService) -> web.Application:
     return app
 
 
+async def _start_web_service(service: SchedulerCronService) -> web.AppRunner:
+    await service.start()
+    runner = web.AppRunner(build_app(service))
+    await runner.setup()
+    site = web.TCPSite(runner, host=service.config.host, port=service.config.port)
+    await site.start()
+    return runner
+
+
+async def _stop_web_service(service: SchedulerCronService, runner: web.AppRunner) -> None:
+    await runner.cleanup()
+    await service.stop()
+
+
 async def run_service() -> None:
     service = SchedulerCronService()
-    runner = await start_web_runner(
-        service,
-        build_app,
-        host=service.config.host,
-        port=service.config.port,
-    )
+    runner = await _start_web_service(service)
     logger.info("scheduler_cron listening on %s:%s", service.config.host, service.config.port)
     try:
         await asyncio.Event().wait()
     except asyncio.CancelledError:
         raise
     finally:
-        await runner.cleanup()
-        await service.stop()
+        await _stop_web_service(service, runner)
 
 
 def _events_engine_url() -> str:
