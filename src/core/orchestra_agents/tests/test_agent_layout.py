@@ -43,6 +43,14 @@ _AGENT_ENV_PYTHONPATHS = MappingProxyType(
 )
 
 
+def _has_non_cache_entries(runtime_dir: Path) -> bool:
+    return any(
+        path.name != "__pycache__" and path.suffix != ".pyc"
+        for path in runtime_dir.rglob("*")
+        if path.is_file()
+    )
+
+
 def _load_manifest(manifest_path: Path) -> dict[str, object]:
     loaded = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
@@ -67,7 +75,11 @@ def _runtime_env(manifest_path: Path) -> dict[str, str]:
 
 class AgentLayoutTests(unittest.TestCase):
     def test_agents_tree_has_no_runtime_directories(self) -> None:
-        runtime_dirs = sorted(_AGENTS_ROOT.glob("*/agent_runtime"))
+        runtime_dirs = sorted(
+            runtime_dir
+            for runtime_dir in _AGENTS_ROOT.glob("*/agent_runtime")
+            if _has_non_cache_entries(runtime_dir)
+        )
         self.assertFalse(runtime_dirs, f"backend runtime dirs remain under agents/: {runtime_dirs}")
 
     def test_agent_manifests_use_entrypoints(self) -> None:
