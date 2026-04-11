@@ -14,8 +14,24 @@ from core.orchestra_agents.runtime.contracts import (
     StopRequest,
 )
 
-_PREVIEW_MAX_LEN = 120
-_PREVIEW_TRUNCATED_LEN = 117
+
+class _PayloadState:
+    preview_max_len = 120
+    preview_truncated_len = 117
+    state_idle = "idle"
+    state_stopped = "stopped"
+    default_interrupt_message = "interrupt not implemented in base backend"
+
+    @staticmethod
+    def message_preview(message_text: str) -> str | None:
+        preview = " ".join(message_text.split())
+        if len(preview) > _PayloadState.preview_max_len:
+            preview = f"{preview[: _PayloadState.preview_truncated_len]}..."
+        return preview or None
+
+    @staticmethod
+    def lifecycle_state(stop_reason: str | None) -> str:
+        return _PayloadState.state_idle if stop_reason is None else _PayloadState.state_stopped
 
 
 @dataclass
@@ -37,10 +53,7 @@ class _DeliveryState:
             return
         event = delivery.events[-1]
         self.last_event_kind = event.event_kind
-        preview = " ".join(event.message_text.split())
-        if len(preview) > _PREVIEW_MAX_LEN:
-            preview = f"{preview[:_PREVIEW_TRUNCATED_LEN]}..."
-        self.last_message_preview = preview or None
+        self.last_message_preview = _PayloadState.message_preview(event.message_text)
 
 
 @dataclass
@@ -55,6 +68,112 @@ class _ContextState:
         return previous
 
 
+class _PayloadResponses:
+    @staticmethod
+    def stop(
+        *,
+        reason: str,
+        thread_id: str | None,
+        parent_thread_id: str | None,
+    ) -> dict[str, Any]:
+        return {
+            "success": True,
+            "stop_reason": reason,
+            "thread_id": thread_id,
+            "parent_thread_id": parent_thread_id,
+        }
+
+    @staticmethod
+    def clear_context(
+        *,
+        generation: int,
+        current_id: str,
+        previous_id: str,
+    ) -> dict[str, Any]:
+        return {
+            "success": True,
+            "context_generation": generation,
+            "context_id": current_id,
+            "previous_context_id": previous_id,
+        }
+
+    @staticmethod
+    def reset_session(
+        *,
+        routing_key: str,
+        generation: int,
+        current_id: str,
+        previous_id: str,
+    ) -> dict[str, Any]:
+        return {
+            "success": True,
+            "routing_key": routing_key,
+            "context_generation": generation,
+            "context_id": current_id,
+            "previous_context_id": previous_id,
+        }
+
+    @staticmethod
+    def session_state(
+        *,
+        routing_key: str,
+        stop_reason: str | None,
+        context_id: str,
+        last_delivery_id: str | None,
+    ) -> dict[str, Any]:
+        return {
+            "routing_key": routing_key,
+            "lifecycle": _PayloadState.lifecycle_state(stop_reason),
+            "context_id": context_id,
+            "last_delivery_id": last_delivery_id,
+        }
+
+    @staticmethod
+    def interrupt(routing_key: str) -> dict[str, Any]:
+        return {
+            "success": True,
+            "routing_key": routing_key,
+            "message": _PayloadState.default_interrupt_message,
+        }
+
+    @staticmethod
+    def status(
+        *,
+        agent_slug: str,
+        backend_type: str,
+        generation: int,
+        context_id: str,
+        delivery: _DeliveryState,
+    ) -> dict[str, Any]:
+        return {
+            "agent_slug": agent_slug,
+            "backend_type": backend_type,
+            "context_generation": generation,
+            "context_id": context_id,
+            "last_delivery_id": delivery.last_delivery_id,
+            "last_event_kind": delivery.last_event_kind,
+            "last_message_preview": delivery.last_message_preview,
+            "stop_reason": delivery.stop_reason,
+            "state": _PayloadState.lifecycle_state(delivery.stop_reason),
+        }
+
+    @staticmethod
+    def health(
+        *,
+        agent_slug: str,
+        backend_type: str,
+        context_id: str,
+        stop_reason: str | None,
+    ) -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "agent_slug": agent_slug,
+            "backend_type": backend_type,
+            "context_id": context_id,
+            "state": _PayloadState.lifecycle_state(stop_reason),
+        }
+
+
 class _BackendLifecycleOps:
     delivery: _DeliveryState
     context: _ContextState
@@ -67,22 +186,20 @@ class _BackendLifecycleOps:
 
     async def stop(self, request: StopRequest) -> dict[str, Any]:
         self.delivery.stop_reason = request.reason
-        return {
-            "success": True,
-            "stop_reason": request.reason,
-            "thread_id": request.thread_id,
-            "parent_thread_id": request.parent_thread_id,
-        }
+        return _PayloadResponses.stop(
+            reason=request.reason,
+            thread_id=request.thread_id,
+            parent_thread_id=request.parent_thread_id,
+        )
 
     async def clear_context(self, _request: ClearContextRequest) -> dict[str, Any]:
         previous = self.context.rotate()
         self.delivery.reset()
-        return {
-            "success": True,
-            "context_generation": self.context.generation,
-            "context_id": self.context.current_id,
-            "previous_context_id": previous,
-        }
+        return _PayloadResponses.clear_context(
+            generation=self.context.generation,
+            current_id=self.context.current_id,
+            previous_id=previous,
+        )
 
 
 class _BackendStatusOps:
@@ -92,10 +209,21 @@ class _BackendStatusOps:
     context: _ContextState
 
     async def last_status(self) -> dict[str, Any]:
-        return _build_status_payload(self)
+        return _PayloadResponses.status(
+            agent_slug=self.agent_slug,
+            backend_type=self.backend_type,
+            generation=self.context.generation,
+            context_id=self.context.current_id,
+            delivery=self.delivery,
+        )
 
     async def health(self) -> dict[str, Any]:
-        return _build_health_payload(self)
+        return _PayloadResponses.health(
+            agent_slug=self.agent_slug,
+            backend_type=self.backend_type,
+            context_id=self.context.current_id,
+            stop_reason=self.delivery.stop_reason,
+        )
 
     def remember_delivery(self, delivery: EventDelivery) -> None:
         self.delivery.remember(delivery)
@@ -132,13 +260,12 @@ class BaseAgentBackend(_BackendLifecycleOps, _BackendStatusOps, ABC):
         """
         previous = self.context.rotate()
         self.delivery.reset()
-        return {
-            "success": True,
-            "routing_key": routing_key,
-            "context_generation": self.context.generation,
-            "context_id": self.context.current_id,
-            "previous_context_id": previous,
-        }
+        return _PayloadResponses.reset_session(
+            routing_key=routing_key,
+            generation=self.context.generation,
+            current_id=self.context.current_id,
+            previous_id=previous,
+        )
 
     async def get_session_state(self, routing_key: str) -> dict[str, Any]:
         """
@@ -147,12 +274,12 @@ class BaseAgentBackend(_BackendLifecycleOps, _BackendStatusOps, ABC):
         Default implementation returns basic backend state.
         Subclasses should override for session-aware behavior.
         """
-        return {
-            "routing_key": routing_key,
-            "lifecycle": "idle" if self.delivery.stop_reason is None else "stopped",
-            "context_id": self.context.current_id,
-            "last_delivery_id": self.delivery.last_delivery_id,
-        }
+        return _PayloadResponses.session_state(
+            routing_key=routing_key,
+            stop_reason=self.delivery.stop_reason,
+            context_id=self.context.current_id,
+            last_delivery_id=self.delivery.last_delivery_id,
+        )
 
     async def interrupt_session(self, routing_key: str) -> dict[str, Any]:
         """
@@ -161,32 +288,4 @@ class BaseAgentBackend(_BackendLifecycleOps, _BackendStatusOps, ABC):
         Default implementation is a no-op.
         Subclasses should override for session-aware behavior.
         """
-        return {
-            "success": True,
-            "routing_key": routing_key,
-            "message": "interrupt not implemented in base backend",
-        }
-
-
-def _build_status_payload(backend: _BackendStatusOps) -> dict[str, Any]:
-    return {
-        "agent_slug": backend.agent_slug,
-        "backend_type": backend.backend_type,
-        "context_generation": backend.context.generation,
-        "context_id": backend.context.current_id,
-        "last_delivery_id": backend.delivery.last_delivery_id,
-        "last_event_kind": backend.delivery.last_event_kind,
-        "last_message_preview": backend.delivery.last_message_preview,
-        "stop_reason": backend.delivery.stop_reason,
-        "state": "idle" if backend.delivery.stop_reason is None else "stopped",
-    }
-
-
-def _build_health_payload(backend: _BackendStatusOps) -> dict[str, Any]:
-    return {
-        "status": "ok",
-        "agent_slug": backend.agent_slug,
-        "backend_type": backend.backend_type,
-        "context_id": backend.context.current_id,
-        "state": "idle" if backend.delivery.stop_reason is None else "stopped",
-    }
+        return _PayloadResponses.interrupt(routing_key)

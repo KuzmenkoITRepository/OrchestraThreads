@@ -116,20 +116,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             return self._stop_compose_service(slug, container_name=container_name, remove=remove)
         if not self._container_exists(container_name):
             return self._stop_result(slug, container_name=container_name, removed=False)
-        self._run_checked(
-            ["docker", "stop", container_name],
-            timeout=120,
-            error_message=f"failed to stop {container_name}",
-        )
-        removed = False
-        if remove:
-            self._run_checked(
-                ["docker", "rm", "-f", container_name],
-                timeout=120,
-                error_message=f"failed to remove {container_name}",
-            )
-            removed = True
-        return self._stop_result(slug, container_name=container_name, removed=removed)
+        return self._stop_with_docker(slug, container_name=container_name, remove=remove)
 
     def restart(self, manifest: manifest_module.AgentManifest) -> dict[str, t.Any]:
         self._ensure_startable(manifest)
@@ -331,13 +318,11 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         if self.default_network:
             command.extend(["--network", self.default_network])
 
-        command.extend(
-            ["-e", f"ORCHESTRA_AGENT_MANIFEST={self._container_manifest_path(manifest)}"]
-        )
-        if manifest.agent.system_prompt_file:
-            command.extend(
-                ["-e", f"ORCHESTRA_AGENT_SYSTEM_PROMPT_FILE={manifest.agent.system_prompt_file}"]
-            )
+        for key, value in self._agent_environment(
+            manifest,
+            container_name=container_name,
+        ).items():
+            command.extend(["-e", f"{key}={value}"])
 
         for key, value in self._render_env(
             manifest,
@@ -459,7 +444,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         self._ensure_compose_metadata(
             slug, compose_file, container_exists=container_exists, remove=remove
         )
-        if not container_exists:
+        if not container_exists and not remove:
             return self._stop_result(slug, container_name=container_name, removed=False)
         self._run_checked(
             self._compose_stop_command(slug, compose_file, remove=remove),
@@ -590,6 +575,25 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         *,
         container_name: str,
     ) -> dict[str, str]:
+        environment = self._agent_environment(
+            manifest,
+            container_name=container_name,
+        )
+        environment.update(
+            self._render_env(
+                manifest,
+                resolved_runtime,
+                container_name=container_name,
+            )
+        )
+        return environment
+
+    def _agent_environment(
+        self,
+        manifest: manifest_module.AgentManifest,
+        *,
+        container_name: str,
+    ) -> dict[str, str]:
         environment = {
             "ORCHESTRA_AGENT_SLUG": manifest.slug,
             "ORCHESTRA_AGENT_BACKEND_TYPE": manifest.backend.type,
@@ -605,13 +609,6 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         }
         if manifest.agent.system_prompt_file:
             environment["ORCHESTRA_AGENT_SYSTEM_PROMPT_FILE"] = manifest.agent.system_prompt_file
-        environment.update(
-            self._render_env(
-                manifest,
-                resolved_runtime,
-                container_name=container_name,
-            )
-        )
         return environment
 
     def _compose_healthcheck(

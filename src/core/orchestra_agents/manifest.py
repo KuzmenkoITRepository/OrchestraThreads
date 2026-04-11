@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml
 
+from core.orchestra_agents._manifest_building import build_manifest
 from core.orchestra_agents._manifest_parsing import _ManifestParser
 
 RuntimePayload = dict[str, Any]
@@ -159,30 +160,4 @@ class AgentManifest:
         manifest_path: Path | None = None,
     ) -> AgentManifest:
         parsed = _ManifestParser(raw, manifest_path=manifest_path).parse()
-
-        return cls(
-            slug=parsed.slug,
-            display_name=parsed.display_name,
-            status=parsed.status,
-            agent=AgentConfig(
-                working_dir=str(parsed.agent["working_dir"]),
-                http_endpoint=str(parsed.agent["http_endpoint"]),
-                system_prompt_file=parsed.agent["system_prompt_file"],
-                allowed_peer_agent_slugs=list(parsed.agent["allowed_peer_agent_slugs"]),
-            ),
-            runtime=RuntimeConfig(
-                driver=str(parsed.runtime["driver"]),
-                image=str(parsed.runtime["image"]),
-                entrypoint=parsed.runtime["entrypoint"],
-                command=list(parsed.runtime["command"]),
-                mounts=[RuntimeMount(**mount) for mount in parsed.runtime["mounts"]],
-                env=dict(parsed.runtime["env"]),
-                env_passthrough=list(parsed.runtime["env_passthrough"]),
-            ),
-            backend=BackendConfig(
-                type=str(parsed.backend["type"]),
-                config=dict(parsed.backend["config"]),
-            ),
-            manifest_path=parsed.manifest_path,
-            auto_start=parsed.auto_start,
-        )
+        return build_manifest(parsed)
