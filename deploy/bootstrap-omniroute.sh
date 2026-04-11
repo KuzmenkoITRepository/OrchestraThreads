@@ -65,7 +65,7 @@ if ! curl -fsS "${BASE_URL}/api/settings/require-login" >/dev/null 2>&1; then
 fi
 
 if [[ -n "${EXISTING_API_KEY}" ]]; then
-  if curl -fsS -H "Authorization: Bearer ${EXISTING_API_KEY}" "${BASE_URL}/api/keys" >/dev/null 2>&1; then
+  if curl -fsS -H "Authorization: Bearer ${EXISTING_API_KEY}" "${BASE_URL}/v1/models" >/dev/null 2>&1; then
     jq -cn \
       --arg api_key "${EXISTING_API_KEY}" \
       --arg status "reused_existing_api_key" \
