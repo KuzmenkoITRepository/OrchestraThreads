@@ -1,4 +1,4 @@
-"""Stable facade for the canonical example backend."""
+"""Runtime helpers for the canonical example backend."""
 
 from __future__ import annotations
 
