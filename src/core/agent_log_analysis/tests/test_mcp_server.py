@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 
 from core.agent_log_analysis.errors import ValidationError
-from core.agent_log_analysis.mcp_server import AgentLogAnalysisMCPServer
+from core.agent_log_analysis.mcp.server import AgentLogAnalysisMCPServer
 
 REQUEST_MAP = dict[str, object]
 

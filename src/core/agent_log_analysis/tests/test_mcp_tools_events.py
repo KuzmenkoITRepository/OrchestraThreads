@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 
 from core.agent_log_analysis.errors import ValidationError
-from core.agent_log_analysis.mcp_tools_events import get_event, query_agent_events
+from core.agent_log_analysis.mcp.tools.events import get_event, query_agent_events
 
 
 class TestMCPToolsEvents(unittest.IsolatedAsyncioTestCase):

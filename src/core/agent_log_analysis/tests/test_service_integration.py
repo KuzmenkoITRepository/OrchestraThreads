@@ -11,7 +11,7 @@ from typing import Any, cast
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase, TestClient, TestServer
 
-from core.agent_log_analysis.service_runtime import AgentLogAnalysisService, build_app
+from core.agent_log_analysis.service import AgentLogAnalysisService, build_app
 
 
 def _fixtures() -> Any:
