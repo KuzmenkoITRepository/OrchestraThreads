@@ -1,17 +1,8 @@
 from __future__ import annotations
 
-import uuid
-from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
-
-from core.orchestra_memory.store_validation import (
-    normalized_slug,
-    required_text,
-    validated_limit,
-    validated_optional,
-    validated_value,
-)
+from importlib import import_module
+from typing import cast
 
 MemoryItem = dict[str, str]
 StorePayload = dict[str, object]
@@ -61,46 +52,11 @@ class SearchRequest:
     limit: int
 
     def matches(self, payload: StorePayload) -> list[MemoryItem]:
-        items = list(reversed(self._payload_items(payload)))
-        matched = [item for item in items if self._matches_query(item)]
-        return matched[: self.limit]
-
-    def _payload_items(self, payload: StorePayload) -> list[MemoryItem]:
-        result: list[MemoryItem] = []
-        for memory_id, text, metadata in self._payload_rows(payload):
-            item = self._item_from_row(memory_id=memory_id, text=text, metadata=metadata)
-            if item is not None:
-                result.append(item)
-        return result
-
-    def _payload_rows(self, payload: StorePayload) -> Iterator[tuple[object, object, object]]:
-        return zip(
-            self._payload_list(payload, "ids"),
-            self._payload_list(payload, "documents"),
-            self._payload_list(payload, "metadatas"),
-            strict=True,
+        payload_module = import_module("core.orchestra_memory.store_rows_payload")
+        return cast(
+            list[MemoryItem],
+            payload_module.match_payload(payload=payload, query=self.query, limit=self.limit),
         )
-
-    def _payload_list(self, payload: StorePayload, key: str) -> list[object]:
-        value = payload.get(key, [])
-        return value if isinstance(value, list) else []
-
-    def _item_from_row(
-        self,
-        *,
-        memory_id: object,
-        text: object,
-        metadata: object,
-    ) -> MemoryItem | None:
-        row = _memory_row(memory_id=memory_id, text=text, metadata=metadata)
-        if row is None:
-            return None
-        return row.as_item()
-
-    def _matches_query(self, item: MemoryItem) -> bool:
-        if not self.query:
-            return True
-        return self.query in item["text"].lower()
 
 
 @dataclass(frozen=True)
@@ -109,14 +65,17 @@ class StoreRules:
     allowed_categories: set[str]
 
     def build_item(self, *, agent_slug: str, room: str, category: str, text: str) -> MemoryItem:
-        return {
-            "memory_id": uuid.uuid4().hex,
-            "agent_slug": normalized_slug(agent_slug),
-            "room": validated_value(room, self.allowed_rooms, "room"),
-            "category": validated_value(category, self.allowed_categories, "category"),
-            "text": required_text(text, "text"),
-            "created_at": datetime.now(tz=UTC).isoformat(),
-        }
+        rules_module = import_module("core.orchestra_memory.store_rows_rules")
+        return cast(
+            MemoryItem,
+            rules_module.build_item(
+                agent_slug=agent_slug,
+                room=room,
+                category=category,
+                text=text,
+                rules=self._rule_sets(),
+            ),
+        )
 
     @staticmethod
     def metadata_from_item(item: MemoryItem) -> dict[str, object]:
@@ -136,10 +95,11 @@ class StoreRules:
         category: str | None,
         limit: int,
     ) -> SearchRequest:
+        rules_module = import_module("core.orchestra_memory.store_rows_rules")
         return SearchRequest(
             filters=self.scoped_filters(agent_slug=agent_slug, room=room, category=category),
-            query=query.strip().lower(),
-            limit=validated_limit(limit),
+            query=cast(str, rules_module.normalized_query(query)),
+            limit=cast(int, rules_module.validated_search_limit(limit)),
         )
 
     def scoped_filters(
@@ -149,40 +109,29 @@ class StoreRules:
         room: str | None,
         category: str | None,
     ) -> ScopedFilters:
+        rules_module = import_module("core.orchestra_memory.store_rows_rules")
+        values = cast(
+            dict[str, str | None],
+            rules_module.build_scoped_values(
+                agent_slug=agent_slug,
+                room=room,
+                category=category,
+                rules=self._rule_sets(),
+            ),
+        )
+        wing = cast(str, values["wing"])
         return ScopedFilters(
-            wing=normalized_slug(agent_slug),
-            room=validated_optional(room, self.allowed_rooms, "room"),
-            category=validated_optional(category, self.allowed_categories, "category"),
+            wing=wing,
+            room=values["room"],
+            category=values["category"],
         )
 
-
-def _memory_row(
-    *,
-    memory_id: object,
-    text: object,
-    metadata: object,
-) -> MemoryRow | None:
-    if not isinstance(memory_id, str) or not isinstance(text, str):
-        return None
-    if not isinstance(metadata, dict):
-        return None
-    fields = _metadata_fields(metadata)
-    if fields is None:
-        return None
-    return MemoryRow(memory_id=memory_id, text=text, **fields)
-
-
-def _metadata_fields(metadata: dict[object, object]) -> dict[str, str] | None:
-    values = {
-        "wing": metadata.get("wing"),
-        "room": metadata.get("room"),
-        "category": metadata.get("category"),
-        "created_at": metadata.get("created_at"),
-    }
-    if not _all_strings(values):
-        return None
-    return {key: value for key, value in values.items() if isinstance(value, str)}
-
-
-def _all_strings(values: dict[str, object | None]) -> bool:
-    return all(isinstance(value, str) for value in values.values())
+    def _rule_sets(self) -> object:
+        rules_module = import_module("core.orchestra_memory.store_rows_rules")
+        return cast(
+            object,
+            rules_module.RuleSets(
+                allowed_rooms=self.allowed_rooms,
+                allowed_categories=self.allowed_categories,
+            ),
+        )

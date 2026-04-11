@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from telegram_mcp.mcp.protocol import JsonDict
 
+SEND_TELEGRAM_MESSAGE_TOOL = "send_telegram_message"
+
 
 def tools_result() -> JsonDict:
     """Build the tools/list response."""
@@ -18,7 +20,7 @@ def tools_result() -> JsonDict:
     return {
         "tools": [
             {
-                "name": "send_telegram_message",
+                "name": SEND_TELEGRAM_MESSAGE_TOOL,
                 "description": "Send a Telegram message to a configured recipient.",
                 "inputSchema": tool_schema,
             },

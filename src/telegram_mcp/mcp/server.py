@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from telegram_mcp.config import TelegramMCPConfig, load_config
-from telegram_mcp.mcp.payloads import tools_result
+from telegram_mcp.mcp.payloads import SEND_TELEGRAM_MESSAGE_TOOL, tools_result
 from telegram_mcp.mcp.protocol import mcp_content
 from telegram_mcp.mcp.send import safe_handle_send
 from telegram_mcp.telegram_client import TelegramHTTPClient
@@ -41,7 +41,7 @@ class TelegramMCPServer:
         arguments: dict[str, Any],
     ) -> dict[str, Any]:
         """SGR in-process tool call interface."""
-        if name != "send_telegram_message":
+        if name != SEND_TELEGRAM_MESSAGE_TOOL:
             return mcp_content({"ok": False, "error": f"Unknown tool: {name}"})
         return await safe_handle_send(self, arguments)
 
