@@ -1,4 +1,4 @@
-"""Compatibility facade for SGR backend status tracking."""
+"""Status internals for the canonical SGR backend."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Compatibility facade for the canonical SGR backend entrypoint."""
+"""Runtime internals for the canonical SGR backend."""
 
 from __future__ import annotations
 
@@ -15,6 +15,3 @@ from core.orchestra_agents.backends.sgr.runtime.entrypoint import (
     _normalize_config as _normalize_config,
 )
 from core.orchestra_agents.backends.sgr.runtime.entrypoint import main as main
-
-if __name__ == "__main__":
-    main()
