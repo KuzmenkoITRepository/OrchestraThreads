@@ -6,13 +6,10 @@ import asyncio
 import logging
 from dataclasses import dataclass
 
-from aiohttp import web
-
 from core.task_registry.config import TaskRegistryConfig, load_config
+from core.task_registry.service_runtime_web import setup_app, start_site, stop_service
 
 logger = logging.getLogger(__name__)
-
-HTTP_UNAVAILABLE_STATUS = 503
 
 
 @dataclass
@@ -56,39 +53,15 @@ class TaskRegistryService:
         return await self.store.ping()
 
 
-async def _setup_app(service: TaskRegistryService) -> tuple[web.Application, web.AppRunner]:
-    app = web.Application()
-    app["service"] = service
-    app.router.add_get("/healthz", _healthz)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    return app, runner
-
-
-async def _shutdown_service(service: TaskRegistryService, runner: web.AppRunner) -> None:
-    await runner.cleanup()
-    await service.stop()
-
-
-async def _healthz(request: web.Request) -> web.Response:
-    service = request.app["service"]
-    if not isinstance(service, TaskRegistryService):
-        return web.json_response({"status": "error"}, status=HTTP_UNAVAILABLE_STATUS)
-    if not await service.is_healthy():
-        return web.json_response({"status": "error"}, status=HTTP_UNAVAILABLE_STATUS)
-    return web.json_response({"status": "ok"})
-
-
 async def run_service() -> None:
     service = TaskRegistryService()
     await service.start()
-    _, runner = await _setup_app(service)
-    site = web.TCPSite(runner, host=service.config.host, port=service.config.port)
-    await site.start()
+    runner = await setup_app(service)
+    await start_site(runner, service.config)
     logger.info("Task registry listening on %s:%s", service.config.host, service.config.port)
     try:
         await asyncio.Event().wait()
     except BaseException:
         return
     finally:
-        await _shutdown_service(service, runner)
+        await stop_service(service, runner)

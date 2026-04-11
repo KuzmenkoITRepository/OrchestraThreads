@@ -9,22 +9,60 @@ from pathlib import Path
 
 _LOG = logging.getLogger(__name__)
 
-DEFAULT_TEMPLATE_NAME = "agent"
-_SKIPPED_TEMPLATE_PARTS = frozenset(("__pycache__", "agent_runtime"))
-
 
 @dataclass(frozen=True)
 class ScaffoldOptions:
     display_name: str | None = None
     backend_type: str = "example"
-    template: str = DEFAULT_TEMPLATE_NAME
+    template: str = "agent"
     force: bool = False
 
 
-class _TemplateRenderer:
+class _ScaffoldInputs:
+    default_template_name = "agent"
+    default_backend_type = "example"
+
     @staticmethod
-    def template_root(template_name: str = DEFAULT_TEMPLATE_NAME) -> Path:
-        normalized = str(template_name or DEFAULT_TEMPLATE_NAME).strip() or DEFAULT_TEMPLATE_NAME
+    def normalized_template_name(template_name: str) -> str:
+        return (
+            str(template_name or _ScaffoldInputs.default_template_name).strip()
+            or _ScaffoldInputs.default_template_name
+        )
+
+    @staticmethod
+    def display_name(slug: str, options: ScaffoldOptions) -> str:
+        return options.display_name or slug.replace("_", " ").title()
+
+    @staticmethod
+    def backend_type(options: ScaffoldOptions) -> str:
+        return str(options.backend_type).strip() or _ScaffoldInputs.default_backend_type
+
+    @staticmethod
+    def normalized_slug(slug: str) -> str:
+        normalized = str(slug).strip()
+        if not normalized:
+            raise ValueError("slug is required")
+        return normalized
+
+    @staticmethod
+    def target_root(output_dir: str | Path) -> Path:
+        return Path(output_dir).expanduser().resolve()
+
+    @staticmethod
+    def ensure_target_root(target_root: Path, *, force: bool) -> None:
+        if target_root.exists() and any(target_root.iterdir()) and not force:
+            raise ValueError(
+                f"target directory already exists and is not empty: {target_root}",
+            )
+        target_root.mkdir(parents=True, exist_ok=True)
+
+
+class _TemplateRenderer:
+    skipped_template_parts = frozenset(("__pycache__", "agent_runtime"))
+
+    @staticmethod
+    def template_root(template_name: str = "agent") -> Path:
+        normalized = _ScaffoldInputs.normalized_template_name(template_name)
         root = Path(__file__).resolve().parent / "templates" / normalized
         if not root.exists() or not root.is_dir():
             raise ValueError(f"unknown template: {normalized}")
@@ -34,8 +72,8 @@ class _TemplateRenderer:
     def build_replacements(slug: str, options: ScaffoldOptions) -> dict[str, str]:
         return {
             "__AGENT_SLUG__": slug,
-            "__AGENT_DISPLAY_NAME__": options.display_name or slug.replace("_", " ").title(),
-            "__BACKEND_TYPE__": str(options.backend_type).strip() or "example",
+            "__AGENT_DISPLAY_NAME__": _ScaffoldInputs.display_name(slug, options),
+            "__BACKEND_TYPE__": _ScaffoldInputs.backend_type(options),
         }
 
     @classmethod
@@ -57,7 +95,7 @@ class _TemplateRenderer:
     def _should_skip(source: Path) -> bool:
         if source.is_dir() or source.suffix == ".pyc":
             return True
-        return any(part in _SKIPPED_TEMPLATE_PARTS for part in source.parts)
+        return any(part in _TemplateRenderer.skipped_template_parts for part in source.parts)
 
     @staticmethod
     def _copy_file(
@@ -87,14 +125,10 @@ def scaffold_agent(
     options: ScaffoldOptions | None = None,
 ) -> Path:
     """Create a new agent directory from the bundled template."""
-    normalized_slug = str(slug).strip()
-    if not normalized_slug:
-        raise ValueError("slug is required")
+    normalized_slug = _ScaffoldInputs.normalized_slug(slug)
     resolved_options = options or ScaffoldOptions()
-    target_root = Path(output_dir).expanduser().resolve()
-    if target_root.exists() and any(target_root.iterdir()) and not resolved_options.force:
-        raise ValueError(f"target directory already exists and is not empty: {target_root}")
-    target_root.mkdir(parents=True, exist_ok=True)
+    target_root = _ScaffoldInputs.target_root(output_dir)
+    _ScaffoldInputs.ensure_target_root(target_root, force=resolved_options.force)
     replacements = _TemplateRenderer.build_replacements(normalized_slug, resolved_options)
     _TemplateRenderer.copy_template(
         _TemplateRenderer.template_root(resolved_options.template),
@@ -116,7 +150,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--template",
-        default=DEFAULT_TEMPLATE_NAME,
+        default="agent",
         choices=["agent", "agent_mux", "opencode"],
         help="Template root under src/core/orchestra_agents/templates.",
     )

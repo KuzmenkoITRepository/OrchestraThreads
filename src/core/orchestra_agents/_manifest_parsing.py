@@ -18,6 +18,69 @@ from core.orchestra_agents.errors import ManifestValidationError
 _logger = logging.getLogger(__name__)
 
 
+class _ManifestParsingHelpers:
+    @staticmethod
+    def optional_string(value: Any) -> str | None:
+        return str(value or "").strip() or None
+
+    @staticmethod
+    def parse_status(normalized: dict[str, Any], *, errors: list[str]) -> str:
+        status = _FieldParsers.as_string(
+            normalized.get("status", "active"),
+            "status",
+            errors=errors,
+        )
+        if status and status.lower() not in {"active", "inactive"}:
+            errors.append("status must be active or inactive")
+        return status.lower()
+
+    @staticmethod
+    def parse_auto_start(normalized: dict[str, Any], *, errors: list[str]) -> bool:
+        return _FieldParsers.as_bool(
+            normalized.get("auto_start"),
+            "auto_start",
+            errors=errors,
+        )
+
+    @staticmethod
+    def parse_runtime_base(
+        runtime_raw: dict[str, Any],
+        *,
+        errors: list[str],
+        image_required: bool,
+    ) -> dict[str, Any]:
+        return {
+            "driver": _FieldParsers.as_string(
+                runtime_raw.get("driver", "docker"),
+                "runtime.driver",
+                errors=errors,
+            ).lower(),
+            "image": _FieldParsers.as_string(
+                runtime_raw.get("image"),
+                "runtime.image",
+                errors=errors,
+                required=image_required,
+            ),
+            "entrypoint": _ManifestParsingHelpers.optional_string(
+                runtime_raw.get("entrypoint"),
+            ),
+            "command": _FieldParsers.as_command(
+                runtime_raw.get("command"),
+                "runtime.command",
+                errors=errors,
+            ),
+            "mounts": _parse_mounts_list(runtime_raw.get("mounts"), errors=errors),
+        }
+
+    @staticmethod
+    def coerce_backend_config(raw_config: Any, *, errors: list[str]) -> dict[str, Any]:
+        backend_config = raw_config or {}
+        if isinstance(backend_config, dict):
+            return backend_config
+        errors.append("backend.config must be an object")
+        return {}
+
+
 @dataclass(frozen=True)
 class ParsedManifest:
     slug: str
@@ -109,13 +172,7 @@ class _ManifestParser:
     def parse(self) -> ParsedManifest:
         normalized = self._normalize_legacy()
         self._backend_type = _extract_backend_type(normalized)
-        status = _FieldParsers.as_string(
-            normalized.get("status", "active"),
-            "status",
-            errors=self.errors,
-        )
-        if status and status.lower() not in {"active", "inactive"}:
-            self.errors.append("status must be active or inactive")
+        status = _ManifestParsingHelpers.parse_status(normalized, errors=self.errors)
         parsed = ParsedManifest(
             slug=_FieldParsers.as_string(normalized.get("slug"), "slug", errors=self.errors),
             display_name=_FieldParsers.as_string(
@@ -123,14 +180,13 @@ class _ManifestParser:
                 "display_name",
                 errors=self.errors,
             ),
-            status=status.lower(),
+            status=status,
             agent=self._parse_agent(normalized.get("agent")),
             runtime=self._parse_runtime(normalized.get("runtime")),
             backend=self._parse_backend(normalized.get("backend")),
             manifest_path=self.manifest_path,
-            auto_start=_FieldParsers.as_bool(
-                normalized.get("auto_start"),
-                "auto_start",
+            auto_start=_ManifestParsingHelpers.parse_auto_start(
+                normalized,
                 errors=self.errors,
             ),
         )
@@ -140,7 +196,9 @@ class _ManifestParser:
 
     def _parse_agent(self, raw: Any) -> dict[str, Any]:
         agent_raw = _FieldParsers.as_dict(raw, "agent", errors=self.errors)
-        system_prompt_file = str(agent_raw.get("system_prompt_file") or "").strip() or None
+        system_prompt_file = _ManifestParsingHelpers.optional_string(
+            agent_raw.get("system_prompt_file"),
+        )
         allowed_peer_agent_slugs = _FieldParsers.allowed_peers(
             agent_raw.get("allowed_peer_agent_slugs"),
             errors=self.errors,
@@ -163,36 +221,21 @@ class _ManifestParser:
     def _parse_runtime(self, raw: Any) -> dict[str, Any]:
         runtime_raw = _FieldParsers.as_dict(raw, "runtime", errors=self.errors)
         image_required = not is_known_backend(self._backend_type)
-        runtime_payload: dict[str, Any] = {
-            "driver": _FieldParsers.as_string(
-                runtime_raw.get("driver", "docker"),
-                "runtime.driver",
-                errors=self.errors,
-            ).lower(),
-            "image": _FieldParsers.as_string(
-                runtime_raw.get("image"),
-                "runtime.image",
-                errors=self.errors,
-                required=image_required,
-            ),
-            "entrypoint": str(runtime_raw.get("entrypoint") or "").strip() or None,
-            "command": _FieldParsers.as_command(
-                runtime_raw.get("command"),
-                "runtime.command",
-                errors=self.errors,
-            ),
-            "mounts": _parse_mounts_list(runtime_raw.get("mounts"), errors=self.errors),
-        }
+        runtime_payload = _ManifestParsingHelpers.parse_runtime_base(
+            runtime_raw,
+            errors=self.errors,
+            image_required=image_required,
+        )
         _validate_driver(runtime_payload, errors=self.errors)
         _merge_runtime_env(runtime_payload, runtime_raw, errors=self.errors)
         return runtime_payload
 
     def _parse_backend(self, raw: Any) -> dict[str, Any]:
         backend_raw = _FieldParsers.as_dict(raw, "backend", errors=self.errors)
-        backend_config = backend_raw.get("config") or {}
-        if not isinstance(backend_config, dict):
-            self.errors.append("backend.config must be an object")
-            backend_config = {}
+        backend_config = _ManifestParsingHelpers.coerce_backend_config(
+            backend_raw.get("config"),
+            errors=self.errors,
+        )
         backend_type = _FieldParsers.as_string(
             backend_raw.get("type"),
             "backend.type",

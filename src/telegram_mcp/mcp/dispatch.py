@@ -6,6 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from telegram_mcp.mcp.payloads import (
+    SEND_TELEGRAM_MESSAGE_TOOL,
     resource_templates_result,
     resources_result,
     tools_result,
@@ -78,6 +79,6 @@ async def _dispatch_tool(
     name = str(params.get("name") or "")
     arguments = params.get("arguments")
     args: JsonDict = arguments if isinstance(arguments, dict) else {}
-    if name == "send_telegram_message":
+    if name == SEND_TELEGRAM_MESSAGE_TOOL:
         return await safe_handle_send(server, args)
     return mcp_content({"ok": False, "error": f"Unknown tool: {name}"})

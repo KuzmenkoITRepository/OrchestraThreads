@@ -7,60 +7,64 @@ from typing import Any
 
 import yaml
 
-_MISSING = object()
 
+class _ManifestMigrationHelpers:
+    missing_sentinel = object()
 
-class ManifestMigrator:
-    """Converts legacy manifest payloads into unified schema shape."""
-
-    def migrate(self, raw: dict[str, Any]) -> dict[str, Any]:
+    @classmethod
+    def migrate_manifest_payload(cls, raw: dict[str, Any]) -> dict[str, Any]:
         migrated = dict(raw)
-        migrated = self._normalize_backend(migrated)
-        migrated = self._normalize_agent(migrated)
+        migrated = cls.normalize_backend_block(migrated)
+        migrated = cls.normalize_agent_block(migrated)
         migrated.pop("runtime", None)
-        self._strip_legacy_fields(migrated)
+        cls.strip_legacy_fields(migrated)
         return migrated
 
-    def _normalize_agent(
-        self,
-        manifest: dict[str, Any],
-    ) -> dict[str, Any]:
+    @classmethod
+    def normalize_agent_block(cls, manifest: dict[str, Any]) -> dict[str, Any]:
         result = dict(manifest)
-        agent = self._extract_agent_block(result)
-        result["agent"] = self._build_clean_agent(agent)
+        result["agent"] = cls.build_agent_block(manifest, result.get("agent"))
         return result
 
-    def _build_clean_agent(
-        self,
-        agent: dict[str, Any],
+    @classmethod
+    def build_agent_block(
+        cls,
+        manifest: dict[str, Any],
+        agent_payload: Any,
     ) -> dict[str, Any]:
-        clean: dict[str, Any] = {}
-        for field_name in ("working_dir", "http_endpoint"):
-            field_val = agent.get(field_name, _MISSING)
-            if field_val is not _MISSING:
-                clean[field_name] = field_val
-        if agent.get("system_prompt_file"):
-            clean["system_prompt_file"] = agent["system_prompt_file"]
-        peers = agent.get("allowed_peer_agent_slugs")
-        if peers:
-            clean["allowed_peer_agent_slugs"] = list(peers)
+        normalized_agent = dict(agent_payload) if isinstance(agent_payload, dict) else {}
+        for key in (
+            "working_dir",
+            "http_endpoint",
+            "system_prompt_file",
+        ):
+            if key in manifest and key not in normalized_agent:
+                normalized_agent[key] = manifest[key]
+        clean = {
+            field_name: normalized_agent[field_name]
+            for field_name in ("working_dir", "http_endpoint")
+            if normalized_agent.get(field_name, cls.missing_sentinel) is not cls.missing_sentinel
+        }
+        system_prompt_file = normalized_agent.get("system_prompt_file")
+        if system_prompt_file:
+            clean["system_prompt_file"] = system_prompt_file
+        allowed_peer_agent_slugs = normalized_agent.get("allowed_peer_agent_slugs")
+        if allowed_peer_agent_slugs:
+            clean["allowed_peer_agent_slugs"] = list(allowed_peer_agent_slugs)
         return clean
 
-    def _normalize_backend(
-        self,
-        manifest: dict[str, Any],
-    ) -> dict[str, Any]:
+    @classmethod
+    def normalize_backend_block(cls, manifest: dict[str, Any]) -> dict[str, Any]:
         result = dict(manifest)
-        backend = _safe_dict(result, "backend")
+        backend_payload = result.get("backend")
+        backend = dict(backend_payload) if isinstance(backend_payload, dict) else {}
         if "backend_type" in manifest and "type" not in backend:
             backend["type"] = manifest["backend_type"]
         result["backend"] = backend
         return result
 
-    def _strip_legacy_fields(
-        self,
-        manifest: dict[str, Any],
-    ) -> None:
+    @staticmethod
+    def strip_legacy_fields(manifest: dict[str, Any]) -> None:
         for key in (
             "working_dir",
             "http_endpoint",
@@ -70,19 +74,24 @@ class ManifestMigrator:
         ):
             manifest.pop(key, None)
 
-    def _extract_agent_block(
-        self,
-        manifest: dict[str, Any],
-    ) -> dict[str, Any]:
-        agent = _safe_dict(manifest, "agent")
-        for key in (
-            "working_dir",
-            "http_endpoint",
-            "system_prompt_file",
-        ):
-            if key in manifest and key not in agent:
-                agent[key] = manifest[key]
-        return agent
+    @staticmethod
+    def resolve_snapshot_path(manifest_path: Path, snapshot_path: Path | None) -> Path:
+        if snapshot_path is None:
+            return manifest_path.with_name(f"{manifest_path.name}.snapshot")
+        return snapshot_path.resolve()
+
+    @staticmethod
+    def read_snapshot_source(manifest_path: Path, source_bytes: bytes | None) -> bytes:
+        if source_bytes is None:
+            return manifest_path.read_bytes()
+        return source_bytes
+
+
+class ManifestMigrator:
+    """Converts legacy manifest payloads into unified schema shape."""
+
+    def migrate(self, raw: dict[str, Any]) -> dict[str, Any]:
+        return _ManifestMigrationHelpers.migrate_manifest_payload(raw)
 
 
 def load_manifest_payload(path: Path) -> dict[str, Any]:
@@ -110,13 +119,8 @@ def create_manifest_snapshot(
     source_bytes: bytes | None = None,
 ) -> Path:
     """Store exact manifest bytes for rollback."""
-    if snapshot_path is None:
-        resolved = manifest_path.with_name(
-            f"{manifest_path.name}.snapshot",
-        )
-    else:
-        resolved = snapshot_path.resolve()
-    raw = manifest_path.read_bytes() if source_bytes is None else source_bytes
+    resolved = _ManifestMigrationHelpers.resolve_snapshot_path(manifest_path, snapshot_path)
+    raw = _ManifestMigrationHelpers.read_snapshot_source(manifest_path, source_bytes)
     resolved.parent.mkdir(parents=True, exist_ok=True)
     resolved.write_bytes(raw)
     return resolved
@@ -153,14 +157,3 @@ def write_migrated_output(
     resolved_output.parent.mkdir(parents=True, exist_ok=True)
     resolved_output.write_text(migrated_text, encoding="utf-8")
     return written
-
-
-def _safe_dict(
-    payload: dict[str, Any],
-    key: str,
-) -> dict[str, Any]:
-    """Extract a dict sub-key, defaulting to empty dict."""
-    gotten = payload.get(key)
-    if isinstance(gotten, dict):
-        return dict(gotten)
-    return {}
