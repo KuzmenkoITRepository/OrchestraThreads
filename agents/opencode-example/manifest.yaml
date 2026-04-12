@@ -25,7 +25,7 @@ runtime:
     OPENCODE_RUNTIME_STATE_ROOT: /tmp/opencode-runtime/opencode-example
     PYTHONPATH: /workspace/src
     ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
-    OMNIROUTE_URL: http://host.docker.internal:8100
+    OMNIROUTE_URL: http://orchestra-omniroute:20128
     LOG_LEVEL: INFO
   env_passthrough:
     - ORCHESTRA_THREADS_URL
