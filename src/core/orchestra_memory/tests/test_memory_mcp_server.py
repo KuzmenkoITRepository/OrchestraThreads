@@ -3,7 +3,10 @@ from __future__ import annotations
 import unittest
 from typing import Any
 
-from core.orchestra_memory.mcp.server import OrchestraMemoryMCPServer
+from core.orchestra_memory.mcp.server import (
+    OrchestraMemoryMCPServer,
+    orchestra_memory_tool_definitions,
+)
 
 
 class _FakeMemoryClient:
@@ -83,6 +86,14 @@ class _FakeMemoryClient:
 
 
 class OrchestraMemoryMCPServerTests(unittest.IsolatedAsyncioTestCase):
+    def test_tool_definitions_export_match_tools(self) -> None:
+        tool_names = {tool["name"] for tool in orchestra_memory_tool_definitions()}
+
+        self.assertEqual(
+            tool_names,
+            {"memory_remember", "memory_search", "memory_delete", "memory_clear"},
+        )
+
     async def test_initialize_and_tools_list(self) -> None:
         client = _FakeMemoryClient()
         server = OrchestraMemoryMCPServer(agent_slug="secretary", client=client)

@@ -2,16 +2,20 @@ from __future__ import annotations
 
 import os
 import tempfile
-from typing import Any
-from unittest import IsolatedAsyncioTestCase, main, mock
+from unittest import IsolatedAsyncioTestCase, mock
 
-from core.orchestra_agents.backends.sgr import SGRMinimaxBackend, configure_mcp_tools
+from core.orchestra_agents.backends import sgr as sgr_backend
+from core.orchestra_agents.backends.sgr.mcp_loader import (
+    _register_server_tools,
+    _SchemaList,
+    _ToolMap,
+)
 from core.orchestra_agents.backends.sgr.tool_exec import execute_single
 from core.orchestra_agents.runtime import EventDelivery
 from core.orchestra_agents.tests.template_helpers.sgr_fake_omniroute import FakeOmniRoute
 from core.orchestra_agents.tests.template_helpers.sgr_responses import _text_response
 
-JSONMap = dict[str, Any]
+JSONMap = dict[str, object]
 
 _OMNIROUTE_URL_KEY = "OMNIROUTE_URL"
 _OMNIROUTE_API_KEY = "OMNIROUTE_API_KEY"
@@ -31,7 +35,7 @@ class SGRWave1Tests(IsolatedAsyncioTestCase):
         os.environ[_OMNIROUTE_URL_KEY] = self.omniroute.base_url
         os.environ[_OMNIROUTE_API_KEY] = "omniroute-test-key"
         self._working_dir_ctx = tempfile.TemporaryDirectory()
-        self.backend = SGRMinimaxBackend(
+        self.backend = sgr_backend.SGRMinimaxBackend(
             agent_slug=_SGR_AGENT_SLUG,
             backend_type="sgr_minimax",
             working_dir=self._working_dir_ctx.name,
@@ -45,7 +49,7 @@ class SGRWave1Tests(IsolatedAsyncioTestCase):
             system_prompt="Use available MCP tools for outward communication.",
         )
         self._fake_mcp = _FakeMCPServer()
-        configure_mcp_tools(
+        sgr_backend.configure_mcp_tools(
             self.backend,
             {"send_telegram_message": self._fake_mcp},
         )
@@ -101,7 +105,7 @@ class SGRMCPAndSessionTests(IsolatedAsyncioTestCase):
         os.environ[_OMNIROUTE_URL_KEY] = self.omniroute.base_url
         os.environ[_OMNIROUTE_API_KEY] = "omniroute-test-key"
         self._working_dir_ctx = tempfile.TemporaryDirectory()
-        self.backend = SGRMinimaxBackend(
+        self.backend = sgr_backend.SGRMinimaxBackend(
             agent_slug=_SGR_AGENT_SLUG,
             backend_type="sgr_minimax",
             working_dir=self._working_dir_ctx.name,
@@ -121,11 +125,9 @@ class SGRMCPAndSessionTests(IsolatedAsyncioTestCase):
                 os.environ[key] = prev_val
 
     async def test_multi_tool_registration(self) -> None:
-        from core.orchestra_agents.backends.sgr.mcp_loader import _register_server_tools
-
         fake = _FakeMCPServer()
-        servers: dict[str, Any] = {}
-        schemas: list[dict[str, Any]] = []
+        servers: _ToolMap = {}
+        schemas: _SchemaList = []
         entry = {_NAME_KEY: "fallback"}
         defs = [{_NAME_KEY: "a"}, {_NAME_KEY: "b"}]
         _register_server_tools(fake, entry, defs, servers, schemas)
@@ -134,13 +136,24 @@ class SGRMCPAndSessionTests(IsolatedAsyncioTestCase):
         self.assertNotIn("fallback", servers)
 
     async def test_fallback_registration(self) -> None:
-        from core.orchestra_agents.backends.sgr.mcp_loader import _register_server_tools
-
         fake = _FakeMCPServer()
-        servers: dict[str, Any] = {}
-        schemas: list[dict[str, Any]] = []
+        servers: _ToolMap = {}
+        schemas: _SchemaList = []
         _register_server_tools(fake, {_NAME_KEY: "my_tool"}, [], servers, schemas)
         self.assertIn("my_tool", servers)
+
+    async def test_memory_schema_fn_registration(self) -> None:
+        from core.orchestra_agents.backends.sgr.mcp_loader import _load_schemas
+
+        tool_defs = _load_schemas(
+            "core.orchestra_memory.mcp.server",
+            "orchestra_memory_tool_definitions",
+        )
+
+        self.assertEqual(
+            {tool_def["name"] for tool_def in tool_defs},
+            {"memory_remember", "memory_search", "memory_delete", "memory_clear"},
+        )
 
     async def test_reset_clears_only_session(self) -> None:
         self.backend._chat_history.record_turn(
@@ -184,7 +197,7 @@ class SGRSessionTurnCleanupTests(IsolatedAsyncioTestCase):
         os.environ[_OMNIROUTE_URL_KEY] = self.omniroute.base_url
         os.environ[_OMNIROUTE_API_KEY] = "omniroute-test-key"
         self._working_dir_ctx = tempfile.TemporaryDirectory()
-        self.backend = SGRMinimaxBackend(
+        self.backend = sgr_backend.SGRMinimaxBackend(
             agent_slug=_SGR_AGENT_SLUG,
             backend_type="sgr_minimax",
             working_dir=self._working_dir_ctx.name,
@@ -230,21 +243,17 @@ class SGRSessionTurnCleanupTests(IsolatedAsyncioTestCase):
         self.assertEqual(dispatch_result.details["peer_agent_slug"], "secretary")
 
 
-if __name__ == "__main__":
-    main()
-
-
 class _FakeMCPServer:
     """Minimal MCP server stub for testing."""
 
     def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
+        self.calls: list[dict[str, object]] = []
 
     async def handle_tools_call(
         self,
         name: str,
-        arguments: dict[str, Any],
-    ) -> dict[str, Any]:
+        arguments: dict[str, object],
+    ) -> dict[str, object]:
         self.calls.append({_NAME_KEY: name, "arguments": arguments})
         return {
             "content": [{"type": "text", "text": "ok"}],
