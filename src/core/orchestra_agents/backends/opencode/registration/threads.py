@@ -19,16 +19,13 @@ class _RegistrationBackend(Protocol):
 
 
 async def register_with_threads(backend: _RegistrationBackend) -> None:
-    http_endpoint = backend.http_endpoint
-    if not http_endpoint:
-        return
     config = backend.config
     threads_url = str(config.get("threads_url") or "").strip() or "http://orchestra-threads:8788"
     client = OrchestraThreadsClient(base_url=threads_url)
     await client.register_agent(
         agent_slug=backend.agent_slug,
         display_name=backend.agent_slug,
-        base_url=http_endpoint,
+        base_url=backend.http_endpoint,
         metadata={
             "kind": "opencode-omo-agent",
             "backend_type": backend.backend_type,
