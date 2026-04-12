@@ -49,24 +49,65 @@ runtime:
 backend:
   type: agent_mux
   config:
-    route_policy: codex_only
+    role: worker
+    artifact_root: /workspace/agents/secretary/runtime_state/artifacts
+    llm_route_policy: codex_only
     model: cx/gpt-5.4-mini
-    temperature: 0.2
-    max_tokens: 600
     timeout_seconds: 180
+    require_tool_call_for_response: true
     react_to_inactive: true
     max_reasoning_steps: 8
     max_direct_text_retries: 2
     mcp_servers:
       - name: send_telegram_message
-        module: telegram_mcp.mcp.server
-        class: TelegramMCPServer
-        schema_fn: telegram_tool_definitions
+        command: python
+        args:
+          - -m
+          - telegram_mcp.mcp.server
+        cwd: "{working_dir}"
+        startup_timeout_sec: 15
+        required: false
+        enabled: true
+        env:
+          TELEGRAM_EVENTS_URL: http://telegram-events:8787
+          TELEGRAM_CHAT_ID_IVAN: "748976004"
+          PYTHONPATH: "{pythonpath}"
       - name: orchestra_threads
-        module: core.orchestra_thread.mcp.server
-        class: OrchestraThreadsMCPServer
-        schema_fn: orchestra_threads_tool_definitions
+        command: python
+        args:
+          - -m
+          - core.orchestra_thread.mcp.server
+        cwd: "{working_dir}"
+        startup_timeout_sec: 15
+        required: false
+        enabled: true
+        enabled_tools:
+          - thread_send
+          - thread_status
+          - thread_current
+          - thread_expand
+          - thread_guide
+          - thread_peers
+        env:
+          ORCHESTRA_THREADS_AGENT_SLUG: "{agent_slug}"
+          ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
+          ORCHESTRA_THREADS_ACTIVE_CONTEXT_PATH: "{active_context_path}"
+          PYTHONPATH: "{pythonpath}"
       - name: orchestra_memory
-        module: core.orchestra_memory.mcp.server
-        class: OrchestraMemoryMCPServer
-        schema_fn: orchestra_memory_tool_definitions
+        command: python
+        args:
+          - -m
+          - core.orchestra_memory.mcp.server
+        cwd: "{working_dir}"
+        startup_timeout_sec: 15
+        required: false
+        enabled: true
+        enabled_tools:
+          - memory_remember
+          - memory_search
+          - memory_delete
+          - memory_clear
+        env:
+          ORCHESTRA_AGENT_SLUG: "{agent_slug}"
+          ORCHESTRA_MEMORY_URL: http://orchestra-memory:8793
+          PYTHONPATH: "{pythonpath}"
