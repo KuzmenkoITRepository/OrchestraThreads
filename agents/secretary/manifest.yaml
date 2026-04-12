@@ -16,16 +16,11 @@ runtime:
   command:
     - python
     - -m
-    - core.orchestra_agents.agent_mux_runtime.bootstrap
-  mounts:
-    - type: bind
-      source: ../../
-      target: /workspace
-      mode: rw
+    - core.orchestra_agents.backends.agent_mux.main
+  mounts: []
   env:
     AGENT_HTTP_HOST: 0.0.0.0
     AGENT_HTTP_PORT: "8787"
-    PYTHONPATH: /workspace/src:/workspace
     OMNIROUTE_URL: http://orchestra-omniroute:20128
     LOG_LEVEL: INFO
     TELEGRAM_EVENTS_URL: http://telegram-events:8787
