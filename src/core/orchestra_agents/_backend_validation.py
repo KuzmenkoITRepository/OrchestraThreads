@@ -11,9 +11,21 @@ _logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class _MCPEntrySchema:
+    backend_type: str
+    required_keys: frozenset[str]
+    optional_keys: frozenset[str]
+
+    @property
+    def known_keys(self) -> frozenset[str]:
+        return self.required_keys | self.optional_keys
+
+
+@dataclass(frozen=True)
 class _BackendSchema:
     required_keys: frozenset[str]
     optional_keys: frozenset[str]
+    mcp_entry_schema: _MCPEntrySchema | None = None
 
     @property
     def known_keys(self) -> frozenset[str]:
@@ -35,6 +47,11 @@ _BACKEND_SCHEMAS = MappingProxyType(
                     "mcp_servers",
                 )
             ),
+            mcp_entry_schema=_MCPEntrySchema(
+                backend_type="sgr_minimax",
+                required_keys=frozenset(("name", "module", "class")),
+                optional_keys=frozenset(("schema_fn",)),
+            ),
         ),
         "agent_mux": _BackendSchema(
             required_keys=frozenset(("role", "llm_route_policy", "model")),
@@ -46,6 +63,21 @@ _BACKEND_SCHEMAS = MappingProxyType(
                     "mcp_servers",
                 )
             ),
+            mcp_entry_schema=_MCPEntrySchema(
+                backend_type="agent_mux",
+                required_keys=frozenset(("name", "command")),
+                optional_keys=frozenset(
+                    (
+                        "args",
+                        "cwd",
+                        "startup_timeout_sec",
+                        "required",
+                        "enabled",
+                        "enabled_tools",
+                        "env",
+                    ),
+                ),
+            ),
         ),
         "opencode_omo": _BackendSchema(
             required_keys=frozenset(("model",)),
@@ -56,6 +88,11 @@ _BACKEND_SCHEMAS = MappingProxyType(
                     "startup_timeout_seconds",
                     "mcp_servers",
                 )
+            ),
+            mcp_entry_schema=_MCPEntrySchema(
+                backend_type="opencode_omo",
+                required_keys=frozenset(("name", "command")),
+                optional_keys=frozenset(("args", "env")),
             ),
         ),
     }
@@ -91,3 +128,44 @@ def validate_backend_config(
             key,
             backend_type,
         )
+    _validate_mcp_servers(config.get("mcp_servers"), errors=errors, schema=schema)
+
+
+def _validate_mcp_servers(
+    raw_servers: Any,
+    *,
+    errors: list[str],
+    schema: _BackendSchema,
+) -> None:
+    if raw_servers is None:
+        return
+    if not isinstance(raw_servers, list):
+        errors.append("backend.config.mcp_servers must be a list")
+        return
+    mcp_entry_schema = schema.mcp_entry_schema
+    if mcp_entry_schema is None:
+        return
+    for index, raw_entry in enumerate(raw_servers):
+        _validate_mcp_entry(index, raw_entry, errors, mcp_entry_schema)
+
+
+def _validate_mcp_entry(
+    index: int,
+    raw_entry: Any,
+    errors: list[str],
+    schema: _MCPEntrySchema,
+) -> None:
+    entry_path = f"backend.config.mcp_servers[{index}]"
+    if not isinstance(raw_entry, dict):
+        errors.append(f"{entry_path} must be an object")
+        return
+    for key in sorted(schema.required_keys):
+        if key not in raw_entry:
+            errors.append(
+                f"{entry_path}.{key} is required for backend type '{schema.backend_type}'",
+            )
+    for key in sorted(raw_entry):
+        if key not in schema.known_keys:
+            errors.append(
+                f"{entry_path}.{key} is not supported for backend type '{schema.backend_type}'",
+            )

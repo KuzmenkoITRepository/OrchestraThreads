@@ -14,10 +14,14 @@ from core.orchestra_agents.manifest import AgentManifest
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 
 _EXISTING_MANIFESTS = (
+    "agents/dev/manifest.yaml",
+    "agents/devops/manifest.yaml",
+    "agents/qa/manifest.yaml",
     "agents/sgr/manifest.yaml",
     "agents/orchestra/manifest.yaml",
     "agents/opencode-example/manifest.yaml",
     "agents/secretary/manifest.yaml",
+    "agents/whiner/manifest.yaml",
 )
 
 
@@ -170,6 +174,64 @@ class TestBackendConfigValidation(_ManifestValidationBase):
         )
         manifest = self._parse_manifest(raw)
         self.assertEqual(manifest.backend.config["temperature"], 0.5)
+
+    def test_sgr_mcp_server_requires_inline_keys(self) -> None:
+        raw = self._minimal_manifest(
+            backend_type="sgr_minimax",
+            config={
+                "route_policy": "x",
+                "model": "y",
+                "mcp_servers": [{"name": "threads", "command": "python"}],
+            },
+        )
+
+        error_text = self._parse_manifest_error(raw)
+
+        self.assertIn("backend.config.mcp_servers[0].module is required", error_text)
+        self.assertIn("backend.config.mcp_servers[0].class is required", error_text)
+        self.assertIn("backend.config.mcp_servers[0].command is not supported", error_text)
+
+    def test_agent_mux_mcp_server_rejects_inline_keys(self) -> None:
+        raw = self._minimal_manifest(
+            backend_type="agent_mux",
+            config={
+                "role": "worker",
+                "llm_route_policy": "x",
+                "model": "y",
+                "mcp_servers": [
+                    {
+                        "name": "threads",
+                        "module": "core.orchestra_thread.mcp.server",
+                        "class": "OrchestraThreadsMCPServer",
+                    },
+                ],
+            },
+        )
+
+        error_text = self._parse_manifest_error(raw)
+
+        self.assertIn("backend.config.mcp_servers[0].command is required", error_text)
+        self.assertIn("backend.config.mcp_servers[0].module is not supported", error_text)
+        self.assertIn("backend.config.mcp_servers[0].class is not supported", error_text)
+
+    def test_opencode_mcp_rejects_mux_only_keys(self) -> None:
+        raw = self._minimal_manifest(
+            backend_type="opencode_omo",
+            config={
+                "model": "y",
+                "mcp_servers": [
+                    {
+                        "name": "threads",
+                        "command": "python",
+                        "cwd": "/workspace",
+                    },
+                ],
+            },
+        )
+
+        error_text = self._parse_manifest_error(raw)
+
+        self.assertIn("backend.config.mcp_servers[0].cwd is not supported", error_text)
 
 
 class _MigrationScriptBase(unittest.TestCase):
