@@ -12,11 +12,11 @@ agent:
 
 runtime:
   driver: docker
-  image: orchestra-threads:local
+  image: orchestra-agent-mux-runtime:latest
   command:
     - python
     - -m
-    - core.orchestra_agents.backends.sgr.main
+    - core.orchestra_agents.agent_mux_runtime.bootstrap
   mounts:
     - type: bind
       source: ../../
@@ -42,14 +42,12 @@ runtime:
     - LLM_CLIENT_MAX_TOKENS
     - LLM_CLIENT_REASONING_EFFORT
     - LLM_CLIENT_REASONING_SUMMARY
-    - SGR_MAX_REASONING_STEPS
-    - SGR_MAX_DIRECT_TEXT_RETRIES
     - TELEGRAM_EVENTS_URL
     - TELEGRAM_CHAT_ID_IVAN
     - LOG_LEVEL
 
 backend:
-  type: sgr_minimax
+  type: agent_mux
   config:
     route_policy: codex_only
     model: cx/gpt-5.4-mini
