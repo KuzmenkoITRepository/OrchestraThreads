@@ -49,8 +49,8 @@ backend:
   config:
     role: worker
     artifact_root: /workspace/agents/orchestra/runtime_state/artifacts
-    llm_route_policy: minimax_only
-    model: MiniMax-M2.7
+    llm_route_policy: codex_only
+    model: cx/gpt-5.4-mini
     timeout_seconds: 180
     require_tool_call_for_response: true
     mcp_servers:
