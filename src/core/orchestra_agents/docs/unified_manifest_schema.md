@@ -6,13 +6,13 @@
 
 ## Overview
 
-This document defines the canonical manifest schema for Orchestra agent definitions. The unified schema separates author concerns (what the agent does) from platform concerns (how it runs).
+This document defines the canonical manifest schema for Orchestra agent definitions. The unified schema separates author concerns (what the agent does) from platform concerns (how it runs), while preserving compatibility with the repository's current migration state.
 
-**Key principle:** Authors declare intent via `backend.type` and `backend.config`. The platform derives runtime configuration automatically.
+**Key principle:** The outer manifest envelope is unified today (`slug`, `display_name`, `status`, `agent`, `backend`, optional `auto_start`, optional legacy `runtime`). Runtime derivation is the target direction, but explicit `runtime` blocks are still supported in current manifests and templates.
 
-## Target Author Schema
+## Current Canonical Schema
 
-Agent authors write minimal manifests containing only business logic and backend selection. The platform handles Docker images, entrypoints, environment variables, and Python paths.
+Agent authors must follow the unified outer manifest shape. Backend-specific details live under `backend.config`. During the current migration phase, manifests may still include explicit `runtime` blocks, and the platform continues to accept them.
 
 ### Core Fields
 
@@ -56,9 +56,9 @@ backend:
     max_tokens: 4096
 ```
 
-## Platform-Derived Fields
+## Platform-Derived Runtime (Target Direction)
 
-These fields are **platform-derived** — computed by the platform based on `backend.type`. Authors should NOT set them in unified manifests.
+These fields are the intended platform-managed runtime surface. In the current repository state, they are not fully author-hidden yet: real manifests and templates may still set `runtime` explicitly, and the platform accepts that during migration.
 
 ### Runtime Configuration (Platform-Managed)
 
@@ -127,7 +127,7 @@ OPENCODE_RUNTIME_STATE_ROOT: /tmp/opencode-runtime/{slug}
 
 ## Backend-Specific Config Schemas
 
-The `backend.config` object is validated strictly per `backend.type`. Unknown keys are rejected.
+The `backend.config` object is validated per `backend.type`, but current enforcement is migration-compatible rather than fully strict for every top-level key.
 
 ### sgr_minimax
 
@@ -146,7 +146,21 @@ backend:
 ```
 
 **Required keys:** `route_policy`, `model`
-**Optional keys:** `temperature`, `max_tokens`, `timeout_seconds`, `react_to_inactive`, `max_reasoning_steps`, `max_direct_text_retries`
+**Optional keys:** `temperature`, `max_tokens`, `timeout_seconds`, `react_to_inactive`, `max_reasoning_steps`, `max_direct_text_retries`, `mcp_servers`
+
+**SGR `mcp_servers` shape:**
+
+```yaml
+mcp_servers:
+  - name: string                  # Required. Logical MCP entry name
+    module: string                # Required. Import path for the server module
+    class: string                 # Required. MCP server class name
+    schema_fn: string             # Optional. Function returning tool definitions
+```
+
+SGR supports inline Python MCP registration only. Subprocess-style MCP fields such as
+`command`, `args`, `cwd`, `startup_timeout_sec`, `required`, `enabled`, `enabled_tools`,
+and `env` belong to other backends and are invalid for `sgr_minimax` manifests.
 
 ### agent_mux
 
@@ -195,22 +209,22 @@ backend:
 **Required keys:** `model`
 **Optional keys:** `opencode_serve_port`, `dispatch_timeout_seconds`, `startup_timeout_seconds`, `mcp_servers`
 
-## Strict Validation Rules
+## Current Validation Behavior
 
-The platform validates manifests in strict mode by default.
+The platform validates manifests against the current parser and backend-specific compatibility rules. Some areas are strict today, while others remain permissive during migration.
 
 ### Top-Level Validation
 
-- **Unknown fields:** Rejected. Only `slug`, `display_name`, `status`, `auto_start`, `agent`, `backend`, `runtime` (deprecated) allowed.
+- **Unknown top-level manifest fields:** Rejected. Only supported manifest fields such as `slug`, `display_name`, `status`, `auto_start`, `agent`, `backend`, and the current migration-era `runtime` block are accepted.
 - **Missing required fields:** Rejected. Must have `slug`, `display_name`, `status`, `agent`, `backend`.
-- **Type mismatches:** Rejected. All fields must match declared types.
+- **Type mismatches:** Enforced for the parsed manifest surface, but backend-config value typing is not yet universally strict across every backend-specific field.
 
 ### Backend Config Validation
 
-- **Unknown `backend.type`:** Rejected. Must be one of `sgr_minimax`, `agent_mux`, `opencode_omo`.
-- **Unknown `backend.config` keys:** Rejected per backend type. Only documented keys allowed.
+- **Unknown `backend.type`:** Accepted during migration compatibility if `runtime.image` is provided. The parser logs a warning and preserves the custom backend type.
+- **Unknown top-level `backend.config` keys:** Currently warned, not rejected, for known backends. The parser only hard-rejects unsupported fields inside backend-specific nested structures such as `backend.config.mcp_servers[*]`.
 - **Missing required config keys:** Rejected per backend type.
-- **Type mismatches in config:** Rejected. All config values must match backend schema.
+- **Type mismatches in config:** Only partially enforced today. Current validation primarily checks required keys, allowed key sets, and selected nested structures rather than performing full type validation for every backend config value.
 
 ### Agent Config Validation
 
@@ -227,7 +241,7 @@ Existing manifests with explicit `runtime.*` fields continue to work during the 
 **Phase 1: Acceptance (Current)**
 - Manifests with explicit `runtime` blocks are accepted.
 - Explicit runtime fields override platform defaults.
-- No warnings logged.
+- Migration compatibility still allows unknown backend types when `runtime.image` is present; those cases log warnings rather than hard-failing.
 
 **Phase 2: Deprecation (Q2 2026)**
 - Manifests with explicit `runtime` blocks trigger deprecation warnings in logs.
@@ -254,7 +268,7 @@ When loading a legacy manifest:
    - Validate merged runtime config.
 3. If `runtime` block absent:
    - Derive full runtime config from `backend.type` using platform rules.
-4. Validate final resolved manifest against strict schema.
+4. Validate the final resolved manifest against the current parser and backend-specific compatibility rules.
 
 ### Field-by-Field Compatibility
 
@@ -279,24 +293,23 @@ When loading a legacy manifest:
 
 ## Migration Path
 
-### Automated Migration Tool (Task 9)
+### Automated Migration Tool (Current Utility + Future Bulk Migration)
 
-The migration tool (`scripts/migrate_manifests.py`) will:
+The repository currently contains a single-manifest migration utility at `scripts/migrate_agent_manifest.py`. A bulk migration flow for all manifests is still planned.
+
+Current utility behavior:
+
+1. Read one manifest file.
+2. Parse YAML.
+3. Migrate legacy/runtime-managed fields into the unified outer shape.
+4. Preserve backend-specific `backend.config`.
+5. Emit the migrated manifest to stdout or an output path.
+
+Planned bulk migration behavior:
 
 1. Scan all `agents/*/manifest.yaml` files.
-2. For each manifest:
-   - Parse YAML.
-   - If `runtime` block present:
-     - Extract backend-specific config from `runtime.env` and `runtime.command`.
-     - Remove entire `runtime` block.
-     - Validate `backend.config` against strict schema.
-     - Write updated manifest.
-   - If `runtime` block absent:
-     - Skip (already unified).
-3. Generate migration report:
-   - Count of migrated manifests.
-   - List of validation errors (if any).
-   - Diff summary per manifest.
+2. Run the single-manifest migration per file.
+3. Generate a migration report with validation failures and diffs.
 
 ### Manual Migration Steps
 
@@ -305,39 +318,19 @@ For custom manifests outside `agents/`:
 1. Identify `backend.type` from existing `runtime.image` or `runtime.command`.
 2. Extract backend-specific config from `runtime.env` and move to `backend.config`.
 3. Remove entire `runtime` block.
-4. Validate against strict schema using `orchestra-agents` validation endpoint.
+4. Validate by parsing the manifest with the current `orchestra-agents` manifest loader or via the migration utility plus parser checks.
 
-### Validation Endpoint
+### Validation Workflow (Current)
 
-```bash
-POST /api/v1/agents/validate-manifest
-Content-Type: application/yaml
+There is no documented `orchestra-agents` HTTP validation endpoint in the current repository. The supported validation path today is:
 
-<manifest YAML>
-```
-
-**Response (success):**
-```json
-{
-  "valid": true,
-  "resolved_manifest": { ... }
-}
-```
-
-**Response (failure):**
-```json
-{
-  "valid": false,
-  "errors": [
-    "Unknown backend.config key: invalid_key",
-    "Missing required field: backend.config.model"
-  ]
-}
-```
+1. Parse the manifest through `AgentManifest.from_yaml_text(...)` / `AgentManifest.from_file(...)`.
+2. For legacy manifests, optionally run `scripts/migrate_agent_manifest.py` first and parse the migrated output.
+3. Treat parser errors as validation failures and parser warnings as migration-compatibility signals that still need operator review.
 
 ## Full Resolved Spec Example
 
-**Author writes (minimal):**
+**Author may write today (minimal future-style):**
 
 ```yaml
 slug: my-agent
@@ -407,9 +400,21 @@ runtime:
     - VAULT_TOKEN
 ```
 
+## Current-State Notes
+
+- The unified outer manifest contract is current and enforced.
+- `backend.config` is validated per backend type, but current enforcement is intentionally migration-compatible rather than fully strict for every field.
+- `backend.config.mcp_servers` is backend-specific today:
+  - `sgr_minimax` uses inline Python MCP entries (`name`, `module`, `class`, optional `schema_fn`)
+  - `agent_mux` uses subprocess MCP entries (`name`, `command`, optional `args`, `cwd`, `startup_timeout_sec`, `required`, `enabled`, `enabled_tools`, `env`)
+  - `opencode_omo` uses subprocess/local-server MCP entries (`name`, `command`, optional `args`, `env`)
+- Explicit `runtime` blocks are still present in real manifests and templates and remain valid during migration.
+- Unknown backend types are still accepted when enough runtime information is supplied for compatibility, and they generate warnings rather than immediate rejection.
+- Unknown top-level backend-config keys currently generate warnings for known backends; unsupported nested MCP entry fields are rejected.
+
 ## Implementation Notes
 
-### Dataclass Changes Required
+### Manifest Dataclass Shape
 
 **Current `AgentManifest` (manifest.py):**
 ```python
@@ -439,24 +444,14 @@ class AgentManifest:
     runtime: RuntimeConfig | None = None  # Deprecated, for backward compat only
 ```
 
-### Validation Function Signature
+### Current Validation Entry Points
 
 ```python
-def validate_manifest(
-    manifest: AgentManifest,
-    strict: bool = True,
-) -> tuple[bool, list[str]]:
-    """
-    Validate manifest against unified schema.
-
-    Args:
-        manifest: Parsed manifest object
-        strict: Reject unknown fields and deprecated runtime block
-
-    Returns:
-        (is_valid, error_messages)
-    """
+AgentManifest.from_yaml_text(yaml_text: str) -> AgentManifest
+AgentManifest.from_file(path: Path) -> AgentManifest
 ```
+
+Current validation is performed during parsing. Invalid manifests raise `ManifestValidationError`; migration-compatible cases such as unknown backend types with explicit `runtime.image` may still parse successfully while logging warnings.
 
 ### Platform Derivation Function Signature
 
@@ -485,8 +480,8 @@ def derive_runtime_config(
 - **Backend Adapters:** `src/core/orchestra_agents/backends/`
 - **Runtime Contract:** `src/core/orchestra_agents/runtime/`
 - **Example Manifests:** `agents/*/manifest.yaml`
-- **Migration Tool:** `scripts/migrate_manifests.py` (planned)
+- **Migration Tool:** `scripts/migrate_agent_manifest.py` (current single-manifest utility)
 
 ## Changelog
 
-**2026-04-08:** Initial draft. Defined target schema, platform derivation rules, backend-specific config schemas, strict validation rules, and migration path.
+**2026-04-08:** Initial draft. Defined target schema, platform derivation rules, backend-specific config schemas, current migration-compatible validation behavior, actual parser-based validation entry points, and migration path.
