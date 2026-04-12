@@ -26,14 +26,17 @@ async def _build_inactivity_task(
     thread: dict[str, Any],
 ) -> None:
     thread_id = str(thread.get("thread_id") or "").strip()
-    recipient = str(thread.get("last_message_sender_agent_slug") or "").strip()
+    # Use owner_agent_slug if available, otherwise fall back to last_message_sender
+    recipient = str(thread.get("owner_agent_slug") or "").strip()
+    if not recipient:
+        recipient = str(thread.get("last_message_sender_agent_slug") or "").strip()
     last_activity_at = str(thread.get("last_activity_at") or "").strip()
     if not thread_id or not recipient:
         return
     message = (
         f"Thread {thread_id} has no new activity for at least "
         f"{service.inactivity_timeout_seconds} seconds since {last_activity_at}. "
-        "You may resume it with a new message or close it."
+        "You must either continue processing or close the thread."
     )
     await _append_inactivity_event(
         service,
@@ -61,7 +64,7 @@ async def _append_inactivity_event(
                 to_agent_slug=recipient,
                 message_text=message,
                 interrupts_runtime=True,
-                requires_response=False,
+                requires_response=True,
                 touch_activity=False,
                 update_last_message_sender=False,
             ),
