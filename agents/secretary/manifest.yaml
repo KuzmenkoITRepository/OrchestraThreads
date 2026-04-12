@@ -55,9 +55,6 @@ backend:
     model: cx/gpt-5.4-mini
     timeout_seconds: 180
     require_tool_call_for_response: true
-    react_to_inactive: true
-    max_reasoning_steps: 8
-    max_direct_text_retries: 2
     mcp_servers:
       - name: send_telegram_message
         command: python
