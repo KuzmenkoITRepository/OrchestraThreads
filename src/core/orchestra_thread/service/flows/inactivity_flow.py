@@ -20,19 +20,31 @@ async def _process_inactivity_candidates(service: OrchestraThreadsService) -> No
     await asyncio.gather(*inactivity_tasks)
 
 
+def _resolve_inactivity_recipient(thread: dict[str, Any]) -> str | None:
+    """Find the participant who should respond (non-sender)."""
+    participant_a = str(thread.get("participant_a_agent_slug") or "").strip()
+    participant_b = str(thread.get("participant_b_agent_slug") or "").strip()
+    last_sender = str(thread.get("last_message_sender_agent_slug") or "").strip()
+    if last_sender == participant_a:
+        return participant_b or None
+    if last_sender == participant_b:
+        return participant_a or None
+    owner = str(thread.get("owner_agent_slug") or "").strip()
+    return owner or last_sender or None
+
+
 async def _build_inactivity_task(
     service: OrchestraThreadsService,
     *,
     thread: dict[str, Any],
 ) -> None:
     thread_id = str(thread.get("thread_id") or "").strip()
-    # Use owner_agent_slug if available, otherwise fall back to last_message_sender
-    recipient = str(thread.get("owner_agent_slug") or "").strip()
-    if not recipient:
-        recipient = str(thread.get("last_message_sender_agent_slug") or "").strip()
-    last_activity_at = str(thread.get("last_activity_at") or "").strip()
-    if not thread_id or not recipient:
+    if not thread_id:
         return
+    recipient = _resolve_inactivity_recipient(thread)
+    if not recipient:
+        return
+    last_activity_at = str(thread.get("last_activity_at") or "").strip()
     message = (
         f"Thread {thread_id} has no new activity for at least "
         f"{service.inactivity_timeout_seconds} seconds since {last_activity_at}. "
