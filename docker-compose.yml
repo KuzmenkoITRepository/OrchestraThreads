@@ -172,7 +172,7 @@ services:
     restart: unless-stopped
 
   orchestra-omniroute:
-    image: diegosouzapw/omniroute:latest
+    image: diegosouzapw/omniroute@sha256:f3389731a8eb60feb5c0868bdde13625740b400868a466962be08f04b3545e15
     networks:
       - default
     ports:
