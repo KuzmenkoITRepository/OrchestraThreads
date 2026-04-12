@@ -192,7 +192,11 @@ class BackendRuntimeEngine:
         process = run_state["process"]
         async with self._owner._task_lock:
             self._owner._active_process = process
-        return await backend_process.collect_agent_mux_result(process, run_state["stdin_payload"])
+        return await backend_process.collect_agent_mux_result(
+            process,
+            run_state["stdin_payload"],
+            close_stdin_after_start=bool(run_state["close_stdin_after_start"]),
+        )
 
     def remember_incoming_context(self, event: Any) -> None:
         backend_prompt.remember_incoming_context(
