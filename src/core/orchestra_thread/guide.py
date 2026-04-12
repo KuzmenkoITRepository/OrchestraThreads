@@ -67,6 +67,12 @@ _FULL_GUIDE: Final[Mapping[str, Any]] = MappingProxyType(
             "thread_expand: inspect latest, tail, related, or full thread data on demand.",
             "thread_guide: fetch the canonical OrchestraThreads workflow and rules.",
         ),
+        "examples": (
+            "Read full message content: thread_expand(view='latest') returns events with message_text field.",
+            "Read last N messages: thread_expand(view='tail', limit=5) returns last 5 events with full message_text.",
+            "After context clear: call thread_expand(view='tail', limit=3) to restore working context.",
+            "Report exact agent response: use thread_expand(view='latest'), then quote the message_text field directly.",
+        ),
     }
 )
 
