@@ -17,10 +17,15 @@ runtime:
     - python
     - -m
     - core.orchestra_agents.backends.agent_mux.main
-  mounts: []
+  mounts:
+    - type: bind
+      source: ../../
+      target: /workspace
+      mode: rw
   env:
     AGENT_HTTP_HOST: 0.0.0.0
     AGENT_HTTP_PORT: "8787"
+    PYTHONPATH: /workspace/src
     OMNIROUTE_URL: http://orchestra-omniroute:20128
     LOG_LEVEL: INFO
     TELEGRAM_EVENTS_URL: http://telegram-events:8787
@@ -63,6 +68,8 @@ backend:
         startup_timeout_sec: 15
         required: false
         enabled: true
+        enabled_tools:
+          - send_telegram_message
         env:
           TELEGRAM_EVENTS_URL: http://telegram-events:8787
           TELEGRAM_CHAT_ID_IVAN: "748976004"
