@@ -129,6 +129,56 @@ class MCPSendToolTests(MCPServerSetupMixin):
             await self._verify_child(server, thread_id)
         await self._close_root(thread_id)
 
+    async def test_current_hides_actions_for_blocked_peer(self) -> None:
+        await self.harness.request_json(
+            method="POST",
+            path="/agents/register",
+            payload={
+                "agent_slug": _SLUG_ORCHESTRA,
+                "base_url": self.orchestra.base_url,
+                "metadata": {
+                    "allowed_peer_agent_slugs": [
+                        _SLUG_SECRETARY,
+                        "dev",
+                        "qa",
+                        "devops",
+                    ]
+                },
+            },
+        )
+        root = await self.harness.send_message(
+            {
+                "from_agent_slug": "human",
+                "to_agent_slug": _SLUG_ORCHESTRA,
+                "message_text": "Blocked peer should not be advertised as replyable.",
+            }
+        )
+        thread_id = str(root[_KEY_THREAD][_KEY_THREAD_ID])
+        await self.harness.wait_for(
+            lambda: len(self.orchestra.events) >= 1,
+            message="orchestra did not receive blocked-peer root-thread message",
+        )
+        write_active_context(
+            {
+                _KEY_THREAD_ID: thread_id,
+                "root_thread_id": thread_id,
+                "parent_thread_id": None,
+                "source_agent_slug": "human",
+                "target_agent_slug": _SLUG_ORCHESTRA,
+                "owner_agent_slug": "human",
+            }
+        )
+
+        async with _server_ctx(self.harness, _SLUG_ORCHESTRA) as server:
+            current = _structured(
+                await server.handle_tools_call(name="thread_current", arguments={}),
+            )
+
+        self.assertTrue(current["active"])
+        self.assertEqual(current[_KEY_THREAD_ID], thread_id)
+        self.assertEqual(current["peer_agent_slug"], "human")
+        self.assertEqual(current["allowed_actions"], [])
+
     async def _verify_current(
         self,
         server: OrchestraThreadsMCPServer,

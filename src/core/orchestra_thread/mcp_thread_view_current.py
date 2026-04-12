@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from core.orchestra_thread.mcp_thread_context import resolve_thread_id
+from core.orchestra_thread.mcp_thread_view_peers import _allowed_peer_slugs
 from core.orchestra_thread.mcp_tools_common import JSON_MAP, normalize_optional_str, result
 from core.orchestra_thread.mcp_tools_context import peer_from_thread
 
@@ -42,6 +43,22 @@ def _thread_allowed_actions(agent_slug: str, thread: JSON_MAP) -> list[str]:
             "thread_status:closed",
         ]
     return ["thread_send", "thread_status:in_progress", "thread_status:review"]
+
+
+def _filtered_allowed_actions(
+    *,
+    actions: list[str],
+    agents: list[JSON_MAP],
+    caller: str,
+    peer_slug: str | None,
+) -> list[str]:
+    normalized_peer = str(peer_slug or "").strip()
+    if not normalized_peer:
+        return actions
+    allowed = _allowed_peer_slugs(agents, caller)
+    if allowed and normalized_peer not in allowed:
+        return []
+    return actions
 
 
 def _thread_summary(thread: JSON_MAP, last_event_kind: str) -> tuple[str | None, str]:
@@ -87,4 +104,12 @@ async def thread_current(server: Any, arguments: JSON_MAP) -> JSON_MAP:
     if not thread_id:
         return _thread_current_empty()
     compact_payload = await server.client.get_thread_compact(thread_id=thread_id)
-    return result(_thread_current_result(server, compact_payload.get("thread") or {}))
+    current = _thread_current_result(server, compact_payload.get("thread") or {})
+    agents_payload = await server.client.list_agents()
+    current["allowed_actions"] = _filtered_allowed_actions(
+        actions=list(current.get("allowed_actions") or []),
+        agents=agents_payload.get("agents") or [],
+        caller=server.agent_slug,
+        peer_slug=normalize_optional_str(current.get("peer_agent_slug")),
+    )
+    return result(current)
