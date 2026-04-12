@@ -104,4 +104,12 @@ def list_thread_tools() -> list[JSON_MAP]:
                 "required": ["agent_slug"],
             },
         ),
+        tool(
+            "thread_peers",
+            "List agents available for communication from the active invocation context.",
+            {
+                "type": "object",
+                "properties": {},
+            },
+        ),
     ]
