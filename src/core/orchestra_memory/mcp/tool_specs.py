@@ -19,7 +19,6 @@ def list_memory_tools() -> list[JSON_MAP]:
                     "text": schema,
                     "room": schema,
                     "category": schema,
-                    "agent_slug": schema,
                 },
                 "required": ["text", "room", "category"],
             },
@@ -34,7 +33,6 @@ def list_memory_tools() -> list[JSON_MAP]:
                     "room": schema,
                     "category": schema,
                     "limit": {"type": "integer"},
-                    "agent_slug": schema,
                 },
             },
         ),
@@ -45,7 +43,6 @@ def list_memory_tools() -> list[JSON_MAP]:
                 "type": "object",
                 "properties": {
                     "memory_id": schema,
-                    "agent_slug": schema,
                 },
                 "required": ["memory_id"],
             },
@@ -58,8 +55,6 @@ def list_memory_tools() -> list[JSON_MAP]:
                 "properties": {
                     "room": schema,
                     "category": schema,
-                    "agent_slug": schema,
                 },
             },
         ),
-    ]
