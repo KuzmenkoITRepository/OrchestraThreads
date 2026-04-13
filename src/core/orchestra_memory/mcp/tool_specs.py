@@ -58,3 +58,4 @@ def list_memory_tools() -> list[JSON_MAP]:
                 },
             },
         ),
+    ]
