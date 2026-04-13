@@ -78,6 +78,8 @@ def _build_backend(
                     "memory_search",
                     "memory_delete",
                     "memory_clear",
+                    "memory_list_rooms",
+                    "memory_list_categories",
                 ],
                 "env": {
                     "ORCHESTRA_AGENT_SLUG": "{agent_slug}",
