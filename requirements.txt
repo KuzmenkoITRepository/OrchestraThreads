@@ -12,3 +12,7 @@ mypy>=1.11,<2
 mempalace>=3,<4
 types-PyYAML
 types-requests
+
+pytest>=7.4,<8
+pytest-aiohttp>=1.0,<2
+pytest-asyncio>=0.23,<1

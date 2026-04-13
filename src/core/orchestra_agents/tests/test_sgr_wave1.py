@@ -121,25 +121,25 @@ class SGRMCPAndSessionTests(IsolatedAsyncioTestCase):
                 os.environ[key] = prev_val
 
     async def test_multi_tool_registration(self) -> None:
-        from core.orchestra_agents.backends.sgr.mcp_loader import _register_server_tools
+        from core.orchestra_agents.backends.sgr.mcp_loader import _register_tools
 
         fake = _FakeMCPServer()
         servers: dict[str, Any] = {}
         schemas: list[dict[str, Any]] = []
         entry = {_NAME_KEY: "fallback"}
         defs = [{_NAME_KEY: "a"}, {_NAME_KEY: "b"}]
-        _register_server_tools(fake, entry, defs, servers, schemas)
+        _register_tools(fake, entry, defs, servers, schemas)
         self.assertIn("a", servers)
         self.assertIn("b", servers)
         self.assertNotIn("fallback", servers)
 
     async def test_fallback_registration(self) -> None:
-        from core.orchestra_agents.backends.sgr.mcp_loader import _register_server_tools
+        from core.orchestra_agents.backends.sgr.mcp_loader import _register_tools
 
         fake = _FakeMCPServer()
         servers: dict[str, Any] = {}
         schemas: list[dict[str, Any]] = []
-        _register_server_tools(fake, {_NAME_KEY: "my_tool"}, [], servers, schemas)
+        _register_tools(fake, {_NAME_KEY: "my_tool"}, [], servers, schemas)
         self.assertIn("my_tool", servers)
 
     async def test_reset_clears_only_session(self) -> None:

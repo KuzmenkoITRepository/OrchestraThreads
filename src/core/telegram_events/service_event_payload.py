@@ -4,11 +4,13 @@ from typing import Any
 
 _TELEGRAM_SOURCE = "telegram"
 _TELEGRAM_EVENTS_AGENT = "telegram_events"
-_SECRETARY_AGENT = "secretary"
 _TELEGRAM_MESSAGE_KIND = "telegram_message"
 
 
-def build_message_event_payload(message_data: dict[str, Any]) -> dict[str, Any]:
+def build_message_event_payload(
+    message_data: dict[str, Any],
+    target_agent_slug: str = "secretary",
+) -> dict[str, Any]:
     """Build the events-engine payload for a normal Telegram message."""
     event_id = _message_event_id(message_data)
     return {
@@ -24,7 +26,7 @@ def build_message_event_payload(message_data: dict[str, Any]) -> dict[str, Any]:
                 "event_kind": _TELEGRAM_MESSAGE_KIND,
                 "notification_status": None,
                 "from_agent_slug": _TELEGRAM_EVENTS_AGENT,
-                "to_agent_slug": _SECRETARY_AGENT,
+                "to_agent_slug": target_agent_slug,
                 "message_text": _message_prompt(message_data),
                 "interrupts_runtime": False,
                 "requires_response": True,

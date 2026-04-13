@@ -1,5 +1,7 @@
 # WPS parallel execution fronts — common contract
 
+> Historical note: this front split predates the removal of the standalone `telegram-mcp` service. Any `telegram_mcp` mentions below are archived references and should not be treated as active scope.
+
 **Historical note:** legacy proxy routing has been replaced by `omniroute` + `wet`.
 
 ## Purpose
@@ -19,7 +21,7 @@ The active remediation scope is limited to these areas:
 - `src/core/orchestra_thread/**`
 - `src/core/events_engine/**`
 - `src/core/telegram_events/**`
-- `src/telegram_mcp/**`
+- `src/telegram_mcp/**` *(archived historical scope; service removed)*
 - `agents/**`
 
 ## Explicitly excluded scope

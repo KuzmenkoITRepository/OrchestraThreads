@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS base
 
 WORKDIR /app
 
@@ -11,6 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src ./src
 COPY agents ./agents
 COPY README.md ./
+COPY pyproject.toml ./
+COPY setup.cfg ./
 
 ENV PYTHONPATH=/app/src \
     PYTHONUNBUFFERED=1 \
@@ -30,4 +32,10 @@ EXPOSE 8787 8788 8790
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD python -c "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8788/healthz').status == 200 else 1)"
 
+FROM base AS runtime
+
 CMD ["python", "-m", "core.orchestra_thread.service.main"]
+
+FROM base AS test
+
+CMD ["python", "-m", "pytest", "-v"]

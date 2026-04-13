@@ -10,12 +10,12 @@ Critical — only the first message in each session gets a response. Multi-turn 
 
 ## Root Cause
 
-Two independent Telethon clients share the same `TELEGRAM_SESSION_STRING`:
+Two independent Telethon clients shared the same `TELEGRAM_SESSION_STRING` at the time:
 
 1. **`telegram-events`** service — runs a persistent `TelegramClient` listening for incoming (and outgoing) messages.
 2. **`secretary` agent** — creates a **new** `TelegramClient` inside the `send_telegram_message` MCP tool call every time it needs to reply.
 
-When the second client (`secretary` → `telegram_mcp`) connects with the same session string, Telegram's MTProto protocol **invalidates or disrupts the first client's connection**. Telethon does not always raise an explicit error for this — the listener simply stops receiving updates.
+When the second client (`secretary` → `telegram_mcp`) connected with the same session string, Telegram's MTProto protocol **invalidated or disrupted the first client's connection**. Telethon did not always raise an explicit error for this — the listener simply stopped receiving updates.
 
 ### Evidence chain
 
@@ -41,7 +41,7 @@ When the second client (`secretary` → `telegram_mcp`) connects with the same s
 
 #### Telethon session string reuse confirmed
 Both services use the same session:
-- `telegram-events` env: `TELEGRAM_SESSION_STRING` (from docker-compose passthrough)
+- `telegram-events` env: `TELEGRAM_SESSION_STRING` (from docker-compose passthrough at the time)
 - `secretary` manifest → `telegram_mcp` MCP server env: `TELEGRAM_SESSION_STRING: "{env.TELEGRAM_SESSION_STRING}"` — same value
 
 ### Additional observation: outgoing echo problem
@@ -68,11 +68,11 @@ This outgoing echo doesn't cause a crash (SGR dedup catches it), but it's wasted
 
 ## Proposed Fix
 
-### Option A: Separate Telegram sessions (recommended)
+### Option A: Separate Telegram sessions (recommended at the time)
 Generate a second Telegram session string for `telegram_mcp` (the sending client). This way the listener and sender operate on independent sessions and don't interfere.
 
 ### Option B: Shared Telegram client
-Refactor `telegram_mcp` to not create its own Telethon client. Instead, expose a shared client or use the `telegram-events` service as an outbound proxy too (add a `/send` endpoint).
+Refactor `telegram_mcp` to not create its own Telethon client. Instead, expose a shared client or use the `telegram-events` service as an outbound proxy too (add a `/send` endpoint). Archived guidance only; the active relay path now uses `better-telegram-mcp`.
 
 ### Option C: Reconnect-on-disconnect in listener
 Add automatic reconnection logic to `telegram-events` listener so it recovers after being displaced. This is a workaround, not a fix — the session conflict would still cause a brief message-loss window.

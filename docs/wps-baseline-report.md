@@ -1,5 +1,7 @@
 # WPS violation baseline report
 
+> Historical note: the standalone `telegram-mcp` service has been removed. Counts and file paths below that mention `telegram_mcp` are preserved only as a baseline snapshot of past debt, not as active code to maintain.
+
 **Historical note:** legacy proxy routing has been replaced by `omniroute` + `wet`.
 
 **Generated:** 2026-04-04
@@ -17,7 +19,7 @@
 | orchestra_agents/tests | 71 | 16.0 |
 | agents-runtime | 67 | 15.1 |
 | orchestra_thread (production) | 57 | 12.8 |
-| telegram_mcp | 34 | 7.7 |
+| telegram_mcp | 34 | 7.7 | *(historical; service removed)*
 | orchestra_agents (production) | 27 | 6.1 |
 | telegram_events | 4 | 0.9 |
 
@@ -70,8 +72,8 @@
 | src/core/orchestra_agents/templates/agent_mux/agent_runtime/backend.py | 31 |
 | src/core/orchestra_thread/tests/test_mcp_server.py | 24 |
 | src/core/orchestra_thread/store.py | 19 |
-| src/telegram_mcp/mcp_server.py | 17 |
-| src/telegram_mcp/telegram_client.py | 16 |
+| src/telegram_mcp/mcp_server.py | 17 | *(archived historical path)*
+| src/telegram_mcp/telegram_client.py | 16 | *(archived historical path)*
 | src/core/orchestra_thread/tests/test_agent_cli.py | 14 |
 | src/core/orchestra_agents/tests/test_sgr_example.py | 14 |
 | src/core/orchestra_agents/templates/agent_mux/agent_runtime/dispatch.py | 14 |

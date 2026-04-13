@@ -6,6 +6,9 @@ x-agent-common: &agent-common
       condition: service_healthy
   environment:
     PYTHONPATH: /app/src
+    BETTER_TELEGRAM_MCP_URL: ${BETTER_TELEGRAM_MCP_URL:-http://better-telegram-mcp:3000/mcp}
+    BETTER_TELEGRAM_MCP_TOKEN: ${BETTER_TELEGRAM_MCP_TOKEN:-}
+    NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,better-telegram-mcp,postgres,langfuse-postgres,langfuse
   tty: true
   stdin_open: true
   init: true
@@ -141,10 +144,10 @@ services:
       LLM_CLIENT_REASONING_SUMMARY: ${LLM_CLIENT_REASONING_SUMMARY:-}
       SGR_MAX_REASONING_STEPS: ${SGR_MAX_REASONING_STEPS:-}
       SGR_MAX_DIRECT_TEXT_RETRIES: ${SGR_MAX_DIRECT_TEXT_RETRIES:-}
-      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
-      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
-      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING}
+      BETTER_TELEGRAM_MCP_URL: ${BETTER_TELEGRAM_MCP_URL:-http://better-telegram-mcp:3000/mcp}
+      BETTER_TELEGRAM_MCP_TOKEN: ${BETTER_TELEGRAM_MCP_TOKEN:-}
       TELEGRAM_CHAT_ID_IVAN: ${TELEGRAM_CHAT_ID_IVAN}
+      NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,better-telegram-mcp,postgres,langfuse-postgres,langfuse
     volumes:
       - ${OT_WORKSPACE_DIR:-.}:${OT_WORKSPACE_MOUNT:-${PWD}}
       - /var/run/docker.sock:/var/run/docker.sock
@@ -316,7 +319,7 @@ services:
       EVENTS_ENGINE_PORT: 8789
       ORCHESTRA_AGENTS_URL: http://orchestra-agents:8790
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,postgres,langfuse-postgres,langfuse
+      NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,better-telegram-mcp,postgres,langfuse-postgres,langfuse
     healthcheck:
       test:
         - CMD
@@ -333,10 +336,38 @@ services:
       - core.events_engine.service_main
     restart: unless-stopped
 
+  better-telegram-mcp:
+    image: ${BETTER_TELEGRAM_MCP_IMAGE:-n24q02m/better-telegram-mcp:latest}
+    ports:
+      - "${OT_PORT_BETTER_TELEGRAM_MCP:-8796}:3000"
+    networks:
+      - default
+    environment:
+      PORT: "3000"
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING:-}
+      BETTER_TELEGRAM_MCP_TOKEN: ${BETTER_TELEGRAM_MCP_TOKEN:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,better-telegram-mcp,postgres,langfuse-postgres,langfuse
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import os,sys,urllib.request; os.environ['no_proxy']='127.0.0.1,localhost'; os.environ['NO_PROXY']='127.0.0.1,localhost'; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:3000/health').status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
   telegram-events:
     build: .
     image: orchestra-threads:${OT_TAG:-local}
     depends_on:
+      better-telegram-mcp:
+        condition: service_healthy
       events-engine:
         condition: service_healthy
     networks:
@@ -345,21 +376,15 @@ services:
       - "${OT_PORT_TELEGRAM_EVENTS:-8795}:8787"
     environment:
       PYTHONPATH: /app/src
-      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
-      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
-      TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING:-}
-      TELEGRAM_SESSION_FILE: ${TELEGRAM_SESSION_FILE:-sessions/telegram.session}
+      BETTER_TELEGRAM_MCP_URL: ${BETTER_TELEGRAM_MCP_URL:-http://better-telegram-mcp:3000/mcp}
+      BETTER_TELEGRAM_MCP_EVENTS_URL: ${BETTER_TELEGRAM_MCP_EVENTS_URL:-http://better-telegram-mcp:3000/events/telegram}
+      BETTER_TELEGRAM_MCP_TOKEN: ${BETTER_TELEGRAM_MCP_TOKEN:-}
       TELEGRAM_EVENTS_HTTP_HOST: 0.0.0.0
       TELEGRAM_EVENTS_HTTP_PORT: "8787"
       EVENTS_ENGINE_URL: http://events-engine:8789
       TARGET_AGENT_SLUG: ${TARGET_AGENT_SLUG:-secretary}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,postgres,langfuse-postgres,langfuse
-      # Telethon uses raw MTProto (not HTTP) — Docker Desktop proxy breaks it
-      HTTP_PROXY: ""
-      HTTPS_PROXY: ""
-      http_proxy: ""
-      https_proxy: ""
+      NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,better-telegram-mcp,postgres,langfuse-postgres,langfuse
     healthcheck:
       test:
         - CMD
@@ -370,36 +395,12 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    volumes:
-      - ${OT_SESSIONS_DIR:-./runtime_state/orchestrathreads/sessions}:/app/sessions
     command:
       - python
       - -m
       - core.telegram_events.service_main
     restart: unless-stopped
 
-  telegram-mcp:
-    build: .
-    image: orchestra-threads:${OT_TAG:-local}
-    depends_on:
-      telegram-events:
-        condition: service_healthy
-    networks:
-      - default
-    environment:
-      PYTHONPATH: /app/src
-      TELEGRAM_EVENTS_URL: http://telegram-events:8787
-      TELEGRAM_CHAT_ID_IVAN: ${TELEGRAM_CHAT_ID_IVAN:-748976004}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    command:
-      - python
-      - -m
-      - telegram_mcp
-    healthcheck:
-      disable: true
-    restart: unless-stopped
-    stdin_open: true
-    tty: false
 
   # telegram-bot-listener and telegram-bot-mcp are disabled:
   # they require TELEGRAM_BOT_TOKEN and TELEGRAM_BOT_LISTENER_API_TOKEN
@@ -494,8 +495,10 @@ services:
       - specialist
 
   test:
-    build: .
-    image: orchestra-threads:${OT_TAG:-local}
+    build:
+      context: .
+      target: test
+    image: orchestra-threads-test:${OT_TAG:-local}
     depends_on:
       postgres:
         condition: service_healthy
@@ -525,6 +528,10 @@ services:
       - core.orchestra_agents.tests.test_sgr_internal_tools
       - core.orchestra_agents.tests.test_sgr_status_and_config
       - core.orchestra_agents.tests.test_service
+      - core.telegram_events.test_http_send_helpers
+      - core.telegram_events.test_http_server
+      - core.orchestra_agents.backends.sgr.test_mcp_config_interpolation
+      - core.telegram_events.test_service_config
       - core.orchestra_memory.tests.test_memory_service
       - core.orchestra_memory.tests.test_memory_mcp_server
       - core.telegram_bot_listener.tests.test_service_integration
@@ -562,6 +569,32 @@ services:
       - core.agent_log_analysis.tests.test_mcp_tools_raw_logs
       - core.agent_log_analysis.tests.test_mcp_server
       - core.agent_log_analysis.tests.test_service_integration
+    init: true
+    restart: "no"
+    profiles:
+      - test
+
+  test-pytest:
+    build:
+      context: .
+      target: test
+    image: orchestra-threads-test:${OT_TAG:-local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      orchestra-memory:
+        condition: service_healthy
+    environment:
+      PYTHONPATH: /app/src
+    volumes:
+      - ./src:/app/src:ro
+      - ./agents:/app/agents:ro
+    command:
+      - python
+      - -m
+      - pytest
+      - -v
+      - src/core/telegram_events
     init: true
     restart: "no"
     profiles:

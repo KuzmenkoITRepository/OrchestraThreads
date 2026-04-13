@@ -5,7 +5,7 @@
 **Branch:** master
 
 ## OVERVIEW
-OrchestraThreads is a Docker-first Python workspace for an autonomous assistant stack built around durable inter-agent threads. The main split is strict: `orchestra_thread` owns thread workflow, `orchestra_agents` owns manifest-driven lifecycles and a unified backend contract for all agent backends. Three equal-status backends are supported: `sgr`, `agent_mux`, and `opencode`. LLM routing is handled by external `omniroute` + `wet` services. `telegram_mcp` provides MCP-based Telegram messaging for agents.
+OrchestraThreads is a Docker-first Python workspace for an autonomous assistant stack built around durable inter-agent threads. The main split is strict: `orchestra_thread` owns thread workflow, `orchestra_agents` owns manifest-driven lifecycles and a unified backend contract for all agent backends. Three equal-status backends are supported: `sgr`, `agent_mux`, and `opencode`. LLM routing is handled by external `omniroute` + `wet` services.
 
 ## STRUCTURE
 ```text
@@ -17,7 +17,6 @@ OrchestraThreads/
 │   └── agent_mux_runtime/       # agent_mux backend internals (queue, dispatch, state)
 ├── src/core/events_engine/      # external-event -> agent delivery bridge (minimal)
 ├── src/core/telegram_events/    # Telegram ingestion -> secretary/event bridge
-├── src/telegram_mcp/            # thin HTTP proxy MCP for Telegram messaging via telegram-events
 ├── agents/                      # agent definitions: manifest.yaml + system_prompt.md per agent
 ├── docs/                        # repo-level design notes and refactor plans
 ├── docker/                      # build patches and backend-specific Docker assets
@@ -39,7 +38,6 @@ OrchestraThreads/
 | Agent_mux backend internals | `src/core/orchestra_agents/agent_mux_runtime/` | queue, dispatch, state, codex config — internal to mux adapter |
 | External event fan-in | `src/core/events_engine/` | minimal bridge into running agents |
 | Telegram ingress | `src/core/telegram_events/` | edge service; non-thread-native |
-| Telegram MCP server | `src/telegram_mcp/` | thin HTTP proxy MCP; proxies `send_telegram_message` to telegram-events `/send` |
 | Agent definitions | `agents/` | `manifest.yaml` + `system_prompt.md` per agent; no backend code |
 | Stack wiring and healthchecks | `docker-compose.yml` | canonical ports, env, service dependencies |
 
@@ -59,7 +57,6 @@ OrchestraThreads/
 | `run_backend()` | function | `src/core/orchestra_agents/agent_mux_runtime/bootstrap.py` | agent_mux backend entry point |
 | `main()` | service entry | `src/core/events_engine/service_main.py` | starts external event bridge |
 | `main()` | service entry | `src/core/telegram_events/service_main.py` | starts Telegram listener |
-| `main()` | entry | `src/telegram_mcp/__main__.py` | stdio MCP server for Telegram messaging |
 
 ## CONVENTIONS
 - Preserve the module split; do not fold thread orchestration, agent lifecycle, and LLM routing into one service.
@@ -244,7 +241,7 @@ The `deploy/deploy-env.sh` script fetches secrets at deploy time, renders a temp
 
 | Profile | Services | When to use |
 |---|---|---|
-| _(none)_ | postgres, orchestra-threads, orchestra-agents, events-engine, telegram-events, telegram-mcp, omniroute, wet, memory, scheduler-cron, task-registry | Always — core platform stack |
+| _(none)_ | postgres, orchestra-threads, orchestra-agents, events-engine, telegram-events, omniroute, wet, memory, scheduler-cron, task-registry | Always — core platform stack |
 | `vault` | HashiCorp Vault | Must be running before `deploy-env.sh` |
 | `user-agents` | odinykt, specialist | Manual testing / interactive agent sessions |
 | `test` | test runner, smoke tests | CI and local test runs |
@@ -285,7 +282,6 @@ bash deploy/deploy-env.sh dev
 ## NOTES
 - Ignore `agents/orchestra/runtime_state/` during repo sweeps; it contains generated state and unreadable paths.
 - `src/core/events_engine/` and `src/core/telegram_events/` are small edge services, so keep their rules in root unless they grow.
-- `src/telegram_mcp/` is a thin HTTP proxy MCP server that proxies sends to `telegram_events` — not a core service.
 - The root file is intentionally short; child `AGENTS.md` files below carry only domain-specific deltas.
 - All code must pass `make check` before commit — no exceptions.
 - `CODE-STYLE.md` is the authoritative quick cookbook for writing new Python that passes repo linters without bypasses.

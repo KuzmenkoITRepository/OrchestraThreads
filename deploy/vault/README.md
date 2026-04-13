@@ -53,6 +53,8 @@ Bootstrap does **not** seed placeholder runtime secrets. It only ensures KV/AppR
 
 Example for `dev`:
 
+> Historical note: `TELEGRAM_SESSION_STRING` is no longer an input to `telegram-events`. It is consumed by the `better-telegram-mcp` relay path for outbound Telegram sending.
+
 ```bash
 vault kv put kv/orchestrathreads/dev/runtime \
   OT_PORT_THREADS="8788" \
@@ -73,7 +75,7 @@ vault kv put kv/orchestrathreads/dev/runtime \
   OMNIROUTE_API_KEY="..." \
   TELEGRAM_API_ID="..." \
   TELEGRAM_API_HASH="..." \
-  TELEGRAM_SESSION_STRING="..."
+  TELEGRAM_SESSION_STRING="..."  # used by better-telegram-mcp relay, not telegram-events
 ```
 
 ### Render deploy env and run stack

@@ -6,7 +6,7 @@
 ## STRUCTURE
 ```text
 agents/
-├── secretary/   # SGR-backed secretary manifest + Telegram MCP wiring
+├── secretary/   # SGR-backed secretary manifest + Telegram relay wiring
 ├── orchestra/   # agent_mux-backed orchestration manifest
 └── sgr/         # reusable SGR Minimax manifest + prompt example
 ```
@@ -17,7 +17,6 @@ agents/
 | Basic SGR manifest shape | `secretary/manifest.yaml`, `sgr/manifest.yaml` | lifecycle wiring + backend config |
 | Tool-only orchestration prompt rules | `orchestra/system_prompt.md`, `sgr/system_prompt.md` | concise runtime behavior constraints |
 | agent_mux example | `orchestra/manifest.yaml` | optional MCP server wiring, runtime_state path |
-| Secretary with Telegram MCP | `secretary/manifest.yaml` | MCP server block for `telegram_mcp` integration |
 | Shared backend implementations | `src/core/orchestra_agents/backends/` | canonical runtime/bootstrap code for sgr, agent_mux, opencode, and example backends |
 
 ## CONVENTIONS
@@ -42,5 +41,4 @@ curl http://127.0.0.1:8790/api/v1/agents/sgr/status
 ## NOTES
 - `agents/orchestra/` uses `agent_mux`; `agents/secretary/` and `agents/sgr/` use the SGR runtime path.
 - Ignore unreadable/generated paths under `agents/orchestra/runtime_state/` during repo analysis.
-- `secretary` integrates `telegram_mcp` MCP server for outbound Telegram messaging via manifest wiring.
 - Backend entrypoints now come from `src/core/orchestra_agents/backends/`; `agents/*/` should not contain `agent_runtime/` packages.
