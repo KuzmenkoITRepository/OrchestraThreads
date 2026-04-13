@@ -23,9 +23,14 @@ async def healthz(request: web.Request) -> web.Response:
 
 async def send(request: web.Request) -> web.Response:
     """Send a Telegram message via the better-telegram-mcp relay."""
-    relay_url = request.app.get("relay_url")
     bearer_token = request.app.get("bearer_token")
-    if not relay_url or not bearer_token:
+    if not bearer_token or not _require_bearer_token(request, str(bearer_token)):
+        return web.json_response(
+            {_OK_FIELD: False, _ERROR_FIELD: "Unauthorized"},
+            status=401,
+        )
+    relay_url = request.app.get("relay_url")
+    if not relay_url:
         return web.json_response(
             {_OK_FIELD: False, _ERROR_FIELD: "Relay not configured"},
             status=_HTTP_SERVICE_UNAVAILABLE,
@@ -38,6 +43,14 @@ async def send(request: web.Request) -> web.Response:
             status=400,
         )
     return await _handle_send(relay_url, bearer_token, body)
+
+
+def _require_bearer_token(request: web.Request, expected_token: str) -> bool:
+    authorization = str(request.headers.get("Authorization") or "").strip()
+    if not authorization.startswith("Bearer "):
+        return False
+    token = authorization.removeprefix("Bearer ").strip()
+    return token == expected_token
 
 
 async def _handle_send(
