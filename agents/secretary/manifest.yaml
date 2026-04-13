@@ -30,8 +30,8 @@ runtime:
     LOG_LEVEL: INFO
     TELEGRAM_EVENTS_URL: http://telegram-events:8787
     TELEGRAM_CHAT_ID_IVAN: "748976004"
-    ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
     ORCHESTRA_THREADS_AGENT_SLUG: secretary
+    ORCHESTRA_AGENT_SLUG: secretary
   env_passthrough:
     - OMNIROUTE_URL
     - OMNIROUTE_API_KEY

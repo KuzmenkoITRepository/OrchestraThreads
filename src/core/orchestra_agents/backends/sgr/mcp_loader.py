@@ -14,7 +14,9 @@ _ToolMap = dict[str, MCPServerProtocol]
 _SchemaList = list[dict[str, Any]]
 
 
-def load_mcp_from_config(raw_config: dict[str, Any]) -> tuple[_ToolMap, _SchemaList]:
+def load_mcp_from_config(
+    raw_config: dict[str, Any], *, agent_slug: str | None = None
+) -> tuple[_ToolMap, _SchemaList]:
     """Load MCP servers and tool schemas from backend config."""
     entries = raw_config.get("mcp_servers")
     if not entries or not isinstance(entries, list):
@@ -22,30 +24,51 @@ def load_mcp_from_config(raw_config: dict[str, Any]) -> tuple[_ToolMap, _SchemaL
     servers: _ToolMap = {}
     schemas: _SchemaList = []
     for entry in entries:
-        _load_single_entry(entry, servers, schemas)
+        _load_single_entry(entry, servers, schemas, agent_slug=agent_slug)
     return servers, schemas
+
+
+def _extract_module_path(entry: dict[str, Any]) -> str:
+    """Extract module path from entry."""
+    return str(entry.get("module") or "").strip()
+
+
+def _extract_class_name(entry: dict[str, Any]) -> str:
+    """Extract class name from entry."""
+    return str(entry.get("class") or "").strip()
+
+
+def _build_init_params(agent_slug: str | None) -> dict[str, str] | None:
+    """Build init params for MCP server."""
+    if not agent_slug:
+        return None
+    return {"agent_slug": agent_slug}
 
 
 def _load_single_entry(
     entry: dict[str, Any],
     servers: _ToolMap,
     schemas: _SchemaList,
+    *,
+    agent_slug: str | None = None,
 ) -> None:
     """Load a single MCP server entry from config."""
-    module_path = str(entry.get("module") or "").strip()
-    class_name = str(entry.get("class") or "").strip()
+    module_path = _extract_module_path(entry)
+    class_name = _extract_class_name(entry)
     if not module_path or not class_name:
         logger.warning("Skipping incomplete MCP entry: %s", entry)
         return
-    server = _instantiate_server(module_path, class_name)
+    server = _instantiate_server(module_path, class_name, _build_init_params(agent_slug))
     if server is None:
         return
-    schema_fn_name = str(entry.get("schema_fn") or "").strip()
-    tool_defs = _load_schemas(module_path, schema_fn_name)
-    _register_server_tools(server, entry, tool_defs, servers, schemas)
+    _register_with_tools(server, entry, schemas, servers)
 
 
-def _instantiate_server(module_path: str, class_name: str) -> MCPServerProtocol | None:
+def _instantiate_server(
+    module_path: str,
+    class_name: str,
+    init_params: dict[str, Any] | None = None,
+) -> MCPServerProtocol | None:
     """Import and instantiate an MCP server class."""
     try:
         module = importlib.import_module(module_path)
@@ -56,7 +79,19 @@ def _instantiate_server(module_path: str, class_name: str) -> MCPServerProtocol 
     if server_cls is None:
         logger.error("MCP class %s not found in %s", class_name, module_path)
         return None
-    return server_cls()  # type: ignore[no-any-return]
+    params = dict(init_params) if init_params else {}
+    return server_cls(**params)  # type: ignore[no-any-return]
+
+
+def _register_with_tools(
+    server: MCPServerProtocol,
+    entry: dict[str, Any],
+    schemas: _SchemaList,
+    servers: _ToolMap,
+) -> None:
+    """Load schemas and register server tools."""
+    tool_defs = _load_schemas_for_entry(entry)
+    _register_server_tools(server, entry, tool_defs, servers, schemas)
 
 
 def _register_server_tools(
@@ -79,8 +114,10 @@ def _register_server_tools(
         servers[fallback_name] = server
 
 
-def _load_schemas(module_path: str, schema_fn_name: str) -> _SchemaList:
-    """Load tool schemas from a module function."""
+def _load_schemas_for_entry(entry: dict[str, Any]) -> _SchemaList:
+    """Load tool schemas from entry's schema_fn."""
+    module_path = str(entry.get("module") or "").strip()
+    schema_fn_name = str(entry.get("schema_fn") or "").strip()
     if not schema_fn_name:
         return []
     try:
