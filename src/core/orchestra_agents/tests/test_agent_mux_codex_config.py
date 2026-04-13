@@ -13,7 +13,7 @@ class AgentMuxCodexConfigTests(unittest.TestCase):
         self.assertIn(
             'web_search = "disabled"',
             base_config_lines(
-                model="cx/gpt-5.1-codex-mini",
+                model="cx/gpt-5.4-mini",
                 base_url="http://proxy",
                 env_key="OMNIROUTE_API_KEY",
             ),
@@ -23,7 +23,7 @@ class AgentMuxCodexConfigTests(unittest.TestCase):
         self.assertIn(
             'env_key = "OMNIROUTE_API_KEY"',
             base_config_lines(
-                model="cx/gpt-5.1-codex-mini",
+                model="cx/gpt-5.4-mini",
                 base_url="http://proxy",
                 env_key="OMNIROUTE_API_KEY",
             ),
@@ -33,7 +33,7 @@ class AgentMuxCodexConfigTests(unittest.TestCase):
         self.assertNotIn(
             'env_key = "OMNIROUTE_API_KEY"',
             base_config_lines(
-                model="cx/gpt-5.1-codex-mini",
+                model="cx/gpt-5.4-mini",
                 base_url="http://proxy",
                 env_key=None,
             ),

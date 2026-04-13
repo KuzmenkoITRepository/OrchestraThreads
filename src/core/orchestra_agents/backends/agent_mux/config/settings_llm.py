@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 CODEX_ONLY_POLICY = "codex_only"
-DEFAULT_MODEL = "cx/gpt-5.1-codex-mini"
+DEFAULT_MODEL = "cx/gpt-5.4-mini"
 
 
 @dataclass(frozen=True)

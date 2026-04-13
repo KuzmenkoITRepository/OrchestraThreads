@@ -24,7 +24,7 @@ def _settings(root_dir: Path) -> SimpleNamespace:
         state_root=str(root_dir / "state"),
         omniroute_url="http://omniroute:20128",
         llm_route_policy="codex_only",
-        default_model="cx/gpt-5.1-codex-mini",
+        default_model="cx/gpt-5.4-mini",
         mcp_servers=(),
         role="worker",
         variant=None,
@@ -65,10 +65,10 @@ def assert_runtime_home(
     runtime_config = config_path.read_text(encoding="utf-8")
     codex_config = codex_config_path.read_text(encoding="utf-8")
     case.assertIn("[defaults]", runtime_config)
-    case.assertIn('model = "cx/gpt-5.1-codex-mini"', runtime_config)
+    case.assertIn('model = "cx/gpt-5.4-mini"', runtime_config)
     case.assertIn("[roles.worker]", runtime_config)
     case.assertIn('env_key = "OMNIROUTE_API_KEY"', codex_config)
-    case.assertIn('model = "cx/gpt-5.1-codex-mini"', codex_config)
+    case.assertIn('model = "cx/gpt-5.4-mini"', codex_config)
     case.assertIn('web_search = "disabled"', codex_config)
     case.assertIsNotNone(result.get("process"))
 
