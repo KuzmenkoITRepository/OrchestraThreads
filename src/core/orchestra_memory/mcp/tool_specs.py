@@ -58,4 +58,20 @@ def list_memory_tools() -> list[JSON_MAP]:
                 },
             },
         ),
+        tool(
+            "memory_list_rooms",
+            "List memory rooms available to the current agent.",
+            {
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        tool(
+            "memory_list_categories",
+            "List memory categories available to the current agent.",
+            {
+                "type": "object",
+                "properties": {},
+            },
+        ),
     ]
