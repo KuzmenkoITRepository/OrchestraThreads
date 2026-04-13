@@ -495,8 +495,10 @@ services:
       - specialist
 
   test:
-    build: .
-    image: orchestra-threads:${OT_TAG:-local}
+    build:
+      context: .
+      target: test
+    image: orchestra-threads-test:${OT_TAG:-local}
     depends_on:
       postgres:
         condition: service_healthy
@@ -567,6 +569,32 @@ services:
       - core.agent_log_analysis.tests.test_mcp_tools_raw_logs
       - core.agent_log_analysis.tests.test_mcp_server
       - core.agent_log_analysis.tests.test_service_integration
+    init: true
+    restart: "no"
+    profiles:
+      - test
+
+  test-pytest:
+    build:
+      context: .
+      target: test
+    image: orchestra-threads-test:${OT_TAG:-local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      orchestra-memory:
+        condition: service_healthy
+    environment:
+      PYTHONPATH: /app/src
+    volumes:
+      - ./src:/app/src:ro
+      - ./agents:/app/agents:ro
+    command:
+      - python
+      - -m
+      - pytest
+      - -v
+      - src/core/telegram_events
     init: true
     restart: "no"
     profiles:
