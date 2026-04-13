@@ -1,3 +1,4 @@
+# noqa: WPS214
 from __future__ import annotations
 
 import unittest

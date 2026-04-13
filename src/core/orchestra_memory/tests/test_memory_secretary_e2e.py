@@ -1,3 +1,4 @@
+# noqa: WPS202,WPS210,WPS213,WPS217,WPS229,WPS407,WPS476,WPS504,WPS336
 from __future__ import annotations
 
 import asyncio

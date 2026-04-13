@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-
 _SKILLS_DIR = Path(__file__).parent
 
 
