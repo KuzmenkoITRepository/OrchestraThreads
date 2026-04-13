@@ -58,16 +58,6 @@ backend:
         args:
           - -m
           - core.orchestra_memory.mcp.server
-        startup_timeout_sec: 15
-        required: false
-        enabled: true
-        enabled_tools:
-          - memory_remember
-          - memory_search
-          - memory_delete
-          - memory_clear
-          - memory_list_rooms
-          - memory_list_categories
         env:
           ORCHESTRA_AGENT_SLUG: dev
           ORCHESTRA_MEMORY_URL: http://orchestra-memory:8793
