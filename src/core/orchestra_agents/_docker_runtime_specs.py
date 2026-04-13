@@ -25,7 +25,7 @@ BACKEND_RUNTIME_SPECS = MappingProxyType(
             image="orchestra-sgr-runtime:latest",
             command=("python", "-m", "core.orchestra_agents.backends.sgr.main"),
             dockerfile="docker/backends/sgr/Dockerfile",
-            env=MappingProxyType({"PYTHONPATH": "/workspace/src:/workspace"}),
+            env=MappingProxyType({"PYTHONPATH": "/app/src"}),
             env_passthrough=(
                 "OMNIROUTE_URL",
                 "OMNIROUTE_API_KEY",
@@ -66,7 +66,7 @@ BACKEND_RUNTIME_SPECS = MappingProxyType(
             dockerfile="docker/backends/opencode/Dockerfile",
             env=MappingProxyType(
                 {
-                    "PYTHONPATH": "/workspace/src",
+                    "PYTHONPATH": "/app/src",
                     "ORCHESTRA_THREADS_URL": "http://orchestra-threads:8788",
                     "OPENCODE_RUNTIME_STATE_ROOT": "/tmp/opencode-runtime/{slug}",
                 }

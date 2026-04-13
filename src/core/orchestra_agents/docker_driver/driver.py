@@ -556,7 +556,15 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         }
         if resolved_runtime.entrypoint:
             service["entrypoint"] = resolved_runtime.entrypoint
-        return {"services": {service_name: service}}
+        payload: dict[str, t.Any] = {"services": {service_name: service}}
+        if self.default_network:
+            payload["networks"] = {
+                "default": {
+                    "name": self.default_network,
+                    "external": True,
+                },
+            }
+        return payload
 
     def _orchestra_labels(self, manifest: manifest_module.AgentManifest) -> dict[str, str]:
         return {
