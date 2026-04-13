@@ -54,3 +54,22 @@ backend:
           ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
           ORCHESTRA_THREADS_AGENT_SLUG: devops
           PYTHONPATH: /workspace/src
+#AA|      - name: orchestra_memory
+#AB|        command: python
+#AC|        args:
+#AD|          - -m
+#AE|          - core.orchestra_memory.mcp.server
+#AF|        startup_timeout_sec: 15
+#AG|        required: false
+#AH|        enabled: true
+#AI|        enabled_tools:
+#AJ|          - memory_remember
+#AK|          - memory_search
+#AL|          - memory_delete
+#AM|          - memory_clear
+#AN|          - memory_list_rooms
+#AO|          - memory_list_categories
+#AP|        env:
+#AQ|          ORCHESTRA_AGENT_SLUG: devops
+#AR|          ORCHESTRA_MEMORY_URL: http://orchestra-memory:8793
+#AS|          PYTHONPATH: /workspace/src
