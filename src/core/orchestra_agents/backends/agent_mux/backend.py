@@ -175,8 +175,17 @@ class AgentMuxBackend(runtime_contract.BaseAgentBackend):
             raw_system_prompt = kwargs["system_prompt"]
         except KeyError:
             raw_system_prompt = ""
-        system_prompt = str(raw_system_prompt or "")
-        self.system_prompt = system_prompt.strip()
+        system_prompt = str(raw_system_prompt or "").strip()
+        # Inject skills into system_prompt for Agent MUX
+        from core.orchestra_agents.skills.registry import list_skills_menu
+
+        skills_block = list_skills_menu()
+        if system_prompt and skills_block:
+            self.system_prompt = f"{system_prompt}\n\n---\n\n{skills_block}"
+        elif skills_block:
+            self.system_prompt = skills_block
+        else:
+            self.system_prompt = system_prompt
         llm_config = _BackendBootstrap.resolve_llm_config(raw_config)
         self.settings = build_runtime_settings(
             raw_config,
