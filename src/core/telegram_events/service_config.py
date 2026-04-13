@@ -52,6 +52,7 @@ def build_service(logger: logging.Logger) -> TelegramEventsService:
     service_options = _service_options(logger)
     return TelegramEventsService(
         events_url=service_options["events_url"],
+        mcp_url=service_options["mcp_url"],
         bearer_token=service_options["bearer_token"],
         events_engine_url=service_options["events_engine_url"],
         target_agent_slug=service_options["target_agent_slug"],
