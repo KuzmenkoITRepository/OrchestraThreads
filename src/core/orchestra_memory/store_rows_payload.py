@@ -28,12 +28,16 @@ class _PayloadRows:
         return result
 
     def _rows(self) -> Iterator[tuple[object, object, object]]:
-        return zip(
-            self._payload_list("ids"),
-            self._payload_list("documents"),
-            self._payload_list("metadatas"),
-            strict=True,
-        )
+        ids = self._payload_list("ids")
+        documents = self._payload_list("documents")
+        metadatas = self._payload_list("metadatas")
+        max_len = max(len(ids), len(documents), len(metadatas))
+        for i in range(max_len):
+            yield (
+                ids[i] if i < len(ids) else None,
+                documents[i] if i < len(documents) else None,
+                metadatas[i] if i < len(metadatas) else {},
+            )
 
     def _payload_list(self, key: str) -> list[object]:
         value = self._payload.get(key, [])

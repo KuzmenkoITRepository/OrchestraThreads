@@ -26,10 +26,12 @@ class _StoreWriteOps(_StoreLifecycleOps):
             text=text,
         )
         async with self._lock:
+            metadata = self._rules.metadata_from_item(item)
+            metadata["text"] = item["text"]
             self._collection_required().add(
                 ids=[item["memory_id"]],
                 documents=[item["text"]],
-                metadatas=[self._rules.metadata_from_item(item)],
+                metadatas=[metadata],
                 embeddings=[embedding_for_text(item["text"])],
             )
         return item
