@@ -44,7 +44,7 @@ class AgentMuxSkillToolsTests(unittest.TestCase):
         instructions = backend.get_skill_instructions("memory")
 
         self.assertIn("<AVAILABLE_SKILLS>", menu)
-        self.assertIn("Memory", menu)
+        self.assertIn("memory", menu)
         self.assertIsNotNone(instructions)
         self.assertIn("Store and retrieve persistent memory entries", instructions or "")
 
