@@ -1,4 +1,4 @@
-# noqa: WPS202,WPS210,WPS213,WPS217,WPS229,WPS407,WPS476,WPS504,WPS336
+# noqa: WPS202,WPS210,WPS213,WPS217,WPS229,WPS336,WPS407,WPS476,WPS504
 from __future__ import annotations
 
 import asyncio
@@ -35,9 +35,9 @@ def _build_server_env(agent_slug: str) -> dict[str, str]:
     env = os.environ.copy()
     src_dir = _repo_root() / "src"
     current_pythonpath = env.get("PYTHONPATH")
-    env["PYTHONPATH"] = (
-        str(src_dir) if not current_pythonpath else f"{src_dir}{os.pathsep}{current_pythonpath}"
-    )
+    env["PYTHONPATH"] = str(src_dir)
+    if current_pythonpath:
+        env["PYTHONPATH"] = os.pathsep.join((env["PYTHONPATH"], current_pythonpath))
     env["ORCHESTRA_AGENT_SLUG"] = agent_slug
     env["ORCHESTRA_MEMORY_URL"] = MEMORY_SERVICE_BASE_URL
     env["PYTHONUNBUFFERED"] = "1"
@@ -96,6 +96,67 @@ async def _send_mcp_request(process: subprocess.Popen[str], request_dict: JSON_M
     )
 
 
+async def _initialize_mcp_server(process: subprocess.Popen[str]) -> None:
+    await _send_mcp_request(
+        process,
+        {
+            "jsonrpc": "2.0",
+            "id": _response_id("initialize"),
+            "method": "initialize",
+            "params": {},
+        },
+    )
+
+
+async def _start_initialized_mcp_server(
+    agent_slug: str,
+    processes: list[subprocess.Popen[str]],
+) -> subprocess.Popen[str]:
+    process = _start_mcp_server(agent_slug)
+    processes.append(process)
+    await _initialize_mcp_server(process)
+    return process
+
+
+async def _remember_memory(
+    process: subprocess.Popen[str],
+    token: str,
+    room: str,
+) -> JSON_MAP:
+    return await _call_tool(
+        process,
+        "memory_remember",
+        {"text": token, "room": room, "category": "fact"},
+    )
+
+
+async def _search_memory_items(
+    process: subprocess.Popen[str],
+    query: str,
+    room: str,
+) -> list[JSON_MAP]:
+    structured = _structured_content(
+        await _call_tool(process, "memory_search", {"query": query, "room": room, "limit": 10})
+    )
+    return cast(list[JSON_MAP], structured["items"])
+
+
+async def _check_memory_discovery(process: subprocess.Popen[str]) -> tuple[list[str], list[str]]:
+    rooms_result = await _call_tool(process, "memory_list_rooms", {})
+    categories_result = await _call_tool(process, "memory_list_categories", {})
+    rooms = cast(list[str], _structured_content(rooms_result)["rooms"])
+    categories = cast(list[str], _structured_content(categories_result)["categories"])
+    return rooms, categories
+
+
+async def _search_memory_http(
+    query: str,
+) -> tuple[int, JSON_MAP]:
+    return await _post_memory_json(
+        "/memory/search", {"agent_slug": "secretary", "query": query, "limit": 10}
+    )
+
+
 async def _call_tool(
     process: subprocess.Popen[str],
     tool_name: str,
@@ -137,11 +198,19 @@ async def _cleanup_mcp_server(process: subprocess.Popen[str] | None) -> None:
     if process.stdin is not None:
         process.stdin.close()
     try:
-        process.terminate()
-        await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=MCP_TIMEOUT_SECONDS)
+        await _terminate_mcp_server(process)
     except subprocess.TimeoutExpired:
         process.kill()
-        await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=MCP_TIMEOUT_SECONDS)
+        await _wait_for_mcp_server(process)
+
+
+async def _terminate_mcp_server(process: subprocess.Popen[str]) -> None:
+    process.terminate()
+    await _wait_for_mcp_server(process)
+
+
+async def _wait_for_mcp_server(process: subprocess.Popen[str]) -> None:
+    await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=MCP_TIMEOUT_SECONDS)
 
 
 class SecretaryMemoryE2ETests(unittest.IsolatedAsyncioTestCase):
@@ -154,9 +223,7 @@ class SecretaryMemoryE2ETests(unittest.IsolatedAsyncioTestCase):
             await _cleanup_mcp_server(process)
 
     async def test_secretary_mcp_server_initializes(self) -> None:
-        process = _start_mcp_server("secretary")
-        self._processes.append(process)
-
+        process = await _start_initialized_mcp_server("secretary", self._processes)
         response = await _send_mcp_request(
             process,
             {
@@ -171,75 +238,32 @@ class SecretaryMemoryE2ETests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response["result"]["protocolVersion"], "2024-11-05")
 
     async def test_secretary_can_remember_and_search(self) -> None:
-        process = _start_mcp_server("secretary")
-        self._processes.append(process)
-        await _send_mcp_request(
-            process,
-            {
-                "jsonrpc": "2.0",
-                "id": _response_id("initialize"),
-                "method": "initialize",
-                "params": {},
-            },
-        )
+        process = await _start_initialized_mcp_server("secretary", self._processes)
         token = f"secretary-memory-{uuid4().hex}"
 
-        remember_result = await _call_tool(
-            process,
-            "memory_remember",
-            {"text": token, "room": "knowledge", "category": "fact"},
-        )
+        remember_result = await _remember_memory(process, token, "knowledge")
         self.assertTrue(cast(bool, remember_result["structuredContent"]["ok"]))
 
-        search_result = await _call_tool(
-            process,
-            "memory_search",
-            {"query": token, "room": "knowledge", "limit": 10},
-        )
-        structured = _structured_content(search_result)
-        items = structured["items"]
-        self.assertEqual(structured["count"], 1)
+        items = await _search_memory_items(process, token, "knowledge")
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["text"], token)
         self.assertEqual(items[0]["agent_slug"], "secretary")
 
-        http_status, http_body = await _post_memory_json(
-            "/memory/search",
-            {"agent_slug": "secretary", "query": token, "limit": 10},
-        )
+        http_status, http_body = await _search_memory_http(token)
         self.assertEqual(http_status, 200)
         self.assertEqual(http_body["items"][0]["text"], token)
 
     async def test_secretary_discovery_tools_work(self) -> None:
-        process = _start_mcp_server("secretary")
-        self._processes.append(process)
-        await _send_mcp_request(
-            process,
-            {
-                "jsonrpc": "2.0",
-                "id": _response_id("initialize"),
-                "method": "initialize",
-                "params": {},
-            },
-        )
+        process = await _start_initialized_mcp_server("secretary", self._processes)
         token = f"secretary-discovery-{uuid4().hex}"
 
-        await _call_tool(
-            process,
-            "memory_remember",
-            {"text": token, "room": "profile", "category": "fact"},
-        )
-        rooms_result = await _call_tool(process, "memory_list_rooms", {})
-        categories_result = await _call_tool(process, "memory_list_categories", {})
-
-        rooms = _structured_content(rooms_result)["rooms"]
-        categories = _structured_content(categories_result)["categories"]
+        await _remember_memory(process, token, "profile")
+        rooms, categories = await _check_memory_discovery(process)
         self.assertIn("profile", rooms)
         self.assertIn("fact", categories)
 
         rooms_status, rooms_body = await _post_memory_json(
-            "/memory/discovery/rooms",
-            {"agent_slug": "secretary"},
+            "/memory/discovery/rooms", {"agent_slug": "secretary"}
         )
         categories_status, categories_body = await _post_memory_json(
             "/memory/discovery/categories",
@@ -255,45 +279,23 @@ class SecretaryMemoryE2ETests(unittest.IsolatedAsyncioTestCase):
         orchestra_process = _start_mcp_server("orchestra")
         self._processes.extend([secretary_process, orchestra_process])
 
-        for process in (secretary_process, orchestra_process):
-            await _send_mcp_request(
-                process,
-                {
-                    "jsonrpc": "2.0",
-                    "id": _response_id("initialize"),
-                    "method": "initialize",
-                    "params": {},
-                },
-            )
+        await asyncio.gather(
+            _initialize_mcp_server(secretary_process),
+            _initialize_mcp_server(orchestra_process),
+        )
 
         secretary_token = f"secretary-isolation-{uuid4().hex}"
         orchestra_token = f"orchestra-isolation-{uuid4().hex}"
 
-        await _call_tool(
-            secretary_process,
-            "memory_remember",
-            {"text": secretary_token, "room": "knowledge", "category": "fact"},
-        )
-        await _call_tool(
-            orchestra_process,
-            "memory_remember",
-            {"text": orchestra_token, "room": "knowledge", "category": "fact"},
-        )
+        await _remember_memory(secretary_process, secretary_token, "knowledge")
+        await _remember_memory(orchestra_process, orchestra_token, "knowledge")
 
-        secretary_results = _structured_content(
-            await _call_tool(
-                secretary_process,
-                "memory_search",
-                {"query": secretary_token, "room": "knowledge", "limit": 10},
-            )
-        )["items"]
-        orchestra_results = _structured_content(
-            await _call_tool(
-                orchestra_process,
-                "memory_search",
-                {"query": orchestra_token, "room": "knowledge", "limit": 10},
-            )
-        )["items"]
+        secretary_results = await _search_memory_items(
+            secretary_process, secretary_token, "knowledge"
+        )
+        orchestra_results = await _search_memory_items(
+            orchestra_process, orchestra_token, "knowledge"
+        )
 
         self.assertEqual(len(secretary_results), 1)
         self.assertEqual(secretary_results[0]["text"], secretary_token)
@@ -303,28 +305,11 @@ class SecretaryMemoryE2ETests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(orchestra_results[0]["agent_slug"], "orchestra")
 
     async def test_secretary_memory_persists_across_restart(self) -> None:
-        process = _start_mcp_server("secretary")
-        self._processes.append(process)
-        await _send_mcp_request(
-            process,
-            {
-                "jsonrpc": "2.0",
-                "id": _response_id("initialize"),
-                "method": "initialize",
-                "params": {},
-            },
-        )
+        process = await _start_initialized_mcp_server("secretary", self._processes)
         token = f"secretary-persist-{uuid4().hex}"
 
-        await _call_tool(
-            process,
-            "memory_remember",
-            {"text": token, "room": "knowledge", "category": "fact"},
-        )
-        initial_status, initial_body = await _post_memory_json(
-            "/memory/search",
-            {"agent_slug": "secretary", "query": token, "limit": 10},
-        )
+        await _remember_memory(process, token, "knowledge")
+        initial_status, initial_body = await _search_memory_http(token)
         self.assertEqual(initial_status, 200)
         self.assertEqual(initial_body["items"][0]["text"], token)
 

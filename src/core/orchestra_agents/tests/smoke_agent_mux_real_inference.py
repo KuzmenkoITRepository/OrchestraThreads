@@ -155,6 +155,7 @@ async def _collect_case_result(case: _SmokeCase, root_dir: Path) -> dict[str, ob
     return await collect_agent_mux_result(
         run_state["process"],
         run_state["stdin_payload"],
+        close_stdin_after_start=False,
     )
 
 

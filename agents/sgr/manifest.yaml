@@ -24,6 +24,7 @@ runtime:
     AGENT_HTTP_PORT: "8787"
     PYTHONPATH: /workspace/src:/workspace
     OMNIROUTE_URL: http://orchestra-omniroute:20128
+    ORCHESTRA_MEMORY_URL: http://orchestra-memory:8793
     LLM_CLIENT_ROUTE_POLICY: codex_only
     LLM_CLIENT_MODEL: cx/gpt-5.4-mini
     LOG_LEVEL: INFO
@@ -52,3 +53,8 @@ backend:
     react_to_inactive: true
     max_reasoning_steps: 8
     max_direct_text_retries: 2
+    mcp_servers:
+      - name: orchestra_memory
+        module: core.orchestra_memory.mcp.server
+        class: OrchestraMemoryMCPServer
+        schema_fn: orchestra_memory_tool_definitions

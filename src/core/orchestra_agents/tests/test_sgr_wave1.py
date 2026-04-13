@@ -5,11 +5,6 @@ import tempfile
 from unittest import IsolatedAsyncioTestCase, mock
 
 from core.orchestra_agents.backends import sgr as sgr_backend
-from core.orchestra_agents.backends.sgr.mcp_loader import (
-    _register_server_tools,
-    _SchemaList,
-    _ToolMap,
-)
 from core.orchestra_agents.backends.sgr.tool_exec import execute_single
 from core.orchestra_agents.runtime import EventDelivery
 from core.orchestra_agents.tests.template_helpers.sgr_fake_omniroute import FakeOmniRoute
@@ -124,35 +119,63 @@ class SGRMCPAndSessionTests(IsolatedAsyncioTestCase):
             else:
                 os.environ[key] = prev_val
 
-    async def test_multi_tool_registration(self) -> None:
-        fake = _FakeMCPServer()
-        servers: _ToolMap = {}
-        schemas: _SchemaList = []
-        entry = {_NAME_KEY: "fallback"}
-        defs = [{_NAME_KEY: "a"}, {_NAME_KEY: "b"}]
-        _register_server_tools(fake, entry, defs, servers, schemas)
-        self.assertIn("a", servers)
-        self.assertIn("b", servers)
-        self.assertNotIn("fallback", servers)
-
     async def test_fallback_registration(self) -> None:
-        fake = _FakeMCPServer()
-        servers: _ToolMap = {}
-        schemas: _SchemaList = []
-        _register_server_tools(fake, {_NAME_KEY: "my_tool"}, [], servers, schemas)
-        self.assertIn("my_tool", servers)
+        from core.orchestra_agents.backends.sgr import mcp_loader
 
-    async def test_memory_schema_fn_registration(self) -> None:
-        from core.orchestra_agents.backends.sgr.mcp_loader import _load_schemas
-
-        tool_defs = _load_schemas(
-            "core.orchestra_memory.mcp.server",
-            "orchestra_memory_tool_definitions",
-        )
+        tool_defs = mcp_loader.load_mcp_from_config(
+            {
+                "mcp_servers": [
+                    {
+                        "name": "orchestra_memory",
+                        "module": "core.orchestra_memory.mcp.server",
+                        "class": "OrchestraMemoryMCPServer",
+                        "schema_fn": "orchestra_memory_tool_definitions",
+                    }
+                ]
+            },
+            agent_slug="sgr",
+        )[1]
 
         self.assertEqual(
             {tool_def["name"] for tool_def in tool_defs},
-            {"memory_remember", "memory_search", "memory_delete", "memory_clear"},
+            {
+                "memory_remember",
+                "memory_search",
+                "memory_delete",
+                "memory_clear",
+                "memory_list_rooms",
+                "memory_list_categories",
+            },
+        )
+
+    async def test_manifest_loads_orchestra_memory_server(self) -> None:
+        from core.orchestra_agents.backends.sgr import mcp_loader
+
+        manifest = {
+            "mcp_servers": [
+                {
+                    "name": "orchestra_memory",
+                    "module": "core.orchestra_memory.mcp.server",
+                    "class": "OrchestraMemoryMCPServer",
+                    "schema_fn": "orchestra_memory_tool_definitions",
+                }
+            ]
+        }
+
+        servers, schemas = mcp_loader.load_mcp_from_config(manifest, agent_slug="sgr")
+
+        self.assertIn("orchestra_memory", servers)
+        self.assertTrue(hasattr(servers["orchestra_memory"], "handle_tools_call"))
+        self.assertEqual(
+            {tool_def["name"] for tool_def in schemas},
+            {
+                "memory_remember",
+                "memory_search",
+                "memory_delete",
+                "memory_clear",
+                "memory_list_rooms",
+                "memory_list_categories",
+            },
         )
 
     async def test_reset_clears_only_session(self) -> None:

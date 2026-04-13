@@ -7,7 +7,9 @@ can request detailed instructions for a specific skill when needed.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 
 from core.orchestra_agents.skills import Skill
 
@@ -39,11 +41,13 @@ _MEM_SKILL = _mk_skill(
     "memory.md",
 )
 
-SKILL_REGISTRY = {
-    _COMM_SKILL.skill_id: _COMM_SKILL,
-    _ORCH_SKILL.skill_id: _ORCH_SKILL,
-    _MEM_SKILL.skill_id: _MEM_SKILL,
-}
+SKILL_REGISTRY: Mapping[str, Skill] = MappingProxyType(
+    {
+        _COMM_SKILL.skill_id: _COMM_SKILL,
+        _ORCH_SKILL.skill_id: _ORCH_SKILL,
+        _MEM_SKILL.skill_id: _MEM_SKILL,
+    }
+)
 
 
 def list_skills_menu() -> str:
