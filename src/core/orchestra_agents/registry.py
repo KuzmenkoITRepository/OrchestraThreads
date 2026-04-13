@@ -25,39 +25,75 @@ class ManifestLoadIssue:
         }
 
 
-def _load_one_manifest(
-    path: Path,
-    manifests: dict[str, AgentManifest],
-    issues: list[ManifestLoadIssue],
-    seen: dict[str, str],
-) -> None:
-    try:
-        manifest = AgentManifest.from_file(path)
-    except Exception as exc:
-        issues.append(ManifestLoadIssue(manifest_path=str(path), error=str(exc)))
-        return
-    dup = seen.get(manifest.slug)
-    if dup is not None:
-        issues.append(
-            ManifestLoadIssue(
-                manifest_path=str(path),
-                slug_hint=manifest.slug,
-                error=f"duplicate slug {manifest.slug!r}; first seen in {dup}",
-            )
+@dataclass(frozen=True)
+class _RegistryState:
+    manifests: dict[str, AgentManifest]
+    issues: list[ManifestLoadIssue]
+
+
+class _RegistryLoading:
+    @staticmethod
+    def resolve_manifests_root(manifests_root: str | Path | None) -> Path:
+        root = (
+            manifests_root
+            or os.getenv("ORCHESTRA_AGENTS_MANIFESTS_DIR")
+            or os.path.join(os.getcwd(), "agents")
         )
-        return
-    seen[manifest.slug] = str(path)
-    manifests[manifest.slug] = manifest
+        return Path(root).expanduser().resolve()
 
+    @staticmethod
+    def missing_root_state(manifests_root: Path) -> _RegistryState:
+        issue = ManifestLoadIssue(
+            manifest_path=str(manifests_root),
+            error="manifests root does not exist",
+        )
+        return _RegistryState(manifests={}, issues=[issue])
 
-def _scan_manifests(
-    root: Path,
-    manifests: dict[str, AgentManifest],
-    issues: list[ManifestLoadIssue],
-) -> None:
-    seen: dict[str, str] = {}
-    for path in sorted(root.glob("*/manifest.yaml")):
-        _load_one_manifest(path, manifests, issues, seen)
+    @staticmethod
+    def load_one_manifest(
+        path: Path,
+        manifests: dict[str, AgentManifest],
+        issues: list[ManifestLoadIssue],
+        seen: dict[str, str],
+    ) -> None:
+        try:
+            manifest = AgentManifest.from_file(path)
+        except Exception as exc:
+            issues.append(ManifestLoadIssue(manifest_path=str(path), error=str(exc)))
+            return
+        dup = seen.get(manifest.slug)
+        if dup is not None:
+            issues.append(
+                ManifestLoadIssue(
+                    manifest_path=str(path),
+                    slug_hint=manifest.slug,
+                    error=f"duplicate slug {manifest.slug!r}; first seen in {dup}",
+                )
+            )
+            return
+        seen[manifest.slug] = str(path)
+        manifests[manifest.slug] = manifest
+
+    @classmethod
+    def scan_manifests(
+        cls,
+        root: Path,
+        manifests: dict[str, AgentManifest],
+        issues: list[ManifestLoadIssue],
+    ) -> None:
+        seen: dict[str, str] = {}
+        for path in sorted(root.glob("*/manifest.yaml")):
+            cls.load_one_manifest(path, manifests, issues, seen)
+
+    @classmethod
+    def build_registry_state(cls, manifests_root: Path) -> _RegistryState:
+        if not manifests_root.exists():
+            return cls.missing_root_state(manifests_root)
+
+        manifests: dict[str, AgentManifest] = {}
+        issues: list[ManifestLoadIssue] = []
+        cls.scan_manifests(manifests_root, manifests, issues)
+        return _RegistryState(manifests=manifests, issues=issues)
 
 
 class _RegistryQueries:
@@ -102,29 +138,13 @@ class AgentManifestRegistry(_RegistryQueries):
     """Load, validate, and query manifest files from a local directory."""
 
     def __init__(self, manifests_root: str | Path | None = None) -> None:
-        root = (
-            manifests_root
-            or os.getenv("ORCHESTRA_AGENTS_MANIFESTS_DIR")
-            or os.path.join(os.getcwd(), "agents")
-        )
-        self.manifests_root = Path(root).expanduser().resolve()
+        self.manifests_root = _RegistryLoading.resolve_manifests_root(manifests_root)
         self._manifests: dict[str, AgentManifest] = {}
         self._issues: list[ManifestLoadIssue] = []
         self.reload()
 
     def reload(self) -> None:
         """Reload all manifests from disk."""
-        manifests: dict[str, AgentManifest] = {}
-        issues: list[ManifestLoadIssue] = []
-        if not self.manifests_root.exists():
-            self._manifests = {}
-            self._issues = [
-                ManifestLoadIssue(
-                    manifest_path=str(self.manifests_root),
-                    error="manifests root does not exist",
-                )
-            ]
-            return
-        _scan_manifests(self.manifests_root, manifests, issues)
-        self._manifests = manifests
-        self._issues = issues
+        state = _RegistryLoading.build_registry_state(self.manifests_root)
+        self._manifests = state.manifests
+        self._issues = state.issues

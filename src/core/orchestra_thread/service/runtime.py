@@ -4,15 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import uuid
 from importlib import import_module
 from typing import Any, cast
 
 from aiohttp import ClientSession, ClientTimeout, web
 
 from core.orchestra_thread.common import ServiceError
-from core.orchestra_thread.service_message_requests import MessageRequestInput
-from core.orchestra_thread.service_notification_requests import NotificationRequestInput
 from core.orchestra_thread.service_runtime_config import (
     RuntimeConfigOverrides,
     load_runtime_config,
@@ -22,11 +19,14 @@ from core.orchestra_thread.store import ThreadStore
 common = import_module("core.orchestra_thread.common")
 guide = import_module("core.orchestra_thread.guide")
 http_handlers = import_module("core.orchestra_thread.http_handlers")
-service_message_requests = import_module("core.orchestra_thread.service_message_requests")
-service_notification_requests = import_module("core.orchestra_thread.service_notification_requests")
+service_event_payloads = import_module("core.orchestra_thread.service.event_payloads")
+service_delivery_flow = import_module("core.orchestra_thread.service.flows.delivery_flow")
+service_inactivity_flow = import_module("core.orchestra_thread.service.flows.inactivity_flow")
+service_message_flow = import_module("core.orchestra_thread.service.flows.message_flow")
+service_notification_flow = import_module("core.orchestra_thread.service.flows.notification_flow")
 service_shared = import_module("core.orchestra_thread.service_shared")
-store_thread_creation = import_module("core.orchestra_thread.store_thread_creation")
-store_thread_events = import_module("core.orchestra_thread.store_thread_events")
+service_thread_snapshot = import_module("core.orchestra_thread.service.thread_snapshot")
+service_thread_summary = import_module("core.orchestra_thread.service.thread_summary")
 
 logger = logging.getLogger(__name__)
 SERVICE_APP_KEY: web.AppKey[OrchestraThreadsService] = web.AppKey("OrchestraThreadsService")
@@ -44,13 +44,6 @@ def _json_success(payload: dict[str, Any]) -> web.Response:
 
 def _service_error_response(exc: ServiceError) -> web.Response:
     return _json_error(exc.message, status=exc.status)
-
-
-def message_preview(text: str, *, limit: int = 160) -> str:
-    normalized = " ".join(str(text or "").split())
-    if len(normalized) <= limit:
-        return normalized
-    return f"{normalized[: limit - 3]}..."
 
 
 class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service facade intentionally centralizes public thread API while delegating heavy logic to helper modules.
@@ -158,23 +151,21 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
             )
 
     def thread_summary(self, thread: JsonDictOrNone) -> JsonDictOrNone:
-        if thread is None:
-            return None
-        return self._build_thread_summary(thread)
+        return cast(
+            JsonDictOrNone,
+            service_thread_summary.thread_summary(
+                thread,
+                agent_card_builder=self._agent_card_builder,
+            ),
+        )
+
+    def _thread_summary_builder(self) -> Any:
+        return service_thread_summary._ThreadSummaryBuilder(
+            agent_card_builder=self._agent_card_builder,
+        )
 
     def _build_thread_summary(self, thread: JsonDict) -> JsonDict:
-        payload = dict(thread)
-        participants = self._thread_participants(payload)
-        peer_agent_slug = self._resolve_peer_agent_slug(
-            owner_agent_slug=participants["owner"],
-            participant_a_agent_slug=participants["participant_a"],
-            participant_b_agent_slug=participants["participant_b"],
-        )
-        return self._thread_summary_from_payload(
-            payload=payload,
-            participants=participants,
-            peer_agent_slug=peer_agent_slug,
-        )
+        return cast(JsonDict, self.thread_summary(thread))
 
     def _thread_summary_from_payload(
         self,
@@ -183,34 +174,19 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
         participants: dict[str, str],
         peer_agent_slug: str,
     ) -> JsonDict:
-        thread_scope = self._thread_scope(payload)
-        agents = payload.get("agents")
-        if not isinstance(agents, dict):
-            agents = self._default_agents(
-                owner_agent_slug=participants["owner"],
-                participant_a_agent_slug=participants["participant_a"],
-                participant_b_agent_slug=participants["participant_b"],
+        builder: Any = self._thread_summary_builder()
+        return cast(
+            JsonDict,
+            builder._thread_summary_from_payload(
+                payload=payload,
+                participants=participants,
                 peer_agent_slug=peer_agent_slug,
-            )
-        payload["is_terminal"] = self._is_terminal_status(payload.get("status"))
-        payload["scope"] = thread_scope
-        payload["thread_scope"] = thread_scope
-        payload["agents"] = agents
-        payload["roles"] = self._roles_payload(
-            roles=payload.get("roles"),
-            owner_agent_slug=participants["owner"],
-            peer_agent_slug=peer_agent_slug,
+            ),
         )
-        payload["pair_label"] = self._pair_label(payload=payload)
-        self._attach_last_event(payload=payload)
-        return payload
 
     def _thread_participants(self, payload: JsonDict) -> dict[str, str]:
-        return {
-            "owner": str(payload.get("owner_agent_slug") or "").strip(),
-            "participant_a": str(payload.get("participant_a_agent_slug") or "").strip(),
-            "participant_b": str(payload.get("participant_b_agent_slug") or "").strip(),
-        }
+        builder: Any = self._thread_summary_builder()
+        return cast(dict[str, str], builder._parts.thread_participants(payload))
 
     def _resolve_peer_agent_slug(
         self,
@@ -219,16 +195,19 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
         participant_a_agent_slug: str,
         participant_b_agent_slug: str,
     ) -> str:
-        if owner_agent_slug == participant_a_agent_slug:
-            return participant_b_agent_slug
-        if owner_agent_slug and owner_agent_slug == participant_b_agent_slug:
-            return participant_a_agent_slug
-        return participant_a_agent_slug
+        builder: Any = self._thread_summary_builder()
+        return cast(
+            str,
+            builder._parts.resolve_peer_agent_slug(
+                owner_agent_slug=owner_agent_slug,
+                participant_a_agent_slug=participant_a_agent_slug,
+                participant_b_agent_slug=participant_b_agent_slug,
+            ),
+        )
 
     def _thread_scope(self, payload: JsonDict) -> str:
-        if payload.get("thread_id") == payload.get("root_thread_id"):
-            return "root"
-        return "child"
+        builder: Any = self._thread_summary_builder()
+        return cast(str, builder._parts.thread_scope(payload))
 
     def _default_agents(
         self,
@@ -238,15 +217,20 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
         participant_b_agent_slug: str,
         peer_agent_slug: str,
     ) -> JsonDict:
-        return {
-            "owner": self.agent_card_from_record(None, agent_slug=owner_agent_slug),
-            "participant_a": self.agent_card_from_record(None, agent_slug=participant_a_agent_slug),
-            "participant_b": self.agent_card_from_record(None, agent_slug=participant_b_agent_slug),
-            "peer": self.agent_card_from_record(None, agent_slug=peer_agent_slug),
-        }
+        builder: Any = self._thread_summary_builder()
+        return cast(
+            JsonDict,
+            builder._default_agents(
+                owner_agent_slug=owner_agent_slug,
+                participant_a_agent_slug=participant_a_agent_slug,
+                participant_b_agent_slug=participant_b_agent_slug,
+                peer_agent_slug=peer_agent_slug,
+            ),
+        )
 
     def _is_terminal_status(self, status: Any) -> bool:
-        return common.normalize_status(str(status or "")) in common.THREAD_TERMINAL_STATUSES
+        builder: Any = self._thread_summary_builder()
+        return cast(bool, builder._parts.is_terminal_status(status))
 
     def _roles_payload(
         self,
@@ -255,37 +239,19 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
         owner_agent_slug: str,
         peer_agent_slug: str,
     ) -> Any:
-        if roles:
-            return roles
-        return {
-            "owner_agent_slug": owner_agent_slug,
-            "peer_agent_slug": peer_agent_slug,
-        }
-
-    def _pair_label(self, *, payload: JsonDict) -> Any:
-        pair_label = payload.get("pair_label")
-        if pair_label:
-            return pair_label
-        return (
-            f"{payload['agents']['participant_a']['display_name']} "
-            f"<-> {payload['agents']['participant_b']['display_name']}"
+        builder: Any = self._thread_summary_builder()
+        return builder._parts.roles_payload(
+            roles=roles,
+            owner_agent_slug=owner_agent_slug,
+            peer_agent_slug=peer_agent_slug,
         )
 
+    def _pair_label(self, *, payload: JsonDict) -> Any:
+        builder: Any = self._thread_summary_builder()
+        return builder._parts.pair_label(payload=payload)
+
     def _attach_last_event(self, *, payload: JsonDict) -> None:
-        last_event_message_text = str(payload.get("last_event_message_text") or "")
-        payload["last_event"] = None
-        if payload.get("last_event_id"):
-            payload["last_event"] = {
-                "event_id": payload.get("last_event_id"),
-                "sequence_no": payload.get("last_event_sequence_no"),
-                "event_kind": payload.get("last_event_kind"),
-                "notification_status": payload.get("last_event_notification_status"),
-                "from_agent_slug": payload.get("last_event_from_agent_slug"),
-                "to_agent_slug": payload.get("last_event_to_agent_slug"),
-                "created_at": payload.get("last_event_created_at"),
-                "pending_delivery": payload.get("last_event_pending_delivery"),
-                "message_preview": message_preview(last_event_message_text),
-            }
+        self._thread_summary_builder()._attach_last_event(payload=payload)
 
     def thread_compact_summary(
         self,
@@ -293,17 +259,17 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
         thread: JsonDict,
         latest_event: JsonDictOrNone,
     ) -> JsonDict:
-        payload = self.thread_summary(thread) or {}
-        latest = latest_event or {}
-        payload["last_event_kind"] = latest.get("event_kind")
-        payload["last_event_notification_status"] = latest.get("notification_status")
-        payload["last_event_from_agent_slug"] = latest.get("from_agent_slug")
-        payload["last_event_to_agent_slug"] = latest.get("to_agent_slug")
-        payload["last_event_created_at"] = latest.get("created_at")
-        payload["last_event_message_preview"] = message_preview(
-            str(latest.get("message_text") or "")
+        return cast(
+            JsonDict,
+            service_thread_summary.thread_compact_summary(
+                thread=thread,
+                latest_event=latest_event,
+                agent_card_builder=self._agent_card_builder,
+            ),
         )
-        return payload
+
+    def _agent_card_builder(self, agent: JsonDictOrNone, agent_slug: str) -> JsonDict:
+        return self.agent_card_from_record(agent, agent_slug=agent_slug)
 
     def agent_card_from_record(self, agent: JsonDictOrNone, *, agent_slug: str) -> JsonDict:
         context = self._agent_context(agent=agent, agent_slug=agent_slug)
@@ -423,77 +389,14 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
         return display_name or fallback
 
     def event_payload(self, event: JsonDict, *, agents_by_slug: dict[str, JsonDict]) -> JsonDict:
-        event_context = self._event_context(event=event, agents_by_slug=agents_by_slug)
-        return {
-            "event_id": event.get("event_id"),
-            "sequence_no": event.get("sequence_no"),
-            "event_kind": event.get("event_kind"),
-            "notification_status": event.get("notification_status"),
-            "from_agent_slug": event_context["from_slug"],
-            "to_agent_slug": event_context["to_slug"],
-            "from_agent": event_context["from_agent"],
-            "to_agent": event_context["to_agent"],
-            "requires_action": event_context["requires_action"],
-            "interrupts_runtime": event_context["interrupts_runtime"],
-            "requires_response": event_context["requires_response"],
-            "pending_delivery": bool(event.get("pending_delivery")),
-            "delivery_attempt_count": int(event.get("delivery_attempt_count") or 0),
-            "last_delivery_error": event.get("last_delivery_error"),
-            "created_at": event.get("created_at"),
-            "message_text": event_context["message_text"],
-            "message_preview": message_preview(str(event_context["message_text"])),
-        }
-
-    def _event_context(
-        self,
-        *,
-        event: JsonDict,
-        agents_by_slug: dict[str, JsonDict],
-    ) -> JsonDict:
-        slugs = self._event_slugs(event)
-        event_flags = self._event_flags(event)
-        from_agent, to_agent = self._event_agents(slugs=slugs, agents_by_slug=agents_by_slug)
-        requires_action = self._requires_action(event_flags)
-        return {
-            "message_text": str(event.get("message_text") or ""),
-            "from_slug": slugs["from"],
-            "to_slug": slugs["to"],
-            "from_agent": from_agent,
-            "to_agent": to_agent,
-            "requires_action": requires_action,
-            "interrupts_runtime": event_flags["interrupts_runtime"],
-            "requires_response": event_flags["requires_response"],
-        }
-
-    def _event_agents(
-        self,
-        *,
-        slugs: dict[str, str],
-        agents_by_slug: dict[str, JsonDict],
-    ) -> tuple[JsonDict, JsonDict]:
-        from_slug = slugs["from"]
-        to_slug = slugs["to"]
-        return (
-            self.agent_card_from_record(agents_by_slug.get(from_slug), agent_slug=from_slug),
-            self.agent_card_from_record(agents_by_slug.get(to_slug), agent_slug=to_slug),
+        return cast(
+            JsonDict,
+            service_event_payloads.event_payload(
+                event,
+                agents_by_slug=agents_by_slug,
+                agent_card_builder=self._agent_card_builder,
+            ),
         )
-
-    def _requires_action(self, event_flags: dict[str, bool]) -> bool:
-        return event_flags["interrupts_runtime"] or event_flags["requires_response"]
-
-    def _event_slugs(self, event: JsonDict) -> dict[str, str]:
-        return {
-            "from": str(event.get("from_agent_slug") or "").strip(),
-            "to": str(event.get("to_agent_slug") or "").strip(),
-        }
-
-    def _event_flags(self, event: JsonDict) -> dict[str, bool]:
-        requires_response = bool(event.get("requires_response"))
-        interrupts_runtime = bool(event.get("interrupts_runtime"))
-        return {
-            "requires_response": requires_response,
-            "interrupts_runtime": interrupts_runtime,
-        }
 
     async def agents_by_slug(self) -> dict[str, dict[str, Any]]:
         agents = await self.store.list_agents()
@@ -634,171 +537,26 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
         request_input: Any | None = None,
         legacy_kwargs: dict[str, object] | None = None,
     ) -> dict[str, Any]:
-        if request_input is None:
-            kwargs = dict(legacy_kwargs or {})
-            kwargs.setdefault(service_message_requests.CLIENT_REQUEST_ID, str(uuid.uuid4().hex))
-            request_input = self._legacy_message_input(kwargs)
-        request = service_message_requests.build_message_request(request_input)
-        return await self._send_message_locked(request=request)
-
-    def _legacy_message_input(
-        self,
-        kwargs: dict[str, object],
-    ) -> MessageRequestInput:
-        thread_id = self._optional_legacy_text(kwargs.get(service_message_requests.THREAD_ID))
-        parent_thread_id = self._optional_legacy_text(
-            kwargs.get(service_message_requests.PARENT_THREAD_ID)
-        )
         return cast(
-            MessageRequestInput,
-            service_message_requests.MessageRequestInput(
-                from_agent_slug=str(kwargs.get(service_message_requests.FROM_AGENT_SLUG) or ""),
-                to_agent_slug=str(kwargs.get(service_message_requests.TO_AGENT_SLUG) or ""),
-                message_text=str(kwargs.get(service_message_requests.MESSAGE_TEXT) or ""),
-                thread_id=thread_id,
-                parent_thread_id=parent_thread_id,
-                client_request_id=str(kwargs.get(service_message_requests.CLIENT_REQUEST_ID) or ""),
+            dict[str, Any],
+            await service_message_flow.send_message(
+                self,
+                request_input=request_input,
+                legacy_kwargs=legacy_kwargs,
             ),
         )
-
-    @staticmethod
-    def _optional_legacy_text(value: object) -> str | None:
-        if value is None:
-            return None
-        normalized = str(value).strip()
-        if normalized:
-            return normalized
-        return None
 
     async def _send_message_locked(self, *, request: dict[str, str | None]) -> JsonDict:
-        message_context = service_message_requests.message_request_context(request=request)
-        async with self._lock:
-            return await self._send_message_with_lock_context(message_context)
+        return cast(
+            JsonDict, await service_message_flow._send_message_locked(self, request=request)
+        )
 
     async def _send_message_with_lock_context(self, message_request_context: JsonDict) -> JsonDict:
-        from_agent_slug = str(message_request_context["from_agent_slug"])
-        to_agent_slug = str(message_request_context["to_agent_slug"])
-        from_agent = await self.store.get_agent(from_agent_slug)
-        self._ensure_peer_allowed(
-            from_agent=from_agent,
-            from_agent_slug=from_agent_slug,
-            to_agent_slug=to_agent_slug,
-        )
-        cached = await self.store.get_idempotent_result(
-            from_agent_slug=from_agent_slug,
-            client_request_id=str(message_request_context["client_request_id"]),
-        )
-        if cached is not None:
-            return cached
-        response = await self._build_message_response(message_request_context)
-        await self.store.save_idempotent_result(
-            from_agent_slug=str(message_request_context["from_agent_slug"]),
-            client_request_id=str(message_request_context["client_request_id"]),
-            operation_name="message",
-            response_payload=response,
-        )
-        return response
-
-    async def _build_message_response(self, message_request_context: JsonDict) -> JsonDict:
-        thread, created_thread = await self._resolve_message_thread(
-            thread_id=str(message_request_context.get("thread_id") or "").strip() or None,
-            parent_thread_id=str(message_request_context.get("parent_thread_id") or "").strip()
-            or None,
-            from_agent_slug=str(message_request_context["from_agent_slug"]),
-            to_agent_slug=str(message_request_context["to_agent_slug"]),
-        )
-        event, thread_payload = await self.store.append_thread_event(
-            request=store_thread_events.AppendEventRequest(
-                event_id=str(uuid.uuid4()),
-                thread_id=str(thread.get("thread_id")),
-                event_kind="message",
-                notification_status=None,
-                from_agent_slug=str(message_request_context["from_agent_slug"]),
-                to_agent_slug=str(message_request_context["to_agent_slug"]),
-                message_text=str(message_request_context["message_text"]),
-                interrupts_runtime=True,
-                requires_response=True,
-                touch_activity=True,
-                update_last_message_sender=True,
-                set_thread_status="open",
-            ),
-        )
-        return {
-            "success": True,
-            "operation": "message",
-            "created_thread": created_thread,
-            "thread": self.thread_summary(thread_payload),
-            "event": event,
-        }
-
-    async def _resolve_message_thread(
-        self,
-        *,
-        thread_id: str | None,
-        parent_thread_id: str | None,
-        from_agent_slug: str,
-        to_agent_slug: str,
-    ) -> tuple[dict[str, Any], bool]:
-        if thread_id:
-            return await self._resolve_existing_thread(
-                thread_id=thread_id,
-                from_agent_slug=from_agent_slug,
-                to_agent_slug=to_agent_slug,
-            )
-        if parent_thread_id:
-            return await self._resolve_child_thread(
-                parent_thread_id=parent_thread_id,
-                from_agent_slug=from_agent_slug,
-                to_agent_slug=to_agent_slug,
-            )
-        return await self.store.get_or_create_root_thread(
-            request=store_thread_creation.RootThreadRequest(
-                thread_id=str(uuid.uuid4()),
-                owner_agent_slug=from_agent_slug,
-                from_agent_slug=from_agent_slug,
-                to_agent_slug=to_agent_slug,
-            ),
-        )
-
-    async def _resolve_existing_thread(
-        self,
-        *,
-        thread_id: str,
-        from_agent_slug: str,
-        to_agent_slug: str,
-    ) -> tuple[dict[str, Any], bool]:
-        thread = await self.store.get_thread(thread_id)
-        if thread is None:
-            raise common.ServiceError(404, f"Unknown thread_id: {thread_id}")
-        self.validate_routing(
-            thread=thread,
-            from_agent_slug=from_agent_slug,
-            to_agent_slug=to_agent_slug,
-        )
-        return thread, False
-
-    async def _resolve_child_thread(
-        self,
-        *,
-        parent_thread_id: str,
-        from_agent_slug: str,
-        to_agent_slug: str,
-    ) -> tuple[dict[str, Any], bool]:
-        parent_thread = await self.store.get_thread(parent_thread_id)
-        if parent_thread is None:
-            raise common.ServiceError(404, f"Unknown parent_thread_id: {parent_thread_id}")
-        parent_status = common.normalize_status(str(parent_thread.get("status") or ""))
-        if parent_status in common.THREAD_TERMINAL_STATUSES:
-            raise common.ServiceError(409, f"Parent thread {parent_thread_id} is already terminal")
-        self.thread_peer_agent_slug(thread=parent_thread, agent_slug=from_agent_slug)
-        return await self.store.get_or_create_child_thread(
-            request=store_thread_creation.ChildThreadRequest(
-                thread_id=str(uuid.uuid4()),
-                root_thread_id=str(parent_thread.get("root_thread_id")),
-                parent_thread_id=parent_thread_id,
-                owner_agent_slug=from_agent_slug,
-                from_agent_slug=from_agent_slug,
-                to_agent_slug=to_agent_slug,
+        return cast(
+            JsonDict,
+            await service_message_flow._send_message_with_lock_context(
+                self,
+                message_request_context,
             ),
         )
 
@@ -808,219 +566,30 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
         request_input: Any | None = None,
         legacy_kwargs: dict[str, object] | None = None,
     ) -> dict[str, Any]:
-        if request_input is None:
-            kwargs = dict(legacy_kwargs or {})
-            kwargs.setdefault(
-                service_notification_requests.CLIENT_REQUEST_ID, str(uuid.uuid4().hex)
-            )
-            request_input = self._legacy_notification_input(kwargs)
-        request = service_notification_requests.build_notification_request(request_input)
-        should_notify_stop = bool(request["status"] == "closed")
-        response = await self._send_notification_locked(request=request)
-        if should_notify_stop:
-            await self._notify_closed_thread(request=request)
-        if request["status"] in common.THREAD_TERMINAL_STATUSES:
-            await self._cascade_notification_close(request=request)
-        return response
-
-    @staticmethod
-    def _legacy_notification_input(
-        kwargs: dict[str, object],
-    ) -> NotificationRequestInput:
         return cast(
-            NotificationRequestInput,
-            service_notification_requests.NotificationRequestInput(
-                from_agent_slug=str(
-                    kwargs.get(service_notification_requests.FROM_AGENT_SLUG) or ""
-                ),
-                to_agent_slug=str(kwargs.get(service_notification_requests.TO_AGENT_SLUG) or ""),
-                thread_id=str(kwargs.get(service_notification_requests.THREAD_ID) or ""),
-                status=str(kwargs.get(service_notification_requests.STATUS) or ""),
-                message_text=str(kwargs.get(service_notification_requests.MESSAGE_TEXT) or ""),
-                client_request_id=str(
-                    kwargs.get(service_notification_requests.CLIENT_REQUEST_ID) or ""
-                ),
+            dict[str, Any],
+            await service_notification_flow.send_notification(
+                self,
+                request_input=request_input,
+                legacy_kwargs=legacy_kwargs,
             ),
         )
 
     async def _send_notification_locked(self, *, request: dict[str, str]) -> JsonDict:
-        request_context = service_notification_requests.notification_context(request=request)
-        async with self._lock:
-            return await self._send_notification_with_lock_context(request_context)
+        return cast(
+            JsonDict,
+            await service_notification_flow._send_notification_locked(self, request=request),
+        )
 
     async def _send_notification_with_lock_context(
         self, notification_context: JsonDict
     ) -> JsonDict:
-        from_agent_slug = str(notification_context["from_agent_slug"])
-        cached = await self.store.get_idempotent_result(
-            from_agent_slug=from_agent_slug,
-            client_request_id=str(notification_context["client_request_id"]),
-        )
-        if cached is not None:
-            return cached
-        await self._ensure_notification_sender_allowed(notification_context, from_agent_slug)
-        thread = await self._notification_thread(notification_context)
-        self._validate_notification_actor(thread=thread, notification_context=notification_context)
-        response = await self._build_notification_response(notification_context)
-        await self.store.save_idempotent_result(
-            from_agent_slug=str(notification_context["from_agent_slug"]),
-            client_request_id=str(notification_context["client_request_id"]),
-            operation_name="notification",
-            response_payload=response,
-        )
-        return response
-
-    async def _ensure_notification_sender_allowed(
-        self,
-        notification_context: JsonDict,
-        from_agent_slug: str,
-    ) -> None:
-        from_agent = await self.store.get_agent(from_agent_slug)
-        self._ensure_peer_allowed(
-            from_agent=from_agent,
-            from_agent_slug=from_agent_slug,
-            to_agent_slug=str(notification_context["to_agent_slug"]),
-        )
-
-    async def _notification_thread(self, notification_context: JsonDict) -> JsonDict:
-        thread = await self.store.get_thread(str(notification_context["thread_id"]))
-        if thread is None:
-            raise common.ServiceError(
-                404, f"Unknown thread_id: {notification_context['thread_id']}"
-            )
-        self.validate_routing(
-            thread=thread,
-            from_agent_slug=str(notification_context["from_agent_slug"]),
-            to_agent_slug=str(notification_context["to_agent_slug"]),
-        )
-        return thread
-
-    def _validate_notification_actor(
-        self, *, thread: JsonDict, notification_context: JsonDict
-    ) -> None:
-        owner_agent_slug = str(thread.get("owner_agent_slug") or "").strip()
-        allowed_statuses = self._allowed_notification_statuses(
-            from_agent_slug=str(notification_context["from_agent_slug"]),
-            owner_agent_slug=owner_agent_slug,
-        )
-        status = str(notification_context["status"])
-        if status not in allowed_statuses:
-            raise common.ServiceError(
-                409,
-                (
-                    f"{notification_context['from_agent_slug']} cannot publish "
-                    f"{status} on thread {notification_context['thread_id']}"
-                ),
-            )
-
-    async def _build_notification_response(self, notification_context: JsonDict) -> JsonDict:
-        status = str(notification_context["status"])
-        thread_id = str(notification_context["thread_id"])
-        event, thread_payload = await self.store.append_thread_event(
-            request=store_thread_events.AppendEventRequest(
-                event_id=str(uuid.uuid4()),
-                thread_id=thread_id,
-                event_kind="notification",
-                notification_status=status,
-                from_agent_slug=str(notification_context["from_agent_slug"]),
-                to_agent_slug=str(notification_context["to_agent_slug"]),
-                message_text=str(notification_context["message_text"]),
-                interrupts_runtime=bool(notification_context["requires_delivery"]),
-                requires_response=False,
-                touch_activity=bool(notification_context["requires_delivery"]),
-                update_last_message_sender=False,
-                set_thread_status=status,
-                set_terminal=bool(notification_context["is_terminal"]),
+        return cast(
+            JsonDict,
+            await service_notification_flow._send_notification_with_lock_context(
+                self,
+                notification_context,
             ),
-        )
-        if bool(notification_context["is_terminal"]):
-            await self.store.cancel_pending_events_for_thread(
-                thread_id=thread_id,
-                reason=f"thread {thread_id} reached terminal state {status}",
-            )
-        return {
-            "success": True,
-            "operation": "notification",
-            "thread": self.thread_summary(thread_payload),
-            "event": event,
-        }
-
-    def _allowed_notification_statuses(
-        self,
-        *,
-        from_agent_slug: str,
-        owner_agent_slug: str,
-    ) -> frozenset[str]:
-        if from_agent_slug == owner_agent_slug:
-            return cast(frozenset[str], common.OWNER_NOTIFICATION_STATUSES)
-        return cast(frozenset[str], common.CALLEE_NOTIFICATION_STATUSES)
-
-    async def _notify_closed_thread(self, *, request: dict[str, str]) -> None:
-        await self.notify_stop(
-            agent_slug=request["to_agent_slug"],
-            payload={
-                "thread_id": request["thread_id"],
-                "reason": (f"Thread {request['thread_id']} closed by {request['from_agent_slug']}"),
-            },
-        )
-
-    async def _cascade_notification_close(self, *, request: dict[str, str]) -> None:
-        await self.cascade_close_children(
-            thread_id=request["thread_id"],
-            reason=(
-                f"parent thread {request['thread_id']} reached terminal state {request['status']}"
-            ),
-        )
-
-    async def cascade_close_children(self, *, thread_id: str, reason: str) -> None:
-        child_threads = await self.store.list_child_threads(parent_thread_id=thread_id)
-        close_tasks = [
-            self._close_child_thread(
-                child_thread=child_thread, parent_thread_id=thread_id, reason=reason
-            )
-            for child_thread in child_threads
-        ]
-        await asyncio.gather(*close_tasks)
-
-    async def _close_child_thread(
-        self,
-        *,
-        child_thread: dict[str, Any],
-        parent_thread_id: str,
-        reason: str,
-    ) -> None:
-        child_thread_id = str(child_thread.get("thread_id") or "").strip()
-        child_status = common.normalize_status(str(child_thread.get("status") or ""))
-        if not child_thread_id or child_status in common.THREAD_TERMINAL_STATUSES:
-            return
-        participants = {
-            str(child_thread.get("participant_a_agent_slug") or "").strip(),
-            str(child_thread.get("participant_b_agent_slug") or "").strip(),
-        }
-        notify_tasks = [
-            self.notify_stop(
-                agent_slug=participant,
-                payload={
-                    "thread_id": child_thread_id,
-                    "parent_thread_id": parent_thread_id,
-                    "reason": reason,
-                },
-            )
-            for participant in participants
-            if participant
-        ]
-        await asyncio.gather(*notify_tasks)
-        async with self._lock:
-            await self.store.update_thread_terminal_status(
-                thread_id=child_thread_id, status="closed"
-            )
-            await self.store.cancel_pending_events_for_thread(
-                thread_id=child_thread_id,
-                reason=f"thread {child_thread_id} closed because ancestor thread became terminal",
-            )
-        await self.cascade_close_children(
-            thread_id=child_thread_id,
-            reason=f"ancestor thread {parent_thread_id} closed descendant {child_thread_id}",
         )
 
     async def list_threads(self, *, scope: str, limit: int) -> dict[str, Any]:
@@ -1119,85 +688,7 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
         }
 
     def _related_threads(self, *, snapshot: JsonDict) -> JsonDict:
-        return self._related_threads_payload(*self._related_threads_args(snapshot))
-
-    def _related_threads_args(
-        self,
-        snapshot: JsonDict,
-    ) -> tuple[list[JsonDict], JsonDict, str, str, str]:
-        return self._related_threads_args_values(snapshot)
-
-    def _related_threads_args_values(
-        self,
-        snapshot: JsonDict,
-    ) -> tuple[list[JsonDict], JsonDict, str, str, str]:
-        return self._unpack_related_threads_args(snapshot)
-
-    def _unpack_related_threads_args(
-        self,
-        snapshot: JsonDict,
-    ) -> tuple[list[JsonDict], JsonDict, str, str, str]:
-        root_group, thread, thread_id = self._snapshot_parts(snapshot)
-        relation_ids = self._relation_ids(thread)
-        return (
-            root_group,
-            self._thread_payload(root_group=root_group, thread=thread, thread_id=thread_id),
-            relation_ids[0],
-            relation_ids[1],
-            thread_id,
-        )
-
-    def _related_threads_payload(
-        self,
-        root_group: list[JsonDict],
-        thread_payload: JsonDict,
-        parent_thread_id: str,
-        root_thread_id: str,
-        thread_id: str,
-    ) -> JsonDict:
-        return {
-            "thread": thread_payload,
-            "parent_thread": self._thread_by_id(root_group=root_group, thread_id=parent_thread_id),
-            "root_thread": self._thread_by_id(root_group=root_group, thread_id=root_thread_id),
-            "child_threads": self._child_threads(root_group=root_group, thread_id=thread_id),
-        }
-
-    def _thread_payload(
-        self,
-        *,
-        root_group: list[JsonDict],
-        thread: JsonDict,
-        thread_id: str,
-    ) -> JsonDict:
-        return next((item for item in root_group if item.get("thread_id") == thread_id), thread)
-
-    def _relation_ids(self, thread: JsonDict) -> tuple[str, str]:
-        parent_thread_id = str(thread.get("parent_thread_id") or "").strip()
-        root_thread_id = str(thread.get("root_thread_id") or "").strip()
-        return parent_thread_id, root_thread_id
-
-    def _child_threads(self, *, root_group: list[JsonDict], thread_id: str) -> list[JsonDict]:
-        return [item for item in root_group if item.get("parent_thread_id") == thread_id]
-
-    def _snapshot_parts(
-        self,
-        snapshot: JsonDict,
-    ) -> tuple[list[JsonDict], JsonDict, str]:
-        root_group = list(snapshot["root_group"])
-        thread = dict(snapshot["thread"])
-        thread_id = str(snapshot["thread_id"])
-        return root_group, thread, thread_id
-
-    def _thread_by_id(
-        self,
-        *,
-        root_group: list[JsonDict],
-        thread_id: str,
-    ) -> JsonDictOrNone:
-        for item in root_group:
-            if item.get("thread_id") == thread_id:
-                return item
-        return None
+        return cast(JsonDict, service_thread_snapshot._related_threads(snapshot=snapshot))
 
     def inject_agent_cards(
         self,
@@ -1379,7 +870,7 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
     async def delivery_loop(self) -> None:
         while self.running:
             try:
-                await self._process_pending_events()
+                await service_delivery_flow._process_pending_events(self)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -1387,37 +878,7 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
             await asyncio.sleep(self.delivery_poll_interval_seconds)
 
     async def _process_pending_events(self) -> None:
-        async with self._lock:
-            pending_events = await self.store.list_due_pending_events(
-                now_iso=common.utc_now_iso(), limit=16
-            )
-        process_tasks = [self._process_pending_event_item(item=item) for item in pending_events]
-        await asyncio.gather(*process_tasks)
-
-    async def _process_pending_event_item(self, *, item: dict[str, Any]) -> None:
-        event_id = str(item.get("event_id") or "").strip()
-        target_agent_slug = str(item.get("to_agent_slug") or "").strip()
-        if not event_id or not target_agent_slug:
-            return
-        callback_url = str(item.get("event_callback_url") or "").strip()
-        if not callback_url:
-            await self._mark_delivery_failed(
-                event_id=event_id,
-                error_text=(
-                    f"target agent {target_agent_slug} is not registered or has no event callback"
-                ),
-            )
-            return
-        if not self.store.timestamp_within_lease(
-            item.get("agent_last_seen_at"),
-            lease_seconds=self.agent_lease_seconds,
-        ):
-            await self._mark_delivery_failed(
-                event_id=event_id,
-                error_text=f"target agent {target_agent_slug} is offline",
-            )
-            return
-        await self._deliver_pending_event(item=item, callback_url=callback_url, event_id=event_id)
+        await service_delivery_flow._process_pending_events(self)
 
     async def _deliver_pending_event(
         self,
@@ -1426,57 +887,32 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
         callback_url: str,
         event_id: str,
     ) -> None:
-        payload = {
-            "delivery_id": str(uuid.uuid4()),
-            "events": [
-                {
-                    "event_id": item.get("event_id"),
-                    "thread_id": item.get("thread_id"),
-                    "root_thread_id": item.get("root_thread_id"),
-                    "parent_thread_id": item.get("parent_thread_id"),
-                    "owner_agent_slug": item.get("owner_agent_slug"),
-                    "sequence_no": item.get("sequence_no"),
-                    "event_kind": item.get("event_kind"),
-                    "notification_status": item.get("notification_status"),
-                    "from_agent_slug": item.get("from_agent_slug"),
-                    "to_agent_slug": item.get("to_agent_slug"),
-                    "message_text": item.get("message_text"),
-                    "interrupts_runtime": bool(item.get("interrupts_runtime")),
-                    "requires_response": bool(item.get("requires_response")),
-                    "created_at": item.get("created_at"),
-                }
-            ],
-        }
-        try:
-            await self._post_delivery(callback_url=callback_url, payload=payload)
-        except Exception as exc:
-            logger.warning("event delivery failed for %s: %s", event_id, exc)
-            await self._mark_delivery_failed(event_id=event_id, error_text=str(exc))
-            return
-        async with self._lock:
-            await self.store.mark_event_delivered(event_id=event_id)
+        await service_delivery_flow._deliver_pending_event(
+            self,
+            item=item,
+            callback_url=callback_url,
+            event_id=event_id,
+        )
 
     async def _post_delivery(self, *, callback_url: str, payload: dict[str, Any]) -> None:
-        assert self._http_session is not None
-        async with self._http_session.post(callback_url, json=payload) as response:
-            if response.status >= 400:
-                body = await response.text()
-                raise RuntimeError(f"HTTP {response.status}: {body}")
+        await service_delivery_flow._post_delivery(
+            self,
+            callback_url=callback_url,
+            payload=payload,
+        )
 
     async def _mark_delivery_failed(self, *, event_id: str, error_text: str) -> None:
-        async with self._lock:
-            await self.store.mark_event_failed(
-                event_id=event_id,
-                error_text=error_text,
-                retry_base_seconds=self.retry_base_seconds,
-                retry_max_seconds=self.retry_max_seconds,
-            )
+        await service_delivery_flow._mark_delivery_failed(
+            self,
+            event_id=event_id,
+            error_text=error_text,
+        )
 
     async def inactivity_loop(self) -> None:
         poll_interval = max(1.0, self.inactivity_timeout_seconds / 4.0)
         while self.running:
             try:
-                await self._process_inactivity_candidates()
+                await service_inactivity_flow._process_inactivity_candidates(self)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -1484,30 +920,10 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
             await asyncio.sleep(poll_interval)
 
     async def _process_inactivity_candidates(self) -> None:
-        async with self._lock:
-            candidates = await self.store.list_inactivity_candidates(
-                timeout_seconds=self.inactivity_timeout_seconds,
-                limit=32,
-            )
-        inactivity_tasks = [self._build_inactivity_task(thread=thread) for thread in candidates]
-        await asyncio.gather(*inactivity_tasks)
+        await service_inactivity_flow._process_inactivity_candidates(self)
 
     async def _build_inactivity_task(self, *, thread: dict[str, Any]) -> None:
-        thread_id = str(thread.get("thread_id") or "").strip()
-        recipient = str(thread.get("last_message_sender_agent_slug") or "").strip()
-        last_activity_at = str(thread.get("last_activity_at") or "").strip()
-        if not thread_id or not recipient:
-            return
-        message = (
-            f"Thread {thread_id} has no new activity for at least "
-            f"{self.inactivity_timeout_seconds} seconds since {last_activity_at}. "
-            "You may resume it with a new message or close it."
-        )
-        await self._append_inactivity_event(
-            thread_id=thread_id,
-            recipient=recipient,
-            message=message,
-        )
+        await service_inactivity_flow._build_inactivity_task(self, thread=thread)
 
     async def _append_inactivity_event(
         self,
@@ -1516,23 +932,12 @@ class _OrchestraThreadsServiceRuntime:  # noqa: WPS214,WPS230,WPS338 - service f
         recipient: str,
         message: str,
     ) -> None:
-        async with self._lock:
-            await self.store.append_thread_event(
-                request=store_thread_events.AppendEventRequest(
-                    event_id=str(uuid.uuid4()),
-                    thread_id=thread_id,
-                    event_kind="inactive",
-                    notification_status=None,
-                    from_agent_slug="orchestra_threads",
-                    to_agent_slug=recipient,
-                    message_text=message,
-                    interrupts_runtime=True,
-                    requires_response=False,
-                    touch_activity=False,
-                    update_last_message_sender=False,
-                ),
-            )
-            await self.store.mark_inactivity_sent(thread_id=thread_id)
+        await service_inactivity_flow._append_inactivity_event(
+            self,
+            thread_id=thread_id,
+            recipient=recipient,
+            message=message,
+        )
 
 
 OrchestraThreadsService = _OrchestraThreadsServiceRuntime

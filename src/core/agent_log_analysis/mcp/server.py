@@ -14,8 +14,8 @@ from core.agent_log_analysis.mcp.protocol import (
     MCPProtocol,
     list_tools,
 )
+from core.agent_log_analysis.mcp.transport import encode_message, read_message
 from core.agent_log_analysis.service import AgentLogAnalysisService
-from core.orchestra_thread.mcp.transport import encode_message, read_message
 
 logger = logging.getLogger(__name__)
 

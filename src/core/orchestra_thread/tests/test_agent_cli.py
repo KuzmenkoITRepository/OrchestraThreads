@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from dataclasses import dataclass, field
 from typing import Any, cast
@@ -210,6 +211,35 @@ class ManualAgentCLIStateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(client.register_calls), 1)
         self.assertGreater(cli.listen_port, 0)
         self.assertIn(f":{cli.listen_port}", client.register_calls[0]["base_url"])
+
+    async def test_handle_stop_clears_matching_thread(self) -> None:
+        cli, _ = make_cli()
+        cli.current_thread_id = _STUB_THREAD_ID
+
+        response = await cli._handle_stop(make_request({_KEY_THREAD_ID: _STUB_THREAD_ID}))
+
+        self.assertEqual(response.status, _HTTP_OK)
+        self.assertEqual(list(cli.stop_signals), [{_KEY_THREAD_ID: _STUB_THREAD_ID}])
+        self.assertIsNone(cli.current_thread_id)
+
+    async def test_handle_health_reports_current_thread(self) -> None:
+        cli, _ = make_cli()
+        cli.current_thread_id = _STUB_THREAD_ID
+
+        response = await cli._handle_health(None)
+        body = response.body
+
+        self.assertEqual(response.status, _HTTP_OK)
+        if body is None:
+            raise AssertionError("Expected JSON response body")
+        self.assertEqual(
+            cast(dict[str, Any], json.loads(body.decode("utf-8"))),
+            {
+                "status": "ok",
+                "agent_slug": "human",
+                "current_thread_id": _STUB_THREAD_ID,
+            },
+        )
 
 
 class OrchestraThreadsClientSurfaceTests(unittest.TestCase):

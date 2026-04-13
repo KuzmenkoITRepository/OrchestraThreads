@@ -101,7 +101,7 @@ def _build_settings(case: _SmokeCase, root_dir: Path) -> Any:
             "state_root": str(root_dir / case.family / "state"),
             "artifact_root": str(root_dir / case.family / "artifacts"),
             "llm_proxy_url": str(os.getenv("LLM_PROXY_URL") or _DEFAULT_PROXY_URL),
-            "llm_proxy_api_key": str(os.getenv("LLM_PROXY_API_KEY") or "llm-proxy"),
+            "llm_proxy_api_key": str(os.getenv("LLM_PROXY_API_KEY") or "").strip(),
             "llm_route_policy": case.route_policy,
             "model": case.model,
             "timeout_seconds": _DEFAULT_TIMEOUT_SECONDS,

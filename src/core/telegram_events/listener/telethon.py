@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from importlib import import_module
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
 
 def load_telethon() -> tuple[type[Any], Any]:
-    from telethon import TelegramClient, events
+    telethon_module = import_module("telethon")
+    telegram_client = telethon_module.TelegramClient
+    telethon_events = telethon_module.events
 
-    return TelegramClient, events
+    return cast(type[Any], telegram_client), telethon_events
 
 
 def build_client(session: str | Any, api_id: int, api_hash: str) -> Any:

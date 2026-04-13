@@ -22,20 +22,39 @@ class ResolvedRuntimeConfig:
     mounts: tuple[RuntimeMount, ...]
 
 
+def _runtime_spec(
+    manifest: AgentManifest,
+) -> runtime_specs.BackendRuntimeSpec | None:
+    return runtime_specs.BACKEND_RUNTIME_SPECS.get(manifest.backend.type)
+
+
+def _resolve_runtime_image(
+    manifest: AgentManifest,
+    spec: runtime_specs.BackendRuntimeSpec | None,
+) -> str:
+    image = value_resolution.resolve_runtime_image(manifest, spec)
+    if image:
+        return image
+    raise RuntimeError(
+        f"agent {manifest.slug} is missing a runtime image for backend {manifest.backend.type!r}"
+    )
+
+
+def _resolve_runtime_mounts(
+    manifest: AgentManifest,
+) -> tuple[RuntimeMount, ...]:
+    return tuple(manifest.runtime.mounts)
+
+
 def resolve_backend_runtime(manifest: AgentManifest) -> ResolvedRuntimeConfig:
     """Resolve runtime launch config from backend defaults and manifest overrides."""
 
-    spec = runtime_specs.BACKEND_RUNTIME_SPECS.get(manifest.backend.type)
-    image = value_resolution.resolve_runtime_image(manifest, spec)
-    if not image:
-        raise RuntimeError(
-            f"agent {manifest.slug} is missing a runtime image for backend {manifest.backend.type!r}"
-        )
+    spec = _runtime_spec(manifest)
     return ResolvedRuntimeConfig(
-        image=image,
+        image=_resolve_runtime_image(manifest, spec),
         command=value_resolution.resolve_runtime_command(manifest, spec),
         entrypoint=value_resolution.resolve_runtime_entrypoint(manifest, spec),
         env=value_resolution.resolve_runtime_env(manifest, spec),
         env_passthrough=value_resolution.resolve_runtime_env_passthrough(manifest, spec),
-        mounts=tuple(manifest.runtime.mounts),
+        mounts=_resolve_runtime_mounts(manifest),
     )
