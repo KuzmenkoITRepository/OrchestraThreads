@@ -33,8 +33,6 @@ runtime:
     ORCHESTRA_THREADS_AGENT_SLUG: secretary
     ORCHESTRA_AGENT_SLUG: secretary
     ORCHESTRA_MEMORY_URL: http://orchestra-memory:8793
-ORCHESTRA_AGENT_SLUG: secretary
-ORCHESTRA_MEMORY_URL: http://orchestra-memory:8793
   env_passthrough:
     - OMNIROUTE_URL
     - OMNIROUTE_API_KEY
