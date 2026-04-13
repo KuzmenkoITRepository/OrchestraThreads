@@ -4,7 +4,7 @@ status: active
 auto_start: true
 
 agent:
-  working_dir: /workspace/agents/secretary
+  working_dir: /home/appuser
   http_endpoint: http://{container_name}:8787
   system_prompt_file: system_prompt.md
   allowed_peer_agent_slugs:
@@ -25,7 +25,6 @@ runtime:
   env:
     AGENT_HTTP_HOST: 0.0.0.0
     AGENT_HTTP_PORT: "8787"
-    PYTHONPATH: /workspace/src:/workspace
     OMNIROUTE_URL: http://orchestra-omniroute:20128
     LOG_LEVEL: INFO
     TELEGRAM_EVENTS_URL: http://telegram-events:8787
@@ -33,6 +32,7 @@ runtime:
     ORCHESTRA_THREADS_AGENT_SLUG: secretary
     ORCHESTRA_AGENT_SLUG: secretary
     ORCHESTRA_MEMORY_URL: http://orchestra-memory:8793
+    PYTHONPATH: /app/src
   env_passthrough:
     - OMNIROUTE_URL
     - OMNIROUTE_API_KEY

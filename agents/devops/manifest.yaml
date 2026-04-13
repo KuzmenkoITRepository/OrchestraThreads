@@ -4,7 +4,7 @@ status: active
 auto_start: true
 
 agent:
-  working_dir: /workspace
+  working_dir: /home/appuser
   http_endpoint: http://{container_name}:8787
   system_prompt_file: system_prompt.md
   allowed_peer_agent_slugs:
@@ -30,6 +30,7 @@ runtime:
     ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
     OMNIROUTE_URL: http://orchestra-omniroute:20128
     LOG_LEVEL: INFO
+    ORCHESTRA_MEMORY_URL: http://orchestra-memory:8793
   env_passthrough:
     - ORCHESTRA_THREADS_URL
     - OMNIROUTE_URL
