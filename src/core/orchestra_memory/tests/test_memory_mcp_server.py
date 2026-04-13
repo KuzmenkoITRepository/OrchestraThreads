@@ -81,6 +81,24 @@ class _FakeMemoryClient:
         )
         return 2
 
+    async def list_rooms(self, *, agent_slug: str) -> list[str]:
+        self.calls.append(
+            {
+                "operation": "list_rooms",
+                "agent_slug": agent_slug,
+            }
+        )
+        return []
+
+    async def list_categories(self, *, agent_slug: str) -> list[str]:
+        self.calls.append(
+            {
+                "operation": "list_categories",
+                "agent_slug": agent_slug,
+            }
+        )
+        return []
+
     async def close(self) -> None:
         self.closed = True
 
@@ -91,8 +109,33 @@ class OrchestraMemoryMCPServerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             tool_names,
-            {"memory_remember", "memory_search", "memory_delete", "memory_clear"},
+            {
+                "memory_remember",
+                "memory_search",
+                "memory_delete",
+                "memory_clear",
+                "memory_list_rooms",
+                "memory_list_categories",
+            },
         )
+
+    async def test_discovery_tools_in_tool_list(self) -> None:
+        client = _FakeMemoryClient()
+        server = OrchestraMemoryMCPServer(agent_slug="secretary", client=client)
+
+        tools = await server.handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": "1",
+                "method": "tools/list",
+                "params": {},
+            }
+        )
+        assert tools is not None
+        names = {item["name"] for item in tools["result"]["tools"]}
+        self.assertTrue({"memory_list_rooms", "memory_list_categories"}.issubset(names))
+        await server.close()
+        self.assertTrue(client.closed)
 
     async def test_initialize_and_tools_list(self) -> None:
         client = _FakeMemoryClient()
@@ -121,7 +164,14 @@ class OrchestraMemoryMCPServerTests(unittest.IsolatedAsyncioTestCase):
         names = {item["name"] for item in tools["result"]["tools"]}
         self.assertEqual(
             names,
-            {"memory_remember", "memory_search", "memory_delete", "memory_clear"},
+            {
+                "memory_remember",
+                "memory_search",
+                "memory_delete",
+                "memory_clear",
+                "memory_list_rooms",
+                "memory_list_categories",
+            },
         )
         await server.close()
         self.assertTrue(client.closed)
@@ -174,6 +224,48 @@ class OrchestraMemoryMCPServerTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self._assert_client_calls(client.calls)
+        await server.close()
+
+    async def test_memory_list_rooms_calls_client(self) -> None:
+        client = _FakeMemoryClient()
+        server = OrchestraMemoryMCPServer(agent_slug="secretary", client=client)
+
+        await self._call_tool(
+            server,
+            tool_name="memory_list_rooms",
+            arguments={},
+        )
+
+        self.assertEqual(
+            client.calls,
+            [
+                {
+                    "operation": "list_rooms",
+                    "agent_slug": "secretary",
+                },
+            ],
+        )
+        await server.close()
+
+    async def test_memory_list_categories_calls_client(self) -> None:
+        client = _FakeMemoryClient()
+        server = OrchestraMemoryMCPServer(agent_slug="secretary", client=client)
+
+        await self._call_tool(
+            server,
+            tool_name="memory_list_categories",
+            arguments={},
+        )
+
+        self.assertEqual(
+            client.calls,
+            [
+                {
+                    "operation": "list_categories",
+                    "agent_slug": "secretary",
+                },
+            ],
+        )
         await server.close()
 
     async def _call_tool(

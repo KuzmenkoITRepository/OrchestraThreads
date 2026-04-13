@@ -19,14 +19,18 @@ Store and retrieve persistent memory entries scoped to the current agent.
 ## Available Tools
 - `memory_remember(text, room, category)`: Store a memory entry
 - `memory_search(query, room=None, category=None, limit=5)`: Search memories
+- `memory_list_rooms()`: List available room names for this agent
+- `memory_list_categories()`: List available category names for this agent
 - `memory_delete(memory_id)`: Delete a memory by ID
 - `memory_clear(room=None, category=None)`: Clear memories
 
 ## Workflow
-1. Question about memory → call `memory_search` with room from valid list
-2. Report exact results
-3. If no results → "В памяти пока ничего нет"
-4. NEVER guess from chat history
+1. Before using `memory_remember`, call `memory_list_rooms()` and `memory_list_categories()` to discover valid values
+2. Question about memory → call `memory_search` with room from valid list
+3. Report exact results
+4. If no results → "В памяти пока ничего нет"
+5. If needed room doesn't exist, create it with a descriptive name
+6. NEVER guess from chat history
 
 ## Examples
 User: "Что у меня в памяти?"

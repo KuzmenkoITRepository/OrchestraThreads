@@ -527,6 +527,7 @@ services:
       - core.orchestra_agents.tests.test_service
       - core.orchestra_memory.tests.test_memory_service
       - core.orchestra_memory.tests.test_memory_mcp_server
+      - core.orchestra_memory.tests.test_memory_secretary_e2e
       - core.telegram_bot_listener.tests.test_service_integration
       - telegram_bot_mcp.tests.test_mcp_server
       - core.scheduler_cron.tests.test_config
