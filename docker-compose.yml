@@ -527,6 +527,7 @@ services:
       - core.orchestra_agents.tests.test_sgr_status_and_config
       - core.orchestra_agents.tests.test_service
       - core.telegram_events.test_http_send_helpers
+      - core.telegram_events.test_http_server
       - core.orchestra_agents.backends.sgr.test_mcp_config_interpolation
       - core.telegram_events.test_service_config
       - core.orchestra_memory.tests.test_memory_service

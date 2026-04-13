@@ -8,6 +8,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/worktree-manager.sh"
 RUNTIME_ENV_DIR="${ROOT_DIR}/deploy/runtime_env"
 APPROVAL_DIR="${ROOT_DIR}/deploy/approvals"
 DEFAULT_TEMPLATE="${ROOT_DIR}/deploy/vault/bootstrap/templates/runtime.env.tpl"
+DEFAULT_BETTER_TELEGRAM_MCP_URL="http://better-telegram-mcp:3000/mcp"
+DEFAULT_BETTER_TELEGRAM_MCP_EVENTS_URL="http://better-telegram-mcp:3000/events/telegram"
 VAULT_SECRET_PREFIX="kv/data/orchestrathreads"
 VAULT_LOCAL_DIR="${ROOT_DIR}/deploy/vault/local"
 BOOTSTRAP_OUT_DIR="${ROOT_DIR}/deploy/vault/bootstrap/.out"
@@ -431,6 +433,12 @@ main() {
   vault_token="$(_vault_login_approle "${role_id_var}" "${secret_id_var}")"
 
   runtime_json="$(_read_runtime_json "${environment}" "${vault_token}")"
+  if [[ -z "$(_json_get_value "${runtime_json}" "BETTER_TELEGRAM_MCP_URL")" ]]; then
+    runtime_json="$(_json_set_value "${runtime_json}" "BETTER_TELEGRAM_MCP_URL" "${DEFAULT_BETTER_TELEGRAM_MCP_URL}")"
+  fi
+  if [[ -z "$(_json_get_value "${runtime_json}" "BETTER_TELEGRAM_MCP_EVENTS_URL")" ]]; then
+    runtime_json="$(_json_set_value "${runtime_json}" "BETTER_TELEGRAM_MCP_EVENTS_URL" "${DEFAULT_BETTER_TELEGRAM_MCP_EVENTS_URL}")"
+  fi
   if [[ "${environment}" == "prod" ]]; then
     _validate_prod_runtime_json "${runtime_json}"
   fi
