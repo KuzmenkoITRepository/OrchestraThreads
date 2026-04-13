@@ -79,8 +79,29 @@ def _instantiate_server(
     if server_cls is None:
         logger.error("MCP class %s not found in %s", class_name, module_path)
         return None
-    params = dict(init_params) if init_params else {}
-    return server_cls(**params)  # type: ignore[no-any-return]
+    # Filter init_params to only pass what the constructor accepts
+    params = _filter_init_params(server_cls, init_params)
+    return server_cls(**params) if params is not None else server_cls()
+
+
+
+def _filter_init_params(
+    server_cls: type,
+    init_params: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Filter init_params to only include what the constructor accepts."""
+    if not init_params:
+        return None
+    import inspect
+
+    sig = inspect.signature(server_cls.__init__)
+    valid = {
+        name
+        for name, param in sig.parameters.items()
+        if param.kind
+        in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+    }
+    return {k: v for k, v in init_params.items() if k in valid} or None
 
 
 def _register_with_tools(
