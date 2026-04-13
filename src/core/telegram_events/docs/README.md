@@ -4,18 +4,19 @@
 
 `core.telegram_events` is a standalone service that listens to Telegram messages and forwards them to the secretary agent as non-thread events.
 
-> Historical note: `TELEGRAM_SESSION_STRING` is no longer owned by `telegram-events` for outbound sending. The relay path that consumes it now lives in `better-telegram-mcp`; `telegram-events` only needs its own Telegram authentication for listening.
+> Historical note: the old standalone `telegram-mcp` service has been removed from the active stack. Its outbound Telegram send responsibility now lives in the `better-telegram-mcp` relay, while `telegram-events` only keeps the Telegram authentication needed for listening.
 
 ## Responsibilities
 
-- Connect to Telegram using Telethon user-bot library
+- Connect to Telegram using the Telethon user-bot library
 - Listen for incoming messages
 - Format messages into event payloads
-- Forward events to secretary agent via HTTP
+- Forward events to the secretary agent via HTTP
+- Preserve archival context for the removed `telegram-mcp` service without treating it as active runtime
 
 ## Architecture
 
-The service does NOT use the thread-based flow. Messages are forwarded as standalone events to the secretary agent's `/event` endpoint.
+The service does NOT use the thread-based flow. Messages are forwarded as standalone events to the secretary agent's `/event` endpoint, and any Telegram reply sending now happens through the `better-telegram-mcp` relay instead of a deleted standalone `telegram-mcp` container.
 
 ## Configuration
 
@@ -23,7 +24,7 @@ Environment variables:
 
 - `TELEGRAM_API_ID` - Telegram API ID (required)
 - `TELEGRAM_API_HASH` - Telegram API Hash (required)
-- `TELEGRAM_SESSION_STRING` - Session string for persistent auth when listening; outbound sending now uses `better-telegram-mcp`
+- `TELEGRAM_SESSION_STRING` - Session string for persistent auth when listening; outbound sending is handled by the `better-telegram-mcp` relay
 - `TELEGRAM_SESSION_FILE` - Path to session file (optional, default: sessions/telegram.session)
 - `SECRETARY_URL` - Secretary agent HTTP endpoint (default: http://secretary:8787)
 - `LOG_LEVEL` - Logging level (default: INFO)
@@ -33,6 +34,12 @@ Environment variables:
 ```bash
 python -m core.telegram_events.service_main
 ```
+
+## Archived telegram-mcp context
+
+The previous operator flow used a standalone `telegram-mcp` container for outbound Telegram replies. That service is no longer part of the supported stack and should be treated as archived reference material only.
+
+Current deployments should use the `better-telegram-mcp` relay for reply delivery.
 
 ## Docker
 

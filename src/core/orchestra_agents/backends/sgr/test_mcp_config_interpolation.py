@@ -81,10 +81,12 @@ class MCPConfigInterpolationTests(unittest.TestCase):
 
         self.assertEqual(payload["servers"], ["http://example.test/mcp", "static-value"])
 
-    def test_missing_env_keeps_placeholder(self) -> None:
-        payload = interpolate_config_values({"token": "{env.MISSING_BETTER_TELEGRAM_MCP_TOKEN}"})
-
-        self.assertEqual(payload["token"], "{env.MISSING_BETTER_TELEGRAM_MCP_TOKEN}")
+    def test_missing_env_raises_value_error(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "Missing required environment variable: MISSING_BETTER_TELEGRAM_MCP_TOKEN",
+        ):
+            interpolate_config_values({"token": "{env.MISSING_BETTER_TELEGRAM_MCP_TOKEN}"})
 
     def test_http_entry_loads_with_token(self) -> None:
         with _swap_env("BETTER_TELEGRAM_MCP_TOKEN", "secret-token"):

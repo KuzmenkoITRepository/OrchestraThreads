@@ -45,6 +45,9 @@ def _is_env_placeholder(text: str) -> bool:
 
 
 def _get_env_value(fallback: str, text: str) -> str:
-    """Get environment variable value or return fallback."""
+    """Get environment variable value or fail fast when missing."""
     var_name = text[_ENV_PREFIX_LEN:-1]
-    return os.environ.get(var_name, fallback)
+    value = os.environ.get(var_name)
+    if value is None:
+        raise ValueError(f"Missing required environment variable: {var_name}")
+    return value
