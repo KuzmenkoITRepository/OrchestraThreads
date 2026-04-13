@@ -156,21 +156,21 @@ class SGRInternalTools:
                 },
                 required=["reasoning", "unclear_terms", "assumptions", "questions"],
             ),
-        _tool_entry(
-            name=cls.list_skills,
-            description="List all available skills with brief descriptions.",
-            properties={},
-            required=[],
-        ),
-        _tool_entry(
-            name=cls.get_skill_instructions,
-            description="Load detailed instructions for a specific skill.",
-            properties={
-                "skill_id": {"type": "string"},
-            },
-            required=["skill_id"],
-        ),
-    ]
+            _tool_entry(
+                name=cls.list_skills,
+                description="List all available skills with brief descriptions.",
+                properties={},
+                required=[],
+            ),
+            _tool_entry(
+                name=cls.get_skill_instructions,
+                description="Load detailed instructions for a specific skill.",
+                properties={
+                    "skill_id": {"type": "string"},
+                },
+                required=["skill_id"],
+            ),
+        ]
 
 
 def _tool_entry(
