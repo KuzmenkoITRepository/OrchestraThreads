@@ -27,10 +27,13 @@ class _MemoryServiceProtocol(Protocol):
         category: str | None,
         limit: int,
     ) -> list[dict[str, str]]: ...
-
     async def delete(self, *, agent_slug: str, memory_id: str) -> bool: ...
 
     async def clear(self, *, agent_slug: str, room: str | None, category: str | None) -> int: ...
+
+    async def list_rooms(self, *, agent_slug: str) -> list[str]: ...
+
+    async def list_categories(self, *, agent_slug: str) -> list[str]: ...
 
 
 def json_error(message: str, *, status: int) -> web.Response:
@@ -137,3 +140,23 @@ class MemoryHttpHandlers:
         except ValueError as exc:
             return json_error(str(exc), status=400)
         return json_success({"deleted_count": deleted_count})
+
+    async def discovery_rooms(self, request: web.Request) -> web.Response:
+        payload = await request.json()
+        try:
+            rooms = await self.service.list_rooms(
+                agent_slug=_PayloadReader.required(payload, "agent_slug"),
+            )
+        except ValueError as exc:
+            return json_error(str(exc), status=400)
+        return json_success({"rooms": rooms})
+
+    async def discovery_categories(self, request: web.Request) -> web.Response:
+        payload = await request.json()
+        try:
+            categories = await self.service.list_categories(
+                agent_slug=_PayloadReader.required(payload, "agent_slug"),
+            )
+        except ValueError as exc:
+            return json_error(str(exc), status=400)
+        return json_success({"categories": categories})
