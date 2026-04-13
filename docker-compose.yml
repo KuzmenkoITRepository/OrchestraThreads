@@ -376,6 +376,7 @@ services:
       - "${OT_PORT_TELEGRAM_EVENTS:-8795}:8787"
     environment:
       PYTHONPATH: /app/src
+      BETTER_TELEGRAM_MCP_URL: ${BETTER_TELEGRAM_MCP_URL:-http://better-telegram-mcp:3000/mcp}
       BETTER_TELEGRAM_MCP_EVENTS_URL: ${BETTER_TELEGRAM_MCP_EVENTS_URL:-http://better-telegram-mcp:3000/events/telegram}
       BETTER_TELEGRAM_MCP_TOKEN: ${BETTER_TELEGRAM_MCP_TOKEN:-}
       TELEGRAM_EVENTS_HTTP_HOST: 0.0.0.0

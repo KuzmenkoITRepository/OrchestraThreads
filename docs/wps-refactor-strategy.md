@@ -1,5 +1,7 @@
 # WPS refactor strategy (excluding `omniroute` + `wet`)
 
+> Historical note: the standalone `telegram-mcp` service has been removed. References below that mention `telegram_mcp` or `src/telegram_mcp/**` describe archived debt and historical cleanup context, not active scope.
+
 **Historical note:** legacy proxy routing has been replaced by `omniroute` + `wet`.
 
 ## Scope
@@ -23,7 +25,7 @@ Current WPS count after excluding `src/core/omniroute/**` and `src/core/wet/**`:
 - `templates`: **92**
 - `agents-runtime`: **67**
 - `orchestra_thread`: **56**
-- `telegram_mcp`: **34**
+- `telegram_mcp`: **34** *(historical; service removed)*
 - `orchestra_agents`: **27**
 - `telegram_events`: **4**
 
@@ -65,7 +67,7 @@ service code:
 
 - `src/core/orchestra_thread/**`
 - `src/core/orchestra_agents/**`
-- `src/telegram_mcp/**`
+- `src/telegram_mcp/**` *(archived; service removed)*
 - `src/core/telegram_events/**`
 - `src/core/events_engine/**`
 
@@ -249,18 +251,20 @@ such as shortening descriptive test names is lower priority.
 - remaining complexity reflects actual integration breadth rather than repeated
   harness boilerplate.
 
-## Phase 4 — finish `telegram_mcp` after core simplification
+## Phase 4 — historical `telegram_mcp` cleanup after core simplification
 
 ### Goal
 
 Resolve the remaining edge-service debt after shared runtime and service-core
-cleanup are complete.
+cleanup are complete. This phase is preserved for historical reference only;
+the standalone `telegram-mcp` service has since been removed.
 
 ### Diagnosis
 
 `src/telegram_mcp/mcp_server.py` and `src/telegram_mcp/telegram_client.py`
-still carry moderate WPS debt, but they are smaller and lower leverage than the
-runtime/template duplication problem.
+still carried moderate WPS debt at the time of writing, but they were smaller
+and lower leverage than the runtime/template duplication problem. Treat these as
+archived references only.
 
 ### Target shape
 
@@ -273,7 +277,7 @@ Separate:
 
 ### Success criteria
 
-- lower WPS in `telegram_mcp` without expanding surface area;
+- lower WPS in `telegram_mcp` without expanding surface area (historical only);
 - clearer split between I/O and request interpretation.
 
 ## Phase 5 — final active-scope WPS sweep
@@ -309,7 +313,7 @@ large restructuring, an earlier phase was incomplete.
 3. migrate templates and example agents to the shared runtime;
 4. decompose `orchestra_thread` by operational role;
 5. extract shared integration-test harness infrastructure;
-6. clean up `telegram_mcp`;
+6. clean up `telegram_mcp` (historical only);
 7. run the final active-scope WPS sweep.
 
 ## Definition of success

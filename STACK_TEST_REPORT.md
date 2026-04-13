@@ -1,5 +1,7 @@
 # Отчёт о тестировании полного стека
 
+> Historical note: this report predates the removal of the standalone `telegram-mcp` service. Do not follow the `telegram-mcp` launch or JSON-RPC instructions here as current operations; that service has been removed and its outbound Telegram send path now lives in the `better-telegram-mcp` relay.
+
 **Дата:** 2026-04-04
 **Статус:** ✅ Все компоненты работают, ❌ Agent-mux dispatch не работает
 
@@ -19,7 +21,7 @@
 ```
 **Статус:** Подключен к Telegram, слушает входящие сообщения
 
-#### ✅ telegram-mcp standalone (работает)
+#### ✅ telegram-mcp standalone (historical; service later removed)
 ```bash
 $ docker ps --filter "name=telegram-mcp"
 telegram-mcp	Up (healthy)	orchestra-threads:local
@@ -27,7 +29,7 @@ telegram-mcp	Up (healthy)	orchestra-threads:local
 $ # Тест отправки
 {"ok": true, "message_id": 5522, "chat_id": 748976004, "recipient": "Ivan"}
 ```
-**Статус:** Контейнер работает, успешно отправил сообщение 5522 Ивану
+**Статус:** Historical evidence only — the standalone container worked at the time of this report, but the service is no longer part of the active stack.
 
 #### ✅ secretary (работает частично)
 ```json
@@ -37,7 +39,7 @@ $ # Тест отправки
   "backend_type": "agent_mux"
 }
 ```
-**Статус:** Запущен, имеет telegram MCP сервер, принимает события
+**Статус:** Запущен, имел telegram MCP сервер на момент отчёта, принимает события
 
 #### ❌ Agent-mux dispatch (НЕ работает)
 ```json
@@ -70,7 +72,7 @@ $ # Тест отправки
 ### Тест 2: telegram-mcp отправка сообщений
 **Результат:** ✅ Работает
 
-Standalone telegram-mcp контейнер успешно отправил сообщение:
+Standalone telegram-mcp контейнер успешно отправил сообщение (historical; this path was later removed from the active stack):
 - Message ID: 5522
 - Recipient: Ivan (748976004)
 - Content: "✅ Тестовый ответ от secretary через telegram-mcp!"
@@ -131,12 +133,12 @@ echo '{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "se
 
 ## Заключение
 
-**Все компоненты telegram-mcp работают корректно:**
+**Все компоненты telegram-mcp работали корректно на момент отчёта:**
 - ✅ MCP сервер реализован
 - ✅ Standalone контейнер работает
 - ✅ Отправка сообщений работает
 - ✅ Интеграция с secretary настроена
 
-**Проблема в инфраструктуре agent-mux**, которая не обрабатывает события автоматически. Это не блокирует использование telegram-mcp, но требует ручного вызова или исправления agent-mux.
+**Проблема в инфраструктуре agent-mux**, которая не обрабатывает события автоматически. Это не блокировало использование telegram-mcp в тот момент, но теперь этот путь архивирован вместе с сервисом и заменён relay-потоком.
 
 **Доказательство работы:** Сообщения 5516, 5517, 5519, 5520, 5522 успешно доставлены Ивану через telegram-mcp.

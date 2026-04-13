@@ -4,6 +4,8 @@
 
 `core.telegram_events` is a standalone service that listens to Telegram messages and forwards them to the secretary agent as non-thread events.
 
+> Historical note: `TELEGRAM_SESSION_STRING` is no longer owned by `telegram-events` for outbound sending. The relay path that consumes it now lives in `better-telegram-mcp`; `telegram-events` only needs its own Telegram authentication for listening.
+
 ## Responsibilities
 
 - Connect to Telegram using Telethon user-bot library
@@ -21,7 +23,7 @@ Environment variables:
 
 - `TELEGRAM_API_ID` - Telegram API ID (required)
 - `TELEGRAM_API_HASH` - Telegram API Hash (required)
-- `TELEGRAM_SESSION_STRING` - Session string for persistent auth (optional)
+- `TELEGRAM_SESSION_STRING` - Session string for persistent auth when listening; outbound sending now uses `better-telegram-mcp`
 - `TELEGRAM_SESSION_FILE` - Path to session file (optional, default: sessions/telegram.session)
 - `SECRETARY_URL` - Secretary agent HTTP endpoint (default: http://secretary:8787)
 - `LOG_LEVEL` - Logging level (default: INFO)
@@ -62,7 +64,7 @@ telegram-events:
 On first run without a session:
 1. Service will prompt for phone number and code
 2. After successful auth, it prints the session string
-3. Save the session string to `TELEGRAM_SESSION_STRING` in .env
+3. Save the session string to `TELEGRAM_SESSION_STRING` in .env if you want a persistent listener session
 4. Restart the service - it will use the saved session
 
 ## Event Format

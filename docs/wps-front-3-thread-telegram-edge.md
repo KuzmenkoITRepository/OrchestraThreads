@@ -1,5 +1,7 @@
 # Front 3 — thread orchestration and Telegram edge layer
 
+> Historical note: `src/telegram_mcp/**` belonged to this front only when the standalone `telegram-mcp` service existed. The service has since been removed; keep this document as historical context and do not treat `telegram-mcp` as active scope.
+
 ## Front mission
 
 **Historical note:** legacy proxy routing has been replaced by `omniroute` + `wet`.
@@ -20,7 +22,7 @@ Telegram and edge modules:
 
 - `src/core/telegram_events/**`
 - `src/core/events_engine/**`
-- `src/telegram_mcp/**`
+- `src/telegram_mcp/**` (archived historical scope; service removed)
 
 Related test files owned by this front:
 
