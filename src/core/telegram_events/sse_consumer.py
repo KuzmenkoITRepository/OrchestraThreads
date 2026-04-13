@@ -5,26 +5,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-from typing import Any
 
 import httpx
 
 from core.telegram_events import _sse_stream as _stream
+from core.telegram_events.sse_event import SSEEvent
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class SSEEvent:
-    """Parsed SSE event from better-telegram-mcp."""
-
-    event_id: str
-    event_type: str
-    occurred_at: str
-    mode: str
-    account: str
-    update: dict[str, Any]
 
 
 def _build_headers(bearer_token: str) -> dict[str, str]:

@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 
 from core.telegram_events import _sse_parser as _parser
-from core.telegram_events.sse_consumer import SSEEvent
+from core.telegram_events.sse_event import SSEEvent
 
 logger = logging.getLogger(__name__)
 

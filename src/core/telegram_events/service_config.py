@@ -5,6 +5,7 @@ from typing import Any
 
 from core.telegram_events.service import TelegramEventsService
 
+_ENV_BETTER_TELEGRAM_MCP_URL = "BETTER_TELEGRAM_MCP_URL"
 _ENV_BETTER_TELEGRAM_MCP_EVENTS_URL = "BETTER_TELEGRAM_MCP_EVENTS_URL"
 _ENV_BETTER_TELEGRAM_MCP_TOKEN = "BETTER_TELEGRAM_MCP_TOKEN"
 _ENV_EVENTS_ENGINE_URL = "EVENTS_ENGINE_URL"
@@ -12,6 +13,7 @@ _ENV_TARGET_AGENT_SLUG = "TARGET_AGENT_SLUG"
 _ENV_HTTP_HOST = "TELEGRAM_EVENTS_HTTP_HOST"
 _ENV_HTTP_PORT = "TELEGRAM_EVENTS_HTTP_PORT"
 
+_DEFAULT_MCP_URL = "http://better-telegram-mcp:3000/mcp"
 _DEFAULT_EVENTS_URL = "http://better-telegram-mcp:3000/events/telegram"
 _DEFAULT_EVENTS_ENGINE_URL = "http://events-engine:8789"
 _DEFAULT_TARGET_AGENT_SLUG = "secretary"
@@ -36,6 +38,7 @@ def _read_required_env(name: str, logger: logging.Logger) -> str:
 
 def _service_options(logger: logging.Logger) -> dict[str, Any]:
     return {
+        "mcp_url": os.getenv(_ENV_BETTER_TELEGRAM_MCP_URL, _DEFAULT_MCP_URL),
         "events_url": os.getenv(_ENV_BETTER_TELEGRAM_MCP_EVENTS_URL, _DEFAULT_EVENTS_URL),
         "bearer_token": _read_required_env(_ENV_BETTER_TELEGRAM_MCP_TOKEN, logger),
         "events_engine_url": os.getenv(_ENV_EVENTS_ENGINE_URL, _DEFAULT_EVENTS_ENGINE_URL),
