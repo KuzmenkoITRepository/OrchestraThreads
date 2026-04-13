@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import Awaitable
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 from aiohttp import web
 
@@ -49,12 +48,16 @@ def resolve_forwarding_config(options: dict[str, Any]) -> ForwardingConfig:
 
 
 async def start_http_server(
-    client: Any,
     http_host: str,
     http_port: int,
+    relay_url: str | None = None,
+    bearer_token: str | None = None,
 ) -> web.AppRunner:
     app = build_app()
-    app["telethon_client"] = client
+    if relay_url:
+        app["relay_url"] = relay_url
+    if bearer_token:
+        app["bearer_token"] = bearer_token
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host=http_host, port=http_port)
@@ -68,11 +71,6 @@ def clear_proxy_env() -> None:
 
 
 async def wait_for_shutdown(
-    listener_waiter: Awaitable[None],
     shutdown_future: asyncio.Future[None],
 ) -> None:
-    await asyncio.gather(listener_waiter, shutdown_future)
-
-
-def listener_task(client: Any) -> Awaitable[None]:
-    return cast(Awaitable[None], client.run_until_disconnected())
+    await shutdown_future
