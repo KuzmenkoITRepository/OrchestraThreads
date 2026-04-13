@@ -7,7 +7,7 @@ from pathlib import Path
 _DEFAULT_HOST = "0.0.0.0"
 _DEFAULT_PORT = "8793"
 _DEFAULT_STORAGE_PATH = "/tmp/orchestra_memory/palace"
-_DEFAULT_ROOMS = "profile,knowledge,task"
+_DEFAULT_ROOMS = "profile,knowledge,task,ivan,default,preferences,context,notes,facts,current"
 _DEFAULT_CATEGORIES = "fact,preference,instruction"
 
 
