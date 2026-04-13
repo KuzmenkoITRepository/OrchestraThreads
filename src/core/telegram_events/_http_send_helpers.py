@@ -80,37 +80,64 @@ async def execute_send_via_relay(
 
 
 def _parse_relay_response(response: httpx.Response, chat_id: int) -> web.Response:
-    result = _parse_json_or_raise(response)
-    if result is None:
-        return web.json_response(
-            {_OK_FIELD: False, _ERROR_FIELD: "Invalid response from relay"},
-            status=_HTTP_BAD_GATEWAY,
-        )
-    message_id = _extract_message_id(result)
-
-    logger.info("Sent message to chat_id=%s via relay", chat_id)
-    return web.json_response({_OK_FIELD: True, "message_id": message_id})
-
-
-def _parse_json_or_raise(response: httpx.Response) -> dict[str, Any] | None:
+    """Parse JSON-RPC response from relay."""
     try:
         result = response.json()
     except Exception as exc:
         logger.error("Failed to parse relay response: %s", exc)
-        return None
+        return web.json_response(
+            {_OK_FIELD: False, _ERROR_FIELD: "Invalid response from relay"},
+            status=_HTTP_BAD_GATEWAY,
+        )
 
-    if isinstance(result, dict):
-        return result
-    return None
+    if not isinstance(result, dict):
+        logger.error("Relay response is not a dict")
+        return web.json_response(
+            {_OK_FIELD: False, _ERROR_FIELD: "Invalid response from relay"},
+            status=_HTTP_BAD_GATEWAY,
+        )
+
+    message_id = _extract_message_id(result)
+    logger.info("Sent message to chat_id=%s via relay", chat_id)
+    return web.json_response({_OK_FIELD: True, "message_id": message_id})
 
 
 def _extract_message_id(result: dict[str, Any]) -> int:
-    """Extract message_id from nested JSON-RPC response."""
+    """Extract message_id from JSON-RPC response, handling both content shapes."""
     result_data = result.get("result", {})
-    content_list = result_data.get("content", [{}])
-    first_content = content_list[0]
-    text_data = first_content.get("text", {})
-    message_id = text_data.get("message_id", 0)
-    if isinstance(message_id, int):
-        return message_id
+    content_list = result_data.get("content", [])
+    return _first_message_id_from_content(content_list)
+
+
+def _first_message_id_from_content(content_list: list[Any]) -> int:
+    """Extract first message_id from content array."""
+    for item in content_list:
+        message_id = _extract_id_from_item(item)
+        if message_id is not None:
+            return message_id
     return 0
+
+
+def _extract_id_from_item(item: Any) -> int | None:
+    """Try multiple content shapes to find message_id."""
+    if not isinstance(item, dict):
+        return None
+    text_data = item.get("text", {})
+    if isinstance(text_data, dict):
+        structured_id = text_data.get("structuredContent", {}).get("messageId")
+        if isinstance(structured_id, int):
+            return structured_id
+        direct_id = text_data.get("message_id")
+        if isinstance(direct_id, int):
+            return direct_id
+    if isinstance(text_data, str) and text_data:
+        return _parse_id_from_text_string(text_data)
+    return None
+
+
+def _parse_id_from_text_string(text: str) -> int | None:
+    """Attempt to parse message_id from text string."""
+    try:
+        return int(text.strip())
+    except (ValueError, TypeError):
+        return None
