@@ -38,6 +38,14 @@ class _ServiceOperations:
             limit=limit,
         )
 
+    async def list_rooms(self, *, agent_slug: str) -> list[str]:
+        result = await self.store.list_rooms(agent_slug=agent_slug)
+        return result if isinstance(result, list) else []
+
+    async def list_categories(self, *, agent_slug: str) -> list[str]:
+        result = await self.store.list_categories(agent_slug=agent_slug)
+        return result if isinstance(result, list) else []
+
     async def delete(self, *, agent_slug: str, memory_id: str) -> bool:
         return await self.store.delete(agent_slug=agent_slug, memory_id=memory_id)
 
