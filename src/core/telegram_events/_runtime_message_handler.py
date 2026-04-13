@@ -46,7 +46,7 @@ def _parse_message_fields(raw_update: dict[str, Any], occurred_at: str) -> dict[
         "chat_id": chat.get("id"),
         "chat_name": chat.get("title", "Private Chat"),
         "text": message.get("text", ""),
-        "date": message.get("date", occurred_at),
+        "timestamp": message.get("date", occurred_at),
     }
 
 
