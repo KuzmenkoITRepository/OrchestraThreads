@@ -11,6 +11,8 @@ from core.orchestra_agents.runtime import EventDelivery
 
 def tool_runtime_rules_text() -> str:
     """Build the system rules message for the SGR agent runtime."""
+    from core.orchestra_agents.skills.registry import list_skills_menu
+
     rules = [
         "You are running inside an event-driven agent runtime.",
         "Use the MCP tools available in this session for outward communication.",
@@ -19,7 +21,9 @@ def tool_runtime_rules_text() -> str:
         "Keep tool messages concise, concrete, and operational.",
         "Do not mention manifests, callback URLs, Docker, or runtime internals.",
     ]
-    return "\n".join(f"- {item}" for item in rules)
+    rules_block = "\n".join(f"- {item}" for item in rules)
+    skills_block = list_skills_menu()
+    return f"{rules_block}\n\n{skills_block}"
 
 
 def wake_up_block(

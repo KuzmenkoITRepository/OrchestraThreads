@@ -109,7 +109,9 @@ class SGRInternalTools:
     reasoning = "reasoning_tool"
     final_answer = "final_answer_tool"
     clarification = "clarification_tool"
-    names = frozenset((reasoning, final_answer, clarification))
+    list_skills = "list_skills"
+    get_skill_instructions = "get_skill_instructions"
+    names = frozenset((reasoning, final_answer, clarification, list_skills, get_skill_instructions))
 
     @classmethod
     def build_openai_tools(cls) -> list[dict[str, Any]]:
@@ -154,7 +156,21 @@ class SGRInternalTools:
                 },
                 required=["reasoning", "unclear_terms", "assumptions", "questions"],
             ),
-        ]
+        _tool_entry(
+            name=cls.list_skills,
+            description="List all available skills with brief descriptions.",
+            properties={},
+            required=[],
+        ),
+        _tool_entry(
+            name=cls.get_skill_instructions,
+            description="Load detailed instructions for a specific skill.",
+            properties={
+                "skill_id": {"type": "string"},
+            },
+            required=["skill_id"],
+        ),
+    ]
 
 
 def _tool_entry(
