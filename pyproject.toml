@@ -58,8 +58,6 @@ disallow_any_unimported = false
 [[tool.mypy.overrides]]
 module = [
     "asyncpg",
-    "telegram_mcp.telegram_client",
-    "telegram_mcp.mcp.server",
     "core.orchestra_thread.store",
     "core.orchestra_thread.store_base",
     "core.orchestra_thread.store_agents",

@@ -400,30 +400,6 @@ services:
       - core.telegram_events.service_main
     restart: unless-stopped
 
-  # DEPRECATED - will be removed after Phase 4-5.
-  # Legacy HTTP proxy around telegram-events /send.
-  telegram-mcp:
-    build: .
-    image: orchestra-threads:${OT_TAG:-local}
-    depends_on:
-      telegram-events:
-        condition: service_healthy
-    networks:
-      - default
-    environment:
-      PYTHONPATH: /app/src
-      TELEGRAM_EVENTS_URL: http://telegram-events:8787
-      TELEGRAM_CHAT_ID_IVAN: ${TELEGRAM_CHAT_ID_IVAN:-748976004}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    command:
-      - python
-      - -m
-      - telegram_mcp
-    healthcheck:
-      disable: true
-    restart: unless-stopped
-    stdin_open: true
-    tty: false
 
   # telegram-bot-listener and telegram-bot-mcp are disabled:
   # they require TELEGRAM_BOT_TOKEN and TELEGRAM_BOT_LISTENER_API_TOKEN

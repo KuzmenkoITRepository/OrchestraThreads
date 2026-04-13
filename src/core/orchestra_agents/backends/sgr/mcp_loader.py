@@ -6,6 +6,7 @@ import importlib
 import logging
 from typing import Any
 
+from core.orchestra_agents.backends.sgr import _mcp_config_interpolation as _interpolation
 from core.orchestra_agents.backends.sgr import _mcp_remote_loader as _remote
 from core.orchestra_agents.backends.sgr.mcp_protocol import MCPServerProtocol
 
@@ -17,7 +18,8 @@ _Schemas = list[dict[str, Any]]
 
 def load_mcp_from_config(raw_config: dict[str, Any]) -> tuple[_Servers, _Schemas]:
     """Load MCP servers and tool schemas from backend config."""
-    entries = raw_config.get("mcp_servers")
+    interpolated = _interpolation.interpolate_config_values(raw_config)
+    entries = interpolated.get("mcp_servers")
     if not entries or not isinstance(entries, list):
         return {}, []
     servers: _Servers = {}

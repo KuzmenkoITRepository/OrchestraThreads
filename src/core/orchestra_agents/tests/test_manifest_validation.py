@@ -77,6 +77,17 @@ class TestExistingManifestsValidate(_ManifestValidationBase):
                 self.assertTrue(manifest.slug)
                 self.assertTrue(manifest.backend.type)
 
+    def test_secretary_manifest_http_mcp(self) -> None:
+        manifest = AgentManifest.from_file(_REPO_ROOT / "agents" / "secretary" / "manifest.yaml")
+
+        telegram_relay = next(
+            server
+            for server in manifest.backend.config["mcp_servers"]
+            if server["name"] == "telegram_relay"
+        )
+
+        self.assertEqual(telegram_relay["transport"], "http")
+
 
 class TestUnifiedModeValidation(_ManifestValidationBase):
     """Unified manifests without runtime.image validate for known backends."""
