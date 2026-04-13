@@ -1,16 +1,23 @@
 <SKILL_MEMORY>
 Store and retrieve persistent memory entries scoped to the current agent.
 
-## Valid room values (MUST use these exact names)
+## Room and Category Values
+
+**Discovery-first approach**: Always call `memory_list_rooms()` and `memory_list_categories()` to see what values exist for the current agent.
+
+**Common room values** (examples, not exhaustive):
 - `profile` — user identity, name, role
 - `knowledge` — facts, learned information
 - `task` — ongoing tasks, todo items
+- `context` — session context, conversation history
 
-## Valid category values
+**Common category values** (examples, not exhaustive):
 - `fact` — factual information
 - `preference` — user preferences
 - `instruction` — instructions or rules
+- `decision` — architectural or design decisions
 
+You can create new rooms and categories as needed using `memory_remember(text, room="your_room", category="your_category")`.
 ## When to use memory tools
 - User asks "что в памяти" → call `memory_search(query="any", room="knowledge")`
 - User says "запомни X" → call `memory_remember` with appropriate room/category
@@ -25,12 +32,12 @@ Store and retrieve persistent memory entries scoped to the current agent.
 - `memory_clear(room=None, category=None)`: Clear memories
 
 ## Workflow
-1. Before using `memory_remember`, call `memory_list_rooms()` and `memory_list_categories()` to discover valid values
-2. Question about memory → call `memory_search` with room from valid list
-3. Report exact results
-4. If no results → "В памяти пока ничего нет"
-5. If needed room doesn't exist, create it with a descriptive name
-6. NEVER guess from chat history
+1. **Discover available values**: Call `memory_list_rooms()` and `memory_list_categories()` to see what exists for the current agent
+2. **Search before storing**: Before using `memory_remember`, call `memory_search` with room from valid list to avoid duplicates
+3. **Store with appropriate room/category**: Use discovered values or create new descriptive ones
+4. **Report exact results**: Never guess from chat history
+5. **If no results**: Report "В памяти пока ничего нет"
+6. **Create new rooms/categories as needed**: If stored values don't exist, they will be created automatically
 
 ## Examples
 User: "Что у меня в памяти?"
