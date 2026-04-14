@@ -1,44 +1,48 @@
-# AGENT MANIFESTS AND EXAMPLES
+# AGENT MANIFESTS DOMAIN
 
 ## OVERVIEW
-`agents/` contains local manifests, prompts, and agent-local assets used by `orchestra_agents`; treat it as author-facing configuration space, not as the home of core platform semantics.
+`agents/` is author-facing configuration space for managed agents. Keep only manifests, prompts, and agent-local assets here. Core lifecycle, runtime, Docker, and backend logic live under `src/core/orchestra_agents/`.
 
 ## STRUCTURE
 ```text
 agents/
-├── secretary/   # SGR-backed secretary manifest + Telegram relay wiring
-├── orchestra/   # agent_mux-backed orchestration manifest
-└── sgr/         # reusable SGR Minimax manifest + prompt example
+├── dev/               # local dev agent manifest/prompt assets
+├── devops/            # operations-focused agent definition
+├── opencode-example/  # opencode backend example agent
+├── orchestra/         # agent_mux-backed orchestration agent
+├── qa/                # verification-oriented agent definition
+├── secretary/         # secretary agent manifest and prompt
+├── sgr/               # reusable SGR example agent
+└── whiner/            # additional example/test agent definition
 ```
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| Basic SGR manifest shape | `secretary/manifest.yaml`, `sgr/manifest.yaml` | lifecycle wiring + backend config |
-| Tool-only orchestration prompt rules | `orchestra/system_prompt.md`, `sgr/system_prompt.md` | concise runtime behavior constraints |
-| agent_mux example | `orchestra/manifest.yaml` | optional MCP server wiring, runtime_state path |
-| Shared backend implementations | `src/core/orchestra_agents/backends/` | canonical runtime/bootstrap code for sgr, agent_mux, opencode, and example backends |
+| Manifest shape | `*/manifest.yaml` | lifecycle wiring, backend config, runtime options |
+| Prompt constraints | `*/system_prompt.md` | terse operational behavior, tool usage expectations |
+| Example opencode config | `opencode-example/` | reference manifest for opencode-backed agents |
+| agent_mux example | `orchestra/manifest.yaml` | orchestration agent using mux backend |
+| Shared runtime semantics | `../src/core/orchestra_agents/` | canonical schema, validation, runtime contract |
 
 ## CONVENTIONS
-- Keep manifests aligned with `core.orchestra_agents` schema and runtime contract.
-- Outward agent communication should go through configured MCP/thread tools, not plain assistant text.
-- Example prompts are terse and operational; they describe routing/status behavior, not broad product vision.
-- Runtime state directories are generated artifacts and should not drive architecture decisions.
+- Keep manifests aligned with `core.orchestra_agents` schema and registry expectations.
+- Prompts should describe routing/status/tool behavior, not duplicate platform architecture.
+- Outward communication should go through configured tools, callbacks, or thread surfaces — not repo-internal implementation detail.
+- Treat this directory as definitions-only. If you need Docker/runtime behavior, change `src/core/orchestra_agents/` instead.
 
 ## ANTI-PATTERNS
-- Do not copy core thread or lifecycle semantics into prompts/manifests unless the runtime needs a narrow reminder.
-- Do not expose runtime internals (manifests, callback URLs, thread ids, Docker state) in peer-facing messages.
-- Do not treat `runtime_state/` as source material for repo guidance or code search.
-- Do not let example agents diverge from the shared runtime contract without matching service/template changes.
+- Do not copy thread semantics, callback URLs, Docker details, or backend internals into prompts unless the runtime contract truly needs them.
+- Do not let example manifests drift away from the shared backend contract.
+- Do not treat `runtime_state/` artifacts as source material for docs or architectural decisions.
 
 ## COMMANDS
 ```bash
 curl -X POST http://127.0.0.1:8790/api/v1/registry/reload
-curl -X POST http://127.0.0.1:8790/api/v1/agents/sgr/start
-curl http://127.0.0.1:8790/api/v1/agents/sgr/status
+curl -X POST http://127.0.0.1:8790/api/v1/agents/secretary/start
+curl http://127.0.0.1:8790/api/v1/agents/secretary/status
 ```
 
 ## NOTES
-- `agents/orchestra/` uses `agent_mux`; `agents/secretary/` and `agents/sgr/` use the SGR runtime path.
-- Ignore unreadable/generated paths under `agents/orchestra/runtime_state/` during repo analysis.
-- Backend entrypoints now come from `src/core/orchestra_agents/backends/`; `agents/*/` should not contain `agent_runtime/` packages.
+- `agents/orchestra/` uses the mux path; `agents/opencode-example/` is the clearest local opencode example.
+- Ignore generated paths under `agents/orchestra/runtime_state/` during repo sweeps.

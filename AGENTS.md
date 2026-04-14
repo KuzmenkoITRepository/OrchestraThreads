@@ -1,287 +1,175 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-04-06 Europe/Moscow
-**Commit:** da87ce3
+**Generated:** 2026-04-14 Europe/Moscow
 **Branch:** master
 
 ## OVERVIEW
-OrchestraThreads is a Docker-first Python workspace for an autonomous assistant stack built around durable inter-agent threads. The main split is strict: `orchestra_thread` owns thread workflow, `orchestra_agents` owns manifest-driven lifecycles and a unified backend contract for all agent backends. Three equal-status backends are supported: `sgr`, `agent_mux`, and `opencode`. LLM routing is handled by external `omniroute` + `wet` services.
+OrchestraThreads is a Docker-first Python workspace for an autonomy-oriented assistant stack. The repo is service-split on purpose:
+
+- `src/core/orchestra_thread/` owns durable thread identity, delivery, retries, inactivity wakeups, UI/API, and thread MCP tools.
+- `src/core/orchestra_agents/` owns manifest loading, validation, Docker lifecycle, scaffolding, and the shared runtime contract for all managed agent backends.
+- `src/core/agent_log_analysis/`, `orchestra_memory/`, `task_registry/`, `scheduler_cron/`, and `telegram_bot_listener/` are first-class services now and each has its own child `AGENTS.md`.
+- `src/core/events_engine/`, `src/core/telegram_events/`, and `src/core/docker_mcp/` stay documented at root level for now; they are compact edge/integration domains, not large standalone service areas yet.
+- LLM routing is externalized through `omniroute` + `wet`.
+
+Read `CODE-STYLE.md` before writing Python. This repo expects `ruff`, `wemake-python-styleguide`, and `mypy --strict` discipline from the first edit.
 
 ## STRUCTURE
 ```text
 OrchestraThreads/
-├── src/core/orchestra_thread/   # durable thread service, UI, MCP surface (36 py files)
-├── src/core/orchestra_agents/   # manifest registry, Docker lifecycle, unified runtime contract
-│   ├── runtime/                 # shared runtime kernel: app, backend contract, bootstrap
-│   ├── backends/                # equal-status backend adapters (sgr, agent_mux, opencode)
-│   └── agent_mux_runtime/       # agent_mux backend internals (queue, dispatch, state)
-├── src/core/events_engine/      # external-event -> agent delivery bridge (minimal)
-├── src/core/telegram_events/    # Telegram ingestion -> secretary/event bridge
-├── agents/                      # agent definitions: manifest.yaml + system_prompt.md per agent
-├── docs/                        # repo-level design notes and refactor plans
-├── docker/                      # build patches and backend-specific Docker assets
-├── Dockerfile                   # main service image
-├── Dockerfile.agent_mux_runtime # agent_mux backend image (Go binary + Python runtime)
-├── Dockerfile.agent_runtime     # lightweight agent runtime image (sgr, opencode)
-└── docker-compose.yml           # source of truth for local stack and tests
+├── agents/                          # manifests, prompts, agent-local assets only
+├── deploy/                          # Vault/AppRole/env rendering and environment scripts
+├── docker/                          # backend-specific Docker assets and patches
+├── docs/                            # design notes, WPS governance, rollout plans
+├── src/core/
+│   ├── agent_log_analysis/          # log ingest/query/correlation service + MCP surface
+│   ├── docker_mcp/                  # Docker MCP integration surface
+│   ├── events_engine/               # external-event -> agent delivery bridge
+│   ├── orchestra_agents/            # manifest registry, Docker lifecycle, backend contract
+│   ├── orchestra_memory/            # local memory service + MCP tools
+│   ├── orchestra_thread/            # durable thread service, UI/API, MCP tools
+│   ├── scheduler_cron/              # job scheduler + executor + events bridge
+│   ├── task_registry/               # task service + MCP task tools
+│   ├── telegram_bot_listener/       # Telegram Bot API polling + event forwarding
+│   └── telegram_events/             # SSE/relay bridge from Telegram-facing systems
+├── CODE-STYLE.md                    # shortest path to lint-clean Python here
+├── Makefile                         # canonical developer commands
+├── docker-compose.yml               # source of truth for local stack, profiles, healthchecks
+├── pyproject.toml                   # ruff, mypy, pytest settings
+└── setup.cfg                        # flake8/wemake settings and targeted ignores
+```
+
+## CHILD GUIDES
+- `agents/AGENTS.md`
+- `src/core/orchestra_thread/AGENTS.md`
+- `src/core/orchestra_agents/AGENTS.md`
+- `src/core/agent_log_analysis/AGENTS.md`
+- `src/core/orchestra_memory/AGENTS.md`
+- `src/core/task_registry/AGENTS.md`
+- `src/core/scheduler_cron/AGENTS.md`
+- `src/core/telegram_bot_listener/AGENTS.md`
+
+Use the child file when you are already inside that domain. Use this root file for repo-wide boundaries, runtime wiring, and developer workflow.
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| Thread lifecycle, statuses, retries | `src/core/orchestra_thread/` | `service_runtime.py` (1724 lines) is the main hotspot |
-| Store layer (Postgres) | `src/core/orchestra_thread/store*.py` | decomposed into 7 mixin files via `store.py` |
-| MCP tool surface | `src/core/orchestra_thread/mcp_*.py` | 12+ files: routing, send, status, views, context |
-| HTTP handlers | `src/core/orchestra_thread/http_handlers.py` | read/write handler classes |
-| Agent registry, scaffold, Docker | `src/core/orchestra_agents/` | `service.py` delegates to `service_routes.py` + `service_state.py` |
-| Unified runtime contract | `src/core/orchestra_agents/runtime/` | shared kernel: app, backend contract, bootstrap, capabilities |
-| Backend adapters (sgr, mux, opencode) | `src/core/orchestra_agents/backends/` | equal-status adapters; each backend implements the unified contract |
-| Agent_mux backend internals | `src/core/orchestra_agents/agent_mux_runtime/` | queue, dispatch, state, codex config — internal to mux adapter |
-| External event fan-in | `src/core/events_engine/` | minimal bridge into running agents |
-| Telegram ingress | `src/core/telegram_events/` | edge service; non-thread-native |
-| Agent definitions | `agents/` | `manifest.yaml` + `system_prompt.md` per agent; no backend code |
-| Stack wiring and healthchecks | `docker-compose.yml` | canonical ports, env, service dependencies |
+| Thread lifecycle, statuses, retries | `src/core/orchestra_thread/` | main hotspot for durable work identity and delivery semantics |
+| Agent registry, manifests, Docker lifecycle | `src/core/orchestra_agents/` | backend contract, scaffold, runtime templates, migrations |
+| Log ingestion and correlation | `src/core/agent_log_analysis/` | HTTP runtime + MCP + composed log store |
+| Memory-backed retrieval/storage | `src/core/orchestra_memory/` | local store lifecycle + MCP memory tools |
+| Task storage and task MCP tools | `src/core/task_registry/` | HTTP task service + composed task store |
+| Scheduled job execution | `src/core/scheduler_cron/` | scheduler engine, executor, store, `/healthz` runtime |
+| Telegram Bot API polling service | `src/core/telegram_bot_listener/` | long-poll loop, local state, outbound event forwarding |
+| Docker MCP integration | `src/core/docker_mcp/` | compact Docker-facing MCP/socket bridge; root-scoped for now |
+| External event fan-in | `src/core/events_engine/` | intentionally small bridge; keep rules here unless it grows |
+| Telegram relay edge | `src/core/telegram_events/` | SSE/HTTP relay layer; still root-scoped |
+| Agent manifests and prompts | `agents/` | definitions only; no core runtime logic |
+| Runtime wiring, ports, profiles | `docker-compose.yml` | canonical local topology and service list |
+| Quality gates and style constraints | `CODE-STYLE.md`, `pyproject.toml`, `setup.cfg`, `.pre-commit-config.yaml` | enforced, not aspirational |
+| Deploy flow and Vault bootstrapping | `deploy/` | AppRole/Vault/env rendering; keep prod on Vault path |
+| Refactor governance and rollout notes | `docs/` | WPS plans, boundary docs, friction logs |
 
 ## CODE MAP
 | Symbol / Entry | Type | Location | Role |
 |----------------|------|----------|------|
-| `main()` | service entry | `src/core/orchestra_thread/service/main.py` | boots thread service + aiohttp app |
-| `OrchestraThreadsService` | class | `src/core/orchestra_thread/service/runtime.py` | threads, agents, notifications, guide endpoints (1724 lines) |
-| `build_app()` | function | `src/core/orchestra_thread/service/runtime.py` | wires HTTP routes via `http_handlers.py` |
-| `ThreadStore` | class | `src/core/orchestra_thread/store.py` | mixin composition of 7 store modules |
-| `OrchestraThreadsMCPServer` | class | `src/core/orchestra_thread/mcp_server.py` | compact MCP server delegating to `mcp_thread_*` tools |
-| `HttpReadHandlers` / `HttpWriteHandlers` | classes | `src/core/orchestra_thread/http_handlers.py` | HTTP endpoint handler classes |
+| `main()` | service entry | `src/core/orchestra_thread/service/main.py` | boots thread service |
+| `OrchestraThreadsService` | class | `src/core/orchestra_thread/service/runtime.py` | thread orchestration, delivery, notifications, guide endpoints |
 | `main()` | service entry | `src/core/orchestra_agents/service_main.py` | boots lifecycle API |
-| `OrchestraAgentsService` | class | `src/core/orchestra_agents/service.py` | manifest registry + agent control |
-| `ServiceState` | dataclass | `src/core/orchestra_agents/service_state.py` | registry + driver + lock |
-| `StandardAgentApplication` | class | `src/core/orchestra_agents/runtime/app.py` | `/healthz`, `/event`, `/stop`, `/last_status`, `/clear_context` |
-| `run_backend()` | function | `src/core/orchestra_agents/agent_mux_runtime/bootstrap.py` | agent_mux backend entry point |
-| `main()` | service entry | `src/core/events_engine/service_main.py` | starts external event bridge |
-| `main()` | service entry | `src/core/telegram_events/service_main.py` | starts Telegram listener |
+| `OrchestraAgentsService` | class | `src/core/orchestra_agents/service/runtime.py` | manifest-driven lifecycle service |
+| `main()` | service entry | `src/core/agent_log_analysis/service_main.py` | boots log analysis service |
+| `AgentLogAnalysisService` | class | `src/core/agent_log_analysis/service_runtime.py` | ingest/query runtime over composed log store |
+| `main()` | service entry | `src/core/orchestra_memory/service_main.py` | boots memory service |
+| `OrchestraMemoryService` | class | `src/core/orchestra_memory/service_lifecycle.py` | memory lifecycle over local store |
+| `main()` | service entry | `src/core/task_registry/service_main.py` | boots task registry service |
+| `TaskRegistryService` | class | `src/core/task_registry/service_runtime.py` | task service runtime |
+| `main()` | service entry | `src/core/scheduler_cron/service_main.py` | boots scheduler service |
+| `SchedulerCronService` | class | `src/core/scheduler_cron/service_runtime.py` | scheduler engine + executor + store orchestration |
+| `main()` | service entry | `src/core/telegram_bot_listener/service_main.py` | boots Telegram Bot API listener |
+| `TelegramBotListenerService` | class | `src/core/telegram_bot_listener/service_runtime.py` | polling, forwarding, health |
+| `main()` | service entry | `src/core/events_engine/service_main.py` | boots external-event bridge |
+| `main()` | service entry | `src/core/telegram_events/service_main.py` | boots Telegram relay service |
 
 ## CONVENTIONS
-- Preserve the module split; do not fold thread orchestration, agent lifecycle, and LLM routing into one service.
-- Favor compact thread state and on-demand expansion over replaying full histories into prompts.
-- Keep services HTTP-first: explicit JSON contracts, `/healthz`, and observable state.
-- Treat `agents/` as agent definitions only (`manifest.yaml` + `system_prompt.md`), not as the place to put backend code or core service logic.
-- Put behavior-changing docs next to the module they describe (`src/core/<module>/docs/`).
-- Facade files (`service.py`, `store.py`, `router.py`, `accounts.py`, `langfuse.py`) re-export from `_*_impl.py` or `*_runtime.py` — edit the implementation files, not the facades.
-- Any human or subagent that writes Python in this repo must read `CODE-STYLE.md` first and follow it as the shortest lint-passing cookbook.
+- Keep services split. Do not collapse thread orchestration, lifecycle management, memory, scheduling, and Telegram ingress into one runtime.
+- `docker-compose.yml` is the source of truth for local stack wiring, ports, healthchecks, and profiles.
+- `agents/` contains manifests/prompts/assets only. Backend code lives under `src/core/orchestra_agents/`.
+- Edit implementation modules, not facades. In this repo, `service.py`, `store.py`, `router.py`, `accounts.py`, and similar files are often composition or re-export layers.
+- Prefer compact thread state and service-owned persistence over replaying giant histories into prompts.
+- Put behavior-changing docs next to the module they describe (`src/core/<module>/docs/`) when that domain already owns a child guide.
+- Ignore generated or runtime-state paths when mapping architecture: `agents/orchestra/runtime_state/`, other `runtime_state/` trees, and `environments/` copies are not design sources.
 
 ## CODE QUALITY ENFORCEMENT
 
-## Copy-paste prompt for subagents
-
-Use this block when delegating Python code changes to a subagent.
-
-```text
-Before writing code, read `AGENTS.md` and `CODE-STYLE.md`.
-
-Your goal is to produce code that passes `ruff`, `wemake-python-styleguide`, and `mypy --strict` on the first try.
-
-Hard rules:
-- do not bypass linters or hooks
-- do not use blanket `# noqa`
-- do not use `# type: ignore` without explicit justification
-- do not change lint thresholds or config to make code pass
-- fix root causes by simplifying code
-
-Code shape requirements:
-- keep modules small and single-purpose
-- keep classes thin
-- keep functions small and single-purpose
-- split early when imports, module members, methods, locals, loops, branches, or nesting start to grow
-- use guard clauses instead of deep nesting
-- keep `try` blocks tiny: wrap only the risky operation
-- use typed objects (`dataclass`, `TypedDict`) instead of long argument lists or loose dicts
-- use package-correct imports for sibling modules
-- avoid clever unpacking and dense one-line logic
-
-Common failures to avoid explicitly:
-- `WPS221` high Jones Complexity
-- `WPS202` too many module members
-- `WPS300` local folder import
-- `WPS414` incorrect unpacking target
-- `WPS229` try body too long
-- `WPS214` too many methods
-- `WPS210` too many local variables
-- `WPS231` too much cognitive complexity
-- `WPS201` too many imports
-- `WPS211` too many arguments
-
-Preferred implementation strategy:
-1. Match existing nearby patterns.
-2. Write the smallest typed version first.
-3. If a file grows, split by operational role, not into generic helpers.
-4. If a class grows, move stateless logic into helper modules.
-5. If a function grows, split by phase: validate -> transform -> persist/return.
-6. If a line gets dense, split the decision into helpers.
-
-Do not create `utils.py` / `helpers.py` dumping grounds.
-Do not hide problems with suppressions.
-If the code is only valid after a bypass, it is not done.
-```
-
-### CI/CD Checks (MANDATORY)
-All code MUST pass these checks before commit:
-
+### Mandatory checks
 ```bash
-make check          # Run all checks (format + lint + typecheck)
-make format         # Auto-format code with ruff
-make lint           # Run ruff + wemake-python-styleguide
-make typecheck      # Run mypy --strict
+make format
+make lint
+make typecheck
+make check
+docker compose --profile test run --rm test
 ```
 
-### Pre-commit Hooks
-Installed automatically via `make install`. Runs on every `git commit`:
-1. **ruff** — Fast linter and formatter (auto-fixes)
-2. **mypy --strict** — Strict type checking (no Any, all functions typed)
-3. **wemake-python-styleguide** — Strictest Python linter (complexity, nesting, best practices)
-4. **pre-commit-hooks** — Trailing whitespace, EOF, YAML validation, large files
+### Enforced rules
+- No blanket `# noqa`.
+- No `# type: ignore` without a specific, justified reason.
+- No lowering lint thresholds or weakening strict typing to get a change through.
+- Keep modules, classes, and functions small; split early when locals, branches, or imports grow.
+- Use guard clauses and typed payload objects (`dataclass`, `TypedDict`) instead of loose dict plumbing.
+- Keep `try` blocks tiny.
+- Avoid dumping-ground helpers like `utils.py`.
 
-### CRITICAL RULES (ZERO TOLERANCE)
-
-**NEVER bypass checks:**
-- ❌ NO `# type: ignore` without explicit justification in comment
-- ❌ NO `# noqa` without specific error code (e.g., `# noqa: WPS220`)
-- ❌ NO `--no-verify` on git commit
-- ❌ NO disabling pre-commit hooks
-- ❌ NO committing code that fails `make check`
-- ❌ NO changing linter thresholds or configuration to make new code pass
-
-**Type safety:**
-- ✅ ALL functions must have type annotations
-- ✅ NO `Any` types without explicit justification
-- ✅ Use `typing` module for complex types
-- ✅ Prefer `TypedDict` over `dict[str, Any]`
-
-**Code quality:**
-- ✅ Repo complexity gate: `max-complexity = 10` in `setup.cfg`
-- ✅ WSP-style constraints apply: keep functions small, nesting shallow, locals low, and split early
-- ✅ Function length must stay reasonable; prefer decomposition over large handlers
-- ✅ NO magic numbers — use named constants
-- ✅ NO mutable default arguments
-- ✅ Split early when functions accumulate too many locals, loops, or branches; see `CODE-STYLE.md`
-
-**When checks fail:**
-1. Fix the root cause, don't suppress warnings
-2. If suppression is truly needed, add inline comment explaining WHY
-3. Prefer refactoring over suppression
-4. Ask for review if unsure
-
-### Mandatory reading for code-writing agents
-
-- `CODE-STYLE.md` is required reading before writing Python.
-- Delegated subagents that implement code must be told to follow `CODE-STYLE.md`.
-- When delegating code changes, include the requirement to keep modules, classes, and functions small; reduce imports, locals, loop count, branch density, and avoid linter bypasses.
-- The most common real agent failures in this repo family are `WPS221`, `WPS202`, `WPS300`, `WPS414`, `WPS229`, `WPS214`, `WPS210`, `WPS231`, `WPS201`, and `WPS211`; code-writing prompts should explicitly guard against them.
-- Treat `CODE-STYLE.md` as the minimal context file for ChatGPT/Sonnet-style agents that need to produce lint-clean code quickly.
-
-
-### Setup
-```bash
-make install        # Install deps + pre-commit hooks
-make check          # Verify everything works
-```
+### Config files that matter
+- `CODE-STYLE.md` — repo-specific Python cookbook.
+- `pyproject.toml` — `ruff`, `mypy --strict`, `pytest` configuration.
+- `setup.cfg` — `flake8` + `wemake` complexity gates and targeted ignores.
+- `.pre-commit-config.yaml` — local enforcement before commit.
+- `Makefile` — canonical commands; prefer it over handwritten command variants.
 
 ## ANTI-PATTERNS
-- Do not treat anything except `docker-compose.yml` as the source of truth for local runtime wiring.
-- Do not bypass Docker for the primary automated test story; canonical verification is `docker compose --profile test run --rm test`.
-- Do not move thread ownership into agent runtimes or backend adapters; `thread_id` semantics stay in `orchestra_thread`.
-- Do not expand specialist access by default; the architecture assumes minimal context and explicit escalation.
-- Do not ship major architectural changes as routine edits; incremental, reversible improvements are the default.
-- **Do not bypass code quality checks** — see CODE QUALITY ENFORCEMENT section above.
-
-## UNIQUE STYLES
-- Product direction is autonomy-first, but with service-level observability, healthchecks, and rollback discipline.
-- The repo separates platform services from agent definitions; `agents/` contains only manifests and prompts, while backend adapters live in `src/core/orchestra_agents/backends/`.
-- Example agents are expected to communicate outward through thread tools/status flows, not free-form assistant prose.
-- Code quality is enforced via automated checks — no exceptions without explicit justification.
-- Heavy files use decomposition: `service_runtime.py` delegates to `http_handlers.py`, `store.py` composes 7 mixin stores, MCP logic is split across 12+ `mcp_thread_*` modules.
+- Do not bypass Docker for the canonical automated test story; this repo expects `docker compose --profile test run --rm test`.
+- Do not move `thread_id` ownership into generic agent runtimes or backend adapters.
+- Do not treat generated runtime state as architectural evidence.
+- Do not let edge services (`events_engine`, `telegram_events`, `telegram_bot_listener`) accumulate thread semantics that belong in `orchestra_thread`.
+- Do not let backend-specific logic leak out of `src/core/orchestra_agents/backends/` into manifests or prompts.
+- Do not ship broad architectural rewrites as a routine edit; favor incremental, reversible changes.
 
 ## COMMANDS
 ```bash
 # Development
-make install                    # Setup environment
-make check                      # Run all quality checks
-make format                     # Format code
-make lint                       # Run linters
-make typecheck                  # Type check with mypy
-make test                       # Run tests in Docker
-make clean                      # Clean cache files
+make install
+make format
+make lint
+make typecheck
+make check
+make test
 
-# Docker stack (via Vault — canonical flow)
-docker compose --profile vault up -d vault
-docker exec -e VAULT_ADDR=http://127.0.0.1:8200 <vault-container> vault operator unseal "$(cat deploy/vault/local/unseal-key)"
-bash deploy/deploy-env.sh dev   # Fetch secrets from Vault, render env, start core stack
+# Core stack via Vault-backed env rendering
+bash deploy/deploy-env.sh dev
 
-# User agents (odinykt, specialist) — manual start only
+# User agents
 COMPOSE_PROJECT_NAME=orchestrathreads-dev \
   docker compose --profile user-agents --env-file deploy/runtime_env/dev.env \
   up -d odinykt specialist
 
-# Tests
+# Canonical tests
 docker compose --profile test run --rm test
-
-# Teardown
-COMPOSE_PROJECT_NAME=orchestrathreads-dev docker compose --profile user-agents down
 ```
 
 ## DEPLOYMENT
 
-### Vault-based secret management (MANDATORY for prod)
+### Vault is mandatory for prod/stg
+Production and staging secrets flow through HashiCorp Vault. Use `deploy/deploy-env.sh <env>` so the runtime env is rendered from Vault, used for startup, then removed.
 
-All environments use HashiCorp Vault as the single source of truth for secrets.
-The `deploy/deploy-env.sh` script fetches secrets at deploy time, renders a temporary
-`.env` file, starts the stack, then deletes the file.
-
-**Production deployments MUST go through `deploy/deploy-env.sh prod`.** Direct
-`docker compose up` without Vault is not permitted for prod/stg environments.
-
-### Docker Compose profiles
-
-| Profile | Services | When to use |
-|---|---|---|
-| _(none)_ | postgres, orchestra-threads, orchestra-agents, events-engine, telegram-events, omniroute, wet, memory, scheduler-cron, task-registry | Always — core platform stack |
-| `vault` | HashiCorp Vault | Must be running before `deploy-env.sh` |
-| `user-agents` | odinykt, specialist | Manual testing / interactive agent sessions |
-| `test` | test runner, smoke tests | CI and local test runs |
-
-### First-time Vault setup
-
-```bash
-# 1. Start and initialize Vault (one-time)
-docker compose --profile vault up -d vault
-docker exec -e VAULT_ADDR=http://127.0.0.1:8200 <vault-container> vault operator init -key-shares=1 -key-threshold=1
-# Save unseal key and root token to deploy/vault/local/
-
-# 2. Unseal
-docker exec -e VAULT_ADDR=http://127.0.0.1:8200 <vault-container> vault operator unseal "$(cat deploy/vault/local/unseal-key)"
-
-# 3. Bootstrap (KV v2, AppRole, policies)
-VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=$(cat deploy/vault/local/root-token) \
-  bash deploy/vault/bootstrap/bootstrap-vault.sh
-
-# 4. Migrate existing secrets from .env + .env.telegram
-VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=$(cat deploy/vault/local/root-token) \
-  python3 deploy/vault/bootstrap/migrate_current_secrets.py
-
-# 5. Patch dev secrets if needed (migration zeros non-prod sensitive keys)
-VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=$(cat deploy/vault/local/root-token) \
-  vault kv patch kv/orchestrathreads/dev/runtime \
-  TELEGRAM_API_ID=... TELEGRAM_API_HASH=... TELEGRAM_SESSION_STRING=... OMNIROUTE_API_KEY=...
-```
-
-### Daily dev workflow
-
-```bash
-# deploy-env.sh auto-starts Vault, unseals it, and loads AppRole credentials
-# from deploy/vault/bootstrap/.out/dev.env — no manual export needed
-bash deploy/deploy-env.sh dev
-```
+### Compose profiles to remember
+| Profile | Purpose |
+|---------|---------|
+| _(none)_ | core platform stack |
+| `vault` | local Vault bootstrap/unseal |
+| `user-agents` | manual interactive agents |
+| `test` | CI/local automated verification |
 
 ## NOTES
-- Ignore `agents/orchestra/runtime_state/` during repo sweeps; it contains generated state and unreadable paths.
-- `src/core/events_engine/` and `src/core/telegram_events/` are small edge services, so keep their rules in root unless they grow.
-- The root file is intentionally short; child `AGENTS.md` files below carry only domain-specific deltas.
-- All code must pass `make check` before commit — no exceptions.
-- `CODE-STYLE.md` is the authoritative quick cookbook for writing new Python that passes repo linters without bypasses.
+- `docs/wps-refactor-governance.md` is the strongest repo-wide statement of forbidden refactor patterns and verification expectations.
+- `src/core/events_engine/`, `src/core/telegram_events/`, and `src/core/docker_mcp/` remain root-documented because they are still compact edge/integration domains.
+- Root guidance should stay broad. Put service-specific nuance in child `AGENTS.md` files, not here.
