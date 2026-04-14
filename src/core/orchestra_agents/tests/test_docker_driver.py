@@ -253,3 +253,50 @@ class DockerDriverComposeTests(_DockerDriverRootMixin, TestCase):
                     ],
                 ],
             )
+
+    def test_resolves_relative_bind_mounts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            host_root = Path(tmpdir) / "host-workspace"
+            (host_root / "agents" / "secretary").mkdir(parents=True)
+            manifest = manifest_module.AgentManifest.from_dict(
+                {
+                    "slug": "secretary",
+                    "display_name": "Secretary",
+                    "status": "active",
+                    "agent": {
+                        "working_dir": "/workspace/agents/secretary",
+                        "http_endpoint": "http://{container_name}:8787",
+                    },
+                    "runtime": {
+                        "driver": "docker",
+                        "image": data.SGR_RUNTIME_IMAGE,
+                        "mounts": [
+                            {
+                                "type": "bind",
+                                "source": "../../",
+                                "target": "/workspace",
+                                "mode": "rw",
+                            }
+                        ],
+                    },
+                    "backend": {
+                        "type": "sgr_minimax",
+                        "config": {"route_policy": "codex_only", "model": "cx/gpt-5.4-mini"},
+                    },
+                },
+                manifest_path=Path("/container/agents/secretary/manifest.yaml"),
+            )
+            driver = docker_driver_module.DockerDriver(
+                manifests_root="/container/agents",
+                host_manifests_root=host_root / "agents",
+                compose_project_name=data.COMPOSE_PROJECT,
+                compose_runtime_dir=host_root / "compose-runtime",
+            )
+
+            mount_spec = driver._render_mount_spec(  # noqa: SLF001
+                manifest,
+                manifest.runtime.mounts[0],
+                container_name="orchestra-agent-secretary",
+            )
+
+            self.assertEqual(f"{host_root}:/workspace:rw", mount_spec)
