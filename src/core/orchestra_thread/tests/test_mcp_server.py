@@ -23,10 +23,6 @@ _TOOL_SEND = "thread_send"
 _KEY_MESSAGE = "message"
 
 
-def _structured(mcp_result: dict[str, Any]) -> dict[str, Any]:
-    return dict(mcp_result["structuredContent"])
-
-
 @asynccontextmanager
 async def _server_ctx(
     harness: E2EHarness,
@@ -72,6 +68,21 @@ async def _create_root_context(
     return thread_id
 
 
+async def _close_root_thread(
+    harness: E2EHarness,
+    secretary: Any,
+    orchestra: Any,
+    thread_id: str,
+) -> None:
+    closed = await harness.close_thread(
+        owner_agent=secretary,
+        peer_agent=orchestra,
+        thread_id=thread_id,
+        message_text="Closing MCP test thread.",
+    )
+    assert closed[_KEY_THREAD]["status"] == "closed"
+
+
 class MCPServerSetupMixin(unittest.IsolatedAsyncioTestCase):
     """Base setup/teardown for MCP server tests."""
 
@@ -99,6 +110,10 @@ class MCPServerSetupMixin(unittest.IsolatedAsyncioTestCase):
         active_context_module.ACTIVE_CONTEXT_PATH = self.original_context_path
         await self.harness.stop()
 
+    @staticmethod
+    def _structured(mcp_result: dict[str, Any]) -> dict[str, Any]:
+        return dict(mcp_result["structuredContent"])
+
 
 class MCPSendToolTests(MCPServerSetupMixin):
     """Tests for thread_send and thread_current MCP tools."""
@@ -112,14 +127,19 @@ class MCPSendToolTests(MCPServerSetupMixin):
                     _KEY_MESSAGE: "Prepare a short update.",
                 },
             )
-        payload = _structured(send_result)
+        payload = self._structured(send_result)
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["operation"], "thread_send")
         self.assertEqual(payload["route"], "created_root")
         self.assertEqual(payload["peer_agent_slug"], _SLUG_ORCHESTRA)
         self.assertIsNotNone(payload[_KEY_THREAD_ID])
 
-        await self._close_root(str(payload[_KEY_THREAD_ID]))
+        await _close_root_thread(
+            self.harness,
+            self.secretary,
+            self.orchestra,
+            str(payload[_KEY_THREAD_ID]),
+        )
 
     async def test_current_reply_and_child(self) -> None:
         thread_id = await _create_root_context(self.harness, self.orchestra)
@@ -127,7 +147,7 @@ class MCPSendToolTests(MCPServerSetupMixin):
             await self._verify_current(server, thread_id)
             await self._verify_reply(server, thread_id)
             await self._verify_child(server, thread_id)
-        await self._close_root(thread_id)
+        await _close_root_thread(self.harness, self.secretary, self.orchestra, thread_id)
 
     async def test_current_hides_actions_for_blocked_peer(self) -> None:
         await self.harness.request_json(
@@ -170,7 +190,7 @@ class MCPSendToolTests(MCPServerSetupMixin):
         )
 
         async with _server_ctx(self.harness, _SLUG_ORCHESTRA) as server:
-            current = _structured(
+            current = self._structured(
                 await server.handle_tools_call(name="thread_current", arguments={}),
             )
 
@@ -179,12 +199,26 @@ class MCPSendToolTests(MCPServerSetupMixin):
         self.assertEqual(current["peer_agent_slug"], "human")
         self.assertEqual(current["allowed_actions"], [])
 
+    async def test_current_uses_current_sentinel(self) -> None:
+        thread_id = await _create_root_context(self.harness, self.orchestra)
+        async with _server_ctx(self.harness, _SLUG_ORCHESTRA) as server:
+            current = self._structured(
+                await server.handle_tools_call(
+                    name="thread_current",
+                    arguments={_KEY_THREAD_ID: "current"},
+                )
+            )
+
+        self.assertTrue(current["active"])
+        self.assertEqual(current[_KEY_THREAD_ID], thread_id)
+        await _close_root_thread(self.harness, self.secretary, self.orchestra, thread_id)
+
     async def _verify_current(
         self,
         server: OrchestraThreadsMCPServer,
         thread_id: str,
     ) -> None:
-        current = _structured(
+        current = self._structured(
             await server.handle_tools_call(name="thread_current", arguments={}),
         )
         self.assertTrue(current["active"])
@@ -197,7 +231,7 @@ class MCPSendToolTests(MCPServerSetupMixin):
         server: OrchestraThreadsMCPServer,
         thread_id: str,
     ) -> None:
-        reply = _structured(
+        reply = self._structured(
             await server.handle_tools_call(
                 name=_TOOL_SEND,
                 arguments={_KEY_MESSAGE: "Done. Here is the update."},
@@ -211,7 +245,7 @@ class MCPSendToolTests(MCPServerSetupMixin):
         server: OrchestraThreadsMCPServer,
         thread_id: str,
     ) -> None:
-        child = _structured(
+        child = self._structured(
             await server.handle_tools_call(
                 name=_TOOL_SEND,
                 arguments={
@@ -223,15 +257,6 @@ class MCPSendToolTests(MCPServerSetupMixin):
         self.assertEqual(child["route"], "created_child")
         self.assertNotEqual(child[_KEY_THREAD_ID], thread_id)
 
-    async def _close_root(self, thread_id: str) -> None:
-        closed = await self.harness.close_thread(
-            owner_agent=self.secretary,
-            peer_agent=self.orchestra,
-            thread_id=thread_id,
-            message_text="Closing MCP test thread.",
-        )
-        self.assertEqual(closed[_KEY_THREAD]["status"], "closed")
-
 
 class MCPStatusAndProtocolTests(MCPServerSetupMixin):
     """Tests for status, expand, guide, and protocol surface."""
@@ -241,11 +266,11 @@ class MCPStatusAndProtocolTests(MCPServerSetupMixin):
         async with _server_ctx(self.harness, _SLUG_ORCHESTRA) as server:
             await self._verify_status(server, thread_id)
             await self._verify_expand(server, thread_id)
-        await self._close_root(thread_id)
+        await _close_root_thread(self.harness, self.secretary, self.orchestra, thread_id)
 
     async def test_guide_returns_workflow(self) -> None:
         async with _server_ctx(self.harness, _SLUG_SECRETARY) as server:
-            guide = _structured(
+            guide = self._structured(
                 await server.handle_tools_call(
                     name="thread_guide",
                     arguments={"section": "mcp", "view": "full"},
@@ -279,7 +304,7 @@ class MCPStatusAndProtocolTests(MCPServerSetupMixin):
         server: OrchestraThreadsMCPServer,
         thread_id: str,
     ) -> None:
-        status = _structured(
+        status = self._structured(
             await server.handle_tools_call(
                 name="thread_status",
                 arguments={"status": "review", _KEY_MESSAGE: "Ready for handoff."},
@@ -298,14 +323,14 @@ class MCPStatusAndProtocolTests(MCPServerSetupMixin):
         server: OrchestraThreadsMCPServer,
         thread_id: str,
     ) -> None:
-        latest = _structured(
+        latest = self._structured(
             await server.handle_tools_call(
                 name="thread_expand",
                 arguments={"view": "latest"},
             ),
         )
         self.assertEqual(latest[_KEY_THREAD][_KEY_THREAD_ID], thread_id)
-        related = _structured(
+        related = self._structured(
             await server.handle_tools_call(
                 name="thread_expand",
                 arguments={"view": "related"},
