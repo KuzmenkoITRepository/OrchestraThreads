@@ -12,6 +12,7 @@ from core.orchestra_agents.backends.sgr import event_support as _event_support
 from core.orchestra_agents.backends.sgr import result_builders as _results
 from core.orchestra_agents.backends.sgr import session_support as _session
 from core.orchestra_agents.backends.sgr import support as _support
+from core.orchestra_agents.backends.sgr.active_context_support import event_active_context_scope
 
 if TYPE_CHECKING:
     from core.orchestra_agents.backends.sgr.backend import SGRMinimaxBackend
@@ -83,7 +84,8 @@ async def _process_event(
     peer = _session.extract_peer_slug(event)
     session_key = _session.extract_session_key(event)
     logger.info("Processing SGR event %s (%s)", event_id, event.event_kind)
-    outcome = await _loop.run_turn(backend, delivery, event, session_key, peer)
+    with event_active_context_scope(backend, delivery, event):
+        outcome = await _loop.run_turn(backend, delivery, event, session_key, peer)
     _apply_post_turn(outcome, event, event_id)
     _event_support.record_outcome(backend, event, event_id, peer, outcome)
     _event_support.merge_outcomes(target=delivery_outcome, source=outcome)
