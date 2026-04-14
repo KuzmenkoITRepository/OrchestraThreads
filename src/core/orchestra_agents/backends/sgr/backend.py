@@ -49,6 +49,7 @@ class SGRMinimaxBackend(_rt.BaseAgentBackend):
         self._status = _components.build_status()
         persist_dir = str(Path(working_dir) / "runtime_state" / "chat_history")
         self._chat_history = _components.build_chat_history(persist_dir)
+        self._active_context_path = Path(working_dir) / "runtime_state" / "active_context.json"
         self._turn_lock = asyncio.Lock()
         self.handled_event_ids: set[str] = set()
         self.handled_event_order: list[str] = []

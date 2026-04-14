@@ -23,6 +23,7 @@ class InitOptions(TypedDict, total=False):
     container_name_prefix: str | None
     default_network: str | None
     manifest_mount_path: str | None
+    host_manifests_root: str | Path | None
     health_timeout_seconds: float | None
     build_context_root: str | Path | None
     auto_build_local_images: bool | None

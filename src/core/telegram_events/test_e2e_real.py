@@ -22,8 +22,10 @@ _TIMEOUT = 5.0
 class _StackFixture(TypedDict):
     relay: _RelayApp
     engine: _EngineApp
+    threads: _ThreadsApp
     relay_srv: TestServer
     engine_srv: TestServer
+    threads_srv: TestServer
 
 
 class _ServiceFixture(TypedDict):
@@ -32,6 +34,7 @@ class _ServiceFixture(TypedDict):
     base: str
     relay: _RelayApp
     engine: _EngineApp
+    threads: _ThreadsApp
 
 
 def _auth_ok(raw: Any) -> bool:
@@ -122,6 +125,37 @@ class _EngineApp:
         return web.json_response({"ok": True})
 
 
+class _ThreadsApp:
+    """Fake orchestra-thread surface for telegram-events integration tests."""
+
+    def __init__(self) -> None:
+        self.registrations: list[dict[str, Any]] = []
+        self.heartbeats: list[dict[str, Any]] = []
+        self.messages: list[dict[str, Any]] = []
+        self.received = asyncio.Event()
+        self.app = web.Application()
+        self.app.router.add_post("/agents/register", self._handle_register)
+        self.app.router.add_post("/agents/heartbeat", self._handle_heartbeat)
+        self.app.router.add_post("/api/v1/messages", self._handle_message)
+
+    async def _handle_register(self, request: web.Request) -> web.Response:
+        body = await request.json()
+        self.registrations.append(body)
+        return web.json_response({"ok": True, "agent_slug": body.get("agent_slug")})
+
+    async def _handle_heartbeat(self, request: web.Request) -> web.Response:
+        body = await request.json()
+        self.heartbeats.append(body)
+        return web.json_response({"ok": True})
+
+    async def _handle_message(self, request: web.Request) -> web.Response:
+        body = await request.json()
+        self.messages.append(body)
+        self.received.set()
+        thread_id = body.get("thread_id") or f"thread-{len(self.messages)}"
+        return web.json_response({"ok": True, "thread": {"thread_id": thread_id}})
+
+
 def _get_base_url(svc: TelegramEventsService) -> str:
     """Extract HTTP base URL from running service."""
     runner = svc._http_runner
@@ -179,9 +213,18 @@ async def _open_stack(
     """Create fake relay and engine servers."""
     relay = _RelayApp()
     engine = _EngineApp()
+    threads = _ThreadsApp()
     relay_srv = await aiohttp_server(relay.app)
     engine_srv = await aiohttp_server(engine.app)
-    yield {"relay": relay, "engine": engine, "relay_srv": relay_srv, "engine_srv": engine_srv}
+    threads_srv = await aiohttp_server(threads.app)
+    yield {
+        "relay": relay,
+        "engine": engine,
+        "threads": threads,
+        "relay_srv": relay_srv,
+        "engine_srv": engine_srv,
+        "threads_srv": threads_srv,
+    }
 
 
 @asynccontextmanager
@@ -190,11 +233,13 @@ async def _run_service(stack: _StackFixture) -> AsyncIterator[_ServiceFixture]:
     relay = stack["relay"]
     relay_srv = stack["relay_srv"]
     engine_srv = stack["engine_srv"]
+    threads_srv = stack["threads_srv"]
     svc = TelegramEventsService(
         events_url=str(relay_srv.make_url("/events/telegram")),
         mcp_url=str(relay_srv.make_url("/mcp")),
         bearer_token=_TOKEN,
         events_engine_url=str(engine_srv.make_url("")),
+        threads_url=str(threads_srv.make_url("")),
         target_agent_slug=_SLUG,
         orchestra_agents_url=str(relay_srv.make_url("")),
         http_host="127.0.0.1",
@@ -203,24 +248,63 @@ async def _run_service(stack: _StackFixture) -> AsyncIterator[_ServiceFixture]:
     task = asyncio.create_task(svc.start())
     await asyncio.wait_for(relay.sse_connected.wait(), timeout=_TIMEOUT)
     base = _get_base_url(svc)
-    yield {"svc": svc, "task": task, "base": base, "relay": relay, "engine": stack["engine"]}
+    yield {
+        "svc": svc,
+        "task": task,
+        "base": base,
+        "relay": relay,
+        "engine": stack["engine"],
+        "threads": stack["threads"],
+    }
     await svc.stop()
     relay.events_q.put_nowait(None)
     await asyncio.wait_for(task, timeout=_TIMEOUT)
 
 
+def _assert_thread_registration(threads: _ThreadsApp) -> None:
+    assert len(threads.registrations) == 1
+    assert threads.registrations[0]["agent_slug"] == "telegram_events"
+    assert threads.registrations[0]["base_url"].startswith("http://127.0.0.1:")
+    assert not threads.registrations[0]["base_url"].endswith(":0")
+
+
+def _assert_forwarded_message(threads: _ThreadsApp) -> None:
+    assert len(threads.messages) == 1
+    assert threads.messages[0]["from_agent_slug"] == "telegram_events"
+    assert threads.messages[0]["to_agent_slug"] == _SLUG
+    assert threads.messages[0]["client_request_id"] == "telegram_321_42"
+
+
+def _assert_clear_delivery(service: _ServiceFixture) -> None:
+    relay = service["relay"]
+    engine = service["engine"]
+    assert relay.agent_reqs == [_SLUG]
+    assert len(relay.clear_calls) == 1
+    assert engine.deliveries[0]["agent_slug"] == _SLUG
+
+
+def _assert_clear_event_metadata(service: _ServiceFixture) -> None:
+    event_data = service["engine"].deliveries[0]["event_data"]
+    event = event_data["events"][0]
+    assert event["event_kind"] == "telegram_message"
+    assert event["metadata"]["command"] == "/clear"
+    assert event["metadata"]["triggered_by"] == "telegram_events"
+    assert event["metadata"]["chat_id"] == 321
+    assert "Контекст очищен" in event["message_text"]
+
+
 async def test_message_forwarded(
     aiohttp_server: Callable[[web.Application], Awaitable[TestServer]],
 ) -> None:
-    """Test inbound message flow: SSE → telegram-events → events-engine."""
+    """Test inbound message flow: SSE → telegram-events → orchestra-thread."""
     async with _open_stack(aiohttp_server) as stack:
         async with _run_service(stack) as service:
             relay = service["relay"]
-            engine = service["engine"]
+            threads = service["threads"]
             relay.events_q.put_nowait(_make_msg_event())
-            await asyncio.wait_for(engine.received.wait(), timeout=_TIMEOUT)
-            assert len(engine.deliveries) == 1
-            assert engine.deliveries[0]["agent_slug"] == _SLUG
+            await asyncio.wait_for(threads.received.wait(), timeout=_TIMEOUT)
+            _assert_thread_registration(threads)
+            _assert_forwarded_message(threads)
 
 
 async def test_send_reaches_relay(
@@ -249,12 +333,10 @@ async def test_clear_resolves_and_delivers(
     async with _open_stack(aiohttp_server) as stack:
         async with _run_service(stack) as service:
             relay = service["relay"]
-            engine = service["engine"]
             relay.events_q.put_nowait(_make_clear_event())
-            await asyncio.wait_for(engine.received.wait(), timeout=_TIMEOUT)
-            assert relay.agent_reqs == [_SLUG]
-            assert len(relay.clear_calls) == 1
-            assert engine.deliveries[0]["agent_slug"] == _SLUG
+            await asyncio.wait_for(service["engine"].received.wait(), timeout=_TIMEOUT)
+            _assert_clear_delivery(service)
+            _assert_clear_event_metadata(service)
 
 
 async def test_send_requires_valid_token(

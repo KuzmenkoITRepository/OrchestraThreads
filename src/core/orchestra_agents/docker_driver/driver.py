@@ -49,6 +49,15 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         **options: t.Unpack[driver_support.InitOptions],
     ) -> None:
         self.manifests_root = Path(manifests_root).expanduser().resolve()
+        self._host_manifests_root = (
+            Path(
+                options.get("host_manifests_root")
+                or os.getenv("ORCHESTRA_AGENTS_HOST_MANIFESTS_DIR")
+                or self.manifests_root
+            )
+            .expanduser()
+            .resolve()
+        )
         self.container_name_prefix = str(
             options.get("container_name_prefix")
             or os.getenv("ORCHESTRA_AGENTS_CONTAINER_NAME_PREFIX")
@@ -309,7 +318,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
             "--health-retries",
             "3",
             "-v",
-            f"{self.manifests_root}:{self.manifest_mount_path}:ro",
+            f"{self._host_manifests_root}:{self.manifest_mount_path}:ro",
         ]
         if self.default_network:
             command.extend(["--network", self.default_network])
@@ -636,7 +645,7 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         *,
         container_name: str,
     ) -> list[str]:
-        volumes = [f"{self.manifests_root}:{self.manifest_mount_path}:ro"]
+        volumes = [f"{self._host_manifests_root}:{self.manifest_mount_path}:ro"]
         for mount in resolved_runtime.mounts:
             volumes.append(self._render_mount_spec(manifest, mount, container_name=container_name))
         return volumes
@@ -771,14 +780,28 @@ class DockerDriver:  # noqa: WPS214, WPS230 - Docker lifecycle driver is intenti
         if source_path.is_absolute():
             resolved_path = source_path
         else:
-            if manifest.manifest_path is None:
+            host_manifest_path = self._host_manifest_path(manifest)
+            if host_manifest_path is None:
                 raise RuntimeError(
                     f"cannot resolve relative bind mount {source!r} without manifest path"
                 )
-            resolved_path = (manifest.manifest_path.parent / source_path).resolve()
+            resolved_path = (host_manifest_path.parent / source_path).resolve()
         if not resolved_path.exists():
             raise RuntimeError(f"bind mount source does not exist: {resolved_path}")
         return resolved_path
+
+    def _host_manifest_path(
+        self,
+        manifest: manifest_module.AgentManifest,
+    ) -> Path | None:
+        manifest_path = manifest.manifest_path
+        if manifest_path is None:
+            return None
+        try:
+            relative_path = manifest_path.relative_to(self.manifests_root)
+        except ValueError:
+            return manifest_path.resolve()
+        return (self._host_manifests_root / relative_path).resolve()
 
     def _container_exists(self, container_name: str) -> bool:
         result = _run(
