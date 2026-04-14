@@ -34,3 +34,10 @@ async def log_authenticated_user(client: Any) -> None:
         extract_field(me, "first_name"),
         extract_field(me, "id"),
     )
+
+
+async def send_text_message(client: Any, chat_id: str, message: str) -> int:
+    """Send a text message with the connected Telethon client."""
+    sent_message = await client.send_message(entity=int(chat_id), message=message)
+    raw_message_id = getattr(sent_message, "id", 0)
+    return int(raw_message_id or 0)

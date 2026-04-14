@@ -8,16 +8,18 @@ repos:
       - id: ruff-format
         exclude: ^src/core/omniroute/|^test_task_registry_manual\.py$
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.2
+  - repo: local
     hooks:
       - id: mypy
+        name: mypy
+        entry: env PYTHONPATH=src .venv/bin/mypy
+        language: system
+        types: [python]
         args:
           - --strict
           - --no-warn-unused-ignores
           - --show-error-codes
         exclude: ^src/core/omniroute/|^test_task_registry_manual\.py$
-        additional_dependencies:
           - aiohttp>=3.9,<4
           - httpx>=0.27,<1
           - types-PyYAML
