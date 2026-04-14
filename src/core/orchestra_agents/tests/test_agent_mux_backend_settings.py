@@ -12,7 +12,7 @@ def test_default_model_uses_kiro_alias() -> None:
         llm_model=None,
     )
 
-    assert settings.default_model == "cx/gpt-5.1-codex-mini"
+    assert settings.default_model == "cx/gpt-5.4-mini"
 
 
 def test_llm_proxy_url_alias_sets_omniroute_url() -> None:
@@ -23,7 +23,7 @@ def test_llm_proxy_url_alias_sets_omniroute_url() -> None:
         llm_route_policy=None,
         llm_model=None,
     )
-
+    assert settings.omniroute_url == "http://127.0.0.1:8104"
     assert settings.omniroute_url == "http://127.0.0.1:8104"
 
 

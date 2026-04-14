@@ -10,8 +10,6 @@ class OrchestraMemoryService(_ServiceOperations):
         self.config = config or load_config()
         self.store = OrchestraMemoryStore(
             storage_path=self.config.storage_path,
-            allowed_rooms=self.config.allowed_rooms,
-            allowed_categories=self.config.allowed_categories,
         )
         self._started = False
 

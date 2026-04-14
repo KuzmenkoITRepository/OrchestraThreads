@@ -29,12 +29,12 @@ runtime:
     OPENCODE_RUNTIME_STATE_ROOT: /tmp/opencode-runtime/whiner
     PYTHONPATH: /workspace/src
     ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
-    LLM_PROXY_URL: http://host.docker.internal:8100
+    OMNIROUTE_URL: http://orchestra-omniroute:20128
     TASK_REGISTRY_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
     LOG_LEVEL: INFO
   env_passthrough:
     - ORCHESTRA_THREADS_URL
-    - LLM_PROXY_URL
+    - OMNIROUTE_URL
     - OMNIROUTE_API_KEY
     - OPENCODE_RUNTIME_STATE_ROOT
     - LOG_LEVEL
@@ -42,7 +42,7 @@ runtime:
 backend:
   type: opencode_omo
   config:
-    model: omo
+    model: cx/gpt-5.4-mini
     opencode_serve_port: 4096
     dispatch_timeout_seconds: 180
     startup_timeout_seconds: 20
@@ -55,7 +55,28 @@ backend:
         env:
           ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
           ORCHESTRA_THREADS_AGENT_SLUG: whiner
+      - name: orchestra_memory
+        command: python
+        args:
+          - -m
+          - core.orchestra_memory.mcp.server
+        env:
+          ORCHESTRA_AGENT_SLUG: whiner
+          ORCHESTRA_MEMORY_URL: http://orchestra-memory:8793
           PYTHONPATH: /workspace/src
+      - name: task_registry
+        command: python
+        args:
+          - -m
+          - core.task_registry.mcp.server
+        env:
+          TASK_REGISTRY_DATABASE_URL: postgresql://orchestra:orchestra@postgres:5432/orchestra_threads
+          PYTHONPATH: /workspace/src
+          LOG_LEVEL: INFO
+      - name: docker_mcp
+        command: python
+        args:
+          - -m
       - name: task_registry
         command: python
         args:

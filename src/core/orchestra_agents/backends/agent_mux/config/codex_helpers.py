@@ -45,6 +45,7 @@ def _allowed_env_keys() -> set[str]:
 def base_config_lines(*, model: str, base_url: str, env_key: str | None) -> list[str]:
     lines = [
         f"model = {toml_quote(model)}",
+        'web_search = "disabled"',
         'model_provider = "omniroute"',
         "",
         "[model_providers.omniroute]",
@@ -63,8 +64,6 @@ def _route_policy_path_prefix(route_policy: str) -> str:
     normalized = route_policy.strip().lower().replace("-", "_")
     if normalized in {"codex", "codex_only"}:
         return "/codex"
-    if normalized in {"minimax", "minimax_only", "fallback", "fallback_only"}:
-        return "/minimax"
     return ""
 
 

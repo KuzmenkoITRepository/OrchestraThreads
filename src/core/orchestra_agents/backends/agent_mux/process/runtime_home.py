@@ -16,7 +16,9 @@ def install_runtime_agent_mux_home(codex_home: Path, *, model: str) -> Path:
 
 def _install_runtime_agent_mux_model(config_path: Path, *, model: str) -> None:
     config_text = config_path.read_text(encoding="utf-8")
-    config_path.write_text(_runtime_models_line(config_text, model=model), encoding="utf-8")
+    updated_text = _runtime_models_line(config_text, model=model)
+    updated_text = _runtime_role_models(updated_text, model=model)
+    config_path.write_text(updated_text, encoding="utf-8")
 
 
 def _runtime_models_line(config_text: str, *, model: str) -> str:
@@ -32,3 +34,29 @@ def _runtime_models_line(config_text: str, *, model: str) -> str:
         return config_text
     updated_line = f'{original_line[:-1]}, "{model}"]'
     return config_text[:line_start] + updated_line + config_text[line_end:]
+
+
+def _runtime_role_models(config_text: str, *, model: str) -> str:
+    return "\n".join(_updated_role_lines(config_text, model=model))
+
+
+def _updated_role_lines(config_text: str, *, model: str) -> list[str]:
+    updated_lines: list[str] = []
+    section_name = ""
+    for line in config_text.splitlines():
+        section_name, updated_line = _updated_role_line(
+            line,
+            section_name=section_name,
+            model=model,
+        )
+        updated_lines.append(updated_line)
+    return updated_lines
+
+
+def _updated_role_line(line: str, *, section_name: str, model: str) -> tuple[str, str]:
+    stripped = line.strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        return stripped.strip("[]"), line
+    if section_name in {"defaults", "roles.worker"} and stripped.startswith("model ="):
+        return section_name, f'model = "{model}"'
+    return section_name, line

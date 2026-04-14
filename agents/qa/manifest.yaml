@@ -4,7 +4,7 @@ status: active
 auto_start: true
 
 agent:
-  working_dir: /workspace
+  working_dir: /home/appuser
   http_endpoint: http://{container_name}:8787
   system_prompt_file: system_prompt.md
   allowed_peer_agent_slugs:
@@ -28,8 +28,9 @@ runtime:
     OPENCODE_RUNTIME_STATE_ROOT: /tmp/opencode-runtime/qa
     PYTHONPATH: /workspace/src
     ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
-    OMNIROUTE_URL: http://host.docker.internal:8100
+    OMNIROUTE_URL: http://orchestra-omniroute:20128
     LOG_LEVEL: INFO
+    ORCHESTRA_MEMORY_URL: http://orchestra-memory:8793
   env_passthrough:
     - ORCHESTRA_THREADS_URL
     - OMNIROUTE_URL
@@ -53,4 +54,12 @@ backend:
         env:
           ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
           ORCHESTRA_THREADS_AGENT_SLUG: qa
+      - name: orchestra_memory
+        command: python
+        args:
+          - -m
+          - core.orchestra_memory.mcp.server
+        env:
+          ORCHESTRA_AGENT_SLUG: qa
+          ORCHESTRA_MEMORY_URL: http://orchestra-memory:8793
           PYTHONPATH: /workspace/src

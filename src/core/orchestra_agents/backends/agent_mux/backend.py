@@ -12,6 +12,10 @@ from core.orchestra_agents.backends.agent_mux.backend_settings import (
     build_runtime_settings,
 )
 from core.orchestra_agents.backends.agent_mux.internal import state_store as runtime_state
+from core.orchestra_agents.backends.agent_mux.internal_tools import (
+    AgentMuxInternalTools,
+    AgentMuxSkillToolsMixin,
+)
 from core.orchestra_agents.backends.opencode.backend_registration import (
     register_with_threads,
     stop_registration,
@@ -44,6 +48,10 @@ class _StatusField:
 
 
 class _BackendBootstrap:
+    @staticmethod
+    def build_system_prompt(system_prompt: str) -> str:
+        return system_prompt
+
     @staticmethod
     def resolve_http_endpoint(kwargs: dict[str, Any]) -> str | None:
         if "http_endpoint" not in kwargs:
@@ -137,7 +145,7 @@ def _sanitize_reply_text(text: str) -> str:
     return normalization.sanitize_reply_text(text)
 
 
-class AgentMuxBackend(runtime_contract.BaseAgentBackend):
+class AgentMuxBackend(AgentMuxSkillToolsMixin, runtime_contract.BaseAgentBackend):
     _status: status_tracking.StatusTracker
     _context_manager: process_control.ActiveContextManager
     _process_controller: process_control.ProcessController
@@ -170,13 +178,11 @@ class AgentMuxBackend(runtime_contract.BaseAgentBackend):
             config=config,
         )
         raw_config = dict(config or {})
-        system_prompt = ""
-        try:
-            raw_system_prompt = kwargs["system_prompt"]
-        except KeyError:
-            raw_system_prompt = ""
-        system_prompt = str(raw_system_prompt or "")
-        self.system_prompt = system_prompt.strip()
+        self.system_prompt = _BackendBootstrap.build_system_prompt(
+            str(kwargs.get("system_prompt") or "")
+        )
+        self._openai_tools = AgentMuxInternalTools.build_openai_tools()
+        self._internal_tool_names = AgentMuxInternalTools.names
         llm_config = _BackendBootstrap.resolve_llm_config(raw_config)
         self.settings = build_runtime_settings(
             raw_config,
@@ -300,6 +306,7 @@ class AgentMuxBackend(runtime_contract.BaseAgentBackend):
                 "last_processed_event_id": self.last_processed_event_id,
                 "last_processed_event_kind": self.last_processed_event_kind,
                 "last_tool_calls": list(self.last_tool_calls),
+                "available_internal_tools": sorted(self._internal_tool_names),
                 "runtime_context": self.runtime_state.context_snapshot(),
                 "runtime_state": self.runtime_state.status_snapshot(),
                 "active_dispatch_id": self._active_dispatch_id,

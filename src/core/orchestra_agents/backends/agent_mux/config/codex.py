@@ -76,9 +76,7 @@ def write_runtime_codex_config(
             request.route_policy,
             proxy_url=request.omniroute_url,
         ),
-        env_key="OMNIROUTE_API_KEY"
-        if request.variables and request.variables.get("env.OMNIROUTE_API_KEY")
-        else None,
+        env_key="OMNIROUTE_API_KEY",
     )
     variables = dict(request.variables or {})
     for item in request.mcp_servers or []:

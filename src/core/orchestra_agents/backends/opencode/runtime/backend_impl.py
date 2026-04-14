@@ -43,6 +43,14 @@ class OpencodeOmoBackend(BaseAgentBackend):
             config=raw_config,
         )
         self.system_prompt = str(kwargs.get("system_prompt") or "").strip()
+        # Inject skills into system_prompt for OpenCode
+        from core.orchestra_agents.skills.registry import list_skills_menu
+
+        skills_block = list_skills_menu()
+        if self.system_prompt and skills_block:
+            self.system_prompt = f"{self.system_prompt}\n\n---\n\n{skills_block}"
+        elif skills_block:
+            self.system_prompt = skills_block
         self.http_endpoint = _optional_str(kwargs.get("http_endpoint"))
         self._paths = backend_state.RuntimePaths.from_working_dir(working_dir)
         self._serve_port = _to_int(raw_config.get("opencode_serve_port"), _DEFAULT_SERVE_PORT)

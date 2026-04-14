@@ -21,8 +21,6 @@ class MemoryServiceHttpTests(AioHTTPTestCase):
             host="127.0.0.1",
             port=0,
             storage_path=Path(self._tempdir.name) / "palace",
-            allowed_rooms=("profile", "knowledge", "task"),
-            allowed_categories=("fact", "preference", "instruction"),
         )
         self._service = memory_runtime.OrchestraMemoryService(config)
         self._patcher = patch(
@@ -113,8 +111,6 @@ class MemoryStorePersistenceTests(unittest.IsolatedAsyncioTestCase):
                 host="127.0.0.1",
                 port=0,
                 storage_path=Path(tempdir) / "palace",
-                allowed_rooms=("profile", "knowledge", "task"),
-                allowed_categories=("fact", "preference", "instruction"),
             )
             with patch(
                 "core.orchestra_memory.store.import_module",
@@ -168,8 +164,6 @@ class MemoryClearContextIsolationTests(unittest.IsolatedAsyncioTestCase):
             host="127.0.0.1",
             port=0,
             storage_path=Path(self._tempdir.name) / "palace",
-            allowed_rooms=("profile", "knowledge", "task"),
-            allowed_categories=("fact", "preference", "instruction"),
         )
         self._patcher = patch(
             "core.orchestra_memory.store.import_module",

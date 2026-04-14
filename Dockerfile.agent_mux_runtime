@@ -42,7 +42,8 @@ RUN apt-get update \
 COPY --from=agent_mux_builder /out/agent-mux /usr/local/bin/agent-mux
 
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/workspace/src
 
 USER appuser
 

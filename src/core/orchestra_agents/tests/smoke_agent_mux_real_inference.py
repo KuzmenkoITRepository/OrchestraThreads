@@ -51,7 +51,7 @@ def _smoke_cases() -> tuple[_SmokeCase, ...]:
     return (
         _SmokeCase(
             family="cx",
-            model=_env_model("OT_SMOKE_MODEL_CX", "cx/gpt-5.1-codex-mini"),
+            model=_env_model("OT_SMOKE_MODEL_CX", "cx/gpt-5.4-mini"),
             route_policy="codex_only",
             token="CX_SMOKE_OK",
         ),
@@ -155,6 +155,7 @@ async def _collect_case_result(case: _SmokeCase, root_dir: Path) -> dict[str, ob
     return await collect_agent_mux_result(
         run_state["process"],
         run_state["stdin_payload"],
+        close_stdin_after_start=False,
     )
 
 

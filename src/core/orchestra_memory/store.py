@@ -20,14 +20,10 @@ class OrchestraMemoryStore(_StoreReadOps, _StoreWriteOps, _StoreLifecycleOps):
         self,
         *,
         storage_path: Path,
-        allowed_rooms: tuple[str, ...],
-        allowed_categories: tuple[str, ...],
+        rules: StoreRules | None = None,
     ) -> None:
         self._storage_path = storage_path
-        self._rules = StoreRules(
-            allowed_rooms=set(allowed_rooms),
-            allowed_categories=set(allowed_categories),
-        )
+        self._rules = rules or StoreRules()
         self._lock = asyncio.Lock()
         self._collection: MempalaceCollection | None = None
         self._started = False

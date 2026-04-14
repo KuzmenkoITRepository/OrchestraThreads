@@ -7,7 +7,7 @@ from typing import Any, cast
 
 from core.orchestra_memory.store_types import MempalaceClient, MempalaceCollection, MempalaceConfig
 
-_READ_INCLUDE = ("documents", "metadatas")
+_READ_INCLUDE = ("ids", "documents", "metadatas")
 
 
 def read_include() -> list[str]:

@@ -33,6 +33,10 @@ class _ServiceProtocol(Protocol):
 
     async def clear(self, *, agent_slug: str, room: str | None, category: str | None) -> int: ...
 
+    async def list_rooms(self, *, agent_slug: str) -> list[str]: ...
+
+    async def list_categories(self, *, agent_slug: str) -> list[str]: ...
+
 
 def build_memory_app(service: _ServiceProtocol) -> web.Application:
     handlers = MemoryHttpHandlers(service)
@@ -43,4 +47,6 @@ def build_memory_app(service: _ServiceProtocol) -> web.Application:
     app.router.add_post("/memory/search", handlers.search)
     app.router.add_post("/memory/delete", handlers.delete)
     app.router.add_post("/memory/clear", handlers.clear)
+    app.router.add_post("/memory/discovery/rooms", handlers.discovery_rooms)
+    app.router.add_post("/memory/discovery/categories", handlers.discovery_categories)
     return app

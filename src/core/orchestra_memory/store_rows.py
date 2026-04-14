@@ -61,9 +61,6 @@ class SearchRequest:
 
 @dataclass(frozen=True)
 class StoreRules:
-    allowed_rooms: set[str]
-    allowed_categories: set[str]
-
     def build_item(self, *, agent_slug: str, room: str, category: str, text: str) -> MemoryItem:
         rules_module = import_module("core.orchestra_memory.store_rows_rules")
         return cast(
@@ -73,7 +70,6 @@ class StoreRules:
                 room=room,
                 category=category,
                 text=text,
-                rules=self._rule_sets(),
             ),
         )
 
@@ -116,7 +112,6 @@ class StoreRules:
                 agent_slug=agent_slug,
                 room=room,
                 category=category,
-                rules=self._rule_sets(),
             ),
         )
         wing = cast(str, values["wing"])
@@ -124,14 +119,4 @@ class StoreRules:
             wing=wing,
             room=values["room"],
             category=values["category"],
-        )
-
-    def _rule_sets(self) -> object:
-        rules_module = import_module("core.orchestra_memory.store_rows_rules")
-        return cast(
-            object,
-            rules_module.RuleSets(
-                allowed_rooms=self.allowed_rooms,
-                allowed_categories=self.allowed_categories,
-            ),
         )

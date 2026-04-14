@@ -19,7 +19,7 @@ from core.orchestra_agents.backends.sgr.chat_history_store import (
     remove_persist_file as _remove_persist_file,
 )
 
-_DEFAULT_MAX_TURNS = 20
+_DEFAULT_MAX_TURNS = 100
 
 
 @dataclass(frozen=True)

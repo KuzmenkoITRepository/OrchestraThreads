@@ -80,3 +80,31 @@ async def memory_clear(server: Any, arguments: JSON_MAP) -> JSON_MAP:
             "deleted_count": deleted_count,
         }
     )
+
+
+async def memory_list_rooms(server: Any, arguments: JSON_MAP) -> JSON_MAP:
+    _reject_slug_override(arguments)
+    rooms = await server.client.list_rooms(agent_slug=server.agent_slug)
+    return result(
+        {
+            "ok": True,
+            "operation": "memory_list_rooms",
+            "agent_slug": server.agent_slug,
+            "count": len(rooms),
+            "rooms": rooms,
+        }
+    )
+
+
+async def memory_list_categories(server: Any, arguments: JSON_MAP) -> JSON_MAP:
+    _reject_slug_override(arguments)
+    categories = await server.client.list_categories(agent_slug=server.agent_slug)
+    return result(
+        {
+            "ok": True,
+            "operation": "memory_list_categories",
+            "agent_slug": server.agent_slug,
+            "count": len(categories),
+            "categories": categories,
+        }
+    )

@@ -14,8 +14,14 @@ def _agent_payload(
     runtime: dict[str, Any],
     state: ServiceState,
 ) -> dict[str, Any]:
+    running = bool(runtime.get("running"))
+    healthy = bool(runtime.get("healthy"))
+    metadata: dict[str, Any] = {
+        "allowed_peer_agent_slugs": list(manifest.agent.allowed_peer_agent_slugs),
+    }
     return {
         "slug": manifest.slug,
+        "agent_slug": manifest.slug,
         "display_name": manifest.display_name,
         "status": manifest.status,
         "backend_type": manifest.backend.type,
@@ -23,6 +29,8 @@ def _agent_payload(
             container_name=state.driver.container_name(manifest.slug),
         ),
         "manifest": manifest.to_dict(include_path=True),
+        "metadata": metadata,
+        "online": running and healthy,
         "runtime": runtime,
     }
 

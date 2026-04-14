@@ -52,7 +52,10 @@ def _create_backend(
         system_prompt=system_prompt,
     )
     backend.http_endpoint = http_endpoint
-    servers, schemas = mcp_loader.load_mcp_from_config(dict(init.config))
+    servers, schemas = mcp_loader.load_mcp_from_config(
+        dict(init.config),
+        agent_slug=init.agent_slug,
+    )
     if servers:
         configure_mcp_tools(backend, servers, tool_schemas=schemas)
     return backend

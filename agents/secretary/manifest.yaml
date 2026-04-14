@@ -31,7 +31,11 @@ runtime:
     BETTER_TELEGRAM_MCP_URL: http://better-telegram-mcp:3000/mcp
     BETTER_TELEGRAM_MCP_EVENTS_URL: http://better-telegram-mcp:3000/events/telegram
     ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
+    TELEGRAM_EVENTS_URL: http://telegram-events:8787
+    TELEGRAM_CHAT_ID_IVAN: "748976004"
     ORCHESTRA_THREADS_AGENT_SLUG: secretary
+    ORCHESTRA_AGENT_SLUG: secretary
+    ORCHESTRA_MEMORY_URL: http://orchestra-memory:8793
   env_passthrough:
     - OMNIROUTE_URL
     - OMNIROUTE_API_KEY
@@ -68,40 +72,10 @@ backend:
           - send_telegram_message
         timeout_seconds: 30
       - name: orchestra_threads
-        command: python
-        args:
-          - -m
-          - core.orchestra_thread.mcp.server
-        cwd: "{working_dir}"
-        startup_timeout_sec: 15
-        required: false
-        enabled: false
-        enabled_tools:
-          - thread_send
-          - thread_status
-          - thread_current
-          - thread_expand
-          - thread_guide
-        env:
-          ORCHESTRA_THREADS_AGENT_SLUG: "{agent_slug}"
-          ORCHESTRA_THREADS_URL: http://orchestra-threads:8788
-          ORCHESTRA_THREADS_ACTIVE_CONTEXT_PATH: "{active_context_path}"
-          PYTHONPATH: "{pythonpath}"
+        module: core.orchestra_thread.mcp.server
+        class: OrchestraThreadsMCPServer
+        schema_fn: orchestra_threads_tool_definitions
       - name: orchestra_memory
-        command: python
-        args:
-          - -m
-          - core.orchestra_memory.mcp.server
-        cwd: "{working_dir}"
-        startup_timeout_sec: 15
-        required: false
-        enabled: true
-        enabled_tools:
-          - memory_remember
-          - memory_search
-          - memory_delete
-          - memory_clear
-        env:
-          ORCHESTRA_AGENT_SLUG: "{agent_slug}"
-          ORCHESTRA_MEMORY_URL: http://orchestra-memory:8793
-          PYTHONPATH: "{pythonpath}"
+        module: core.orchestra_memory.mcp.server
+        class: OrchestraMemoryMCPServer
+        schema_fn: orchestra_memory_tool_definitions

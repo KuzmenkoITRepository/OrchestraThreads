@@ -78,6 +78,8 @@ def _build_backend(
                     "memory_search",
                     "memory_delete",
                     "memory_clear",
+                    "memory_list_rooms",
+                    "memory_list_categories",
                 ],
                 "env": {
                     "ORCHESTRA_AGENT_SLUG": "{agent_slug}",
@@ -95,7 +97,7 @@ def _build_backend(
             "omniroute_api_key": "omniroute-test-key",
             "threads_url": "http://127.0.0.1:8788",
             "llm_route_policy": "codex_only",
-            "model": "cx/gpt-5.1-codex-mini",
+            "model": "cx/gpt-5.4-mini",
             "agent_mux_binary": str(fixture.agent_mux_binary),
             "state_root": str(fixture.root / "runtime_state"),
             "max_attempts": max_attempts,

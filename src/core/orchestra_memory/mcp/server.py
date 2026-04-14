@@ -39,6 +39,10 @@ class _MemoryClientProtocol(Protocol):
 
     async def clear(self, *, agent_slug: str, room: str | None, category: str | None) -> int: ...
 
+    async def list_rooms(self, *, agent_slug: str) -> list[str]: ...
+
+    async def list_categories(self, *, agent_slug: str) -> list[str]: ...
+
     async def close(self) -> None: ...
 
 
@@ -102,6 +106,11 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     asyncio.run(main_async())
+
+
+def orchestra_memory_tool_definitions() -> list[dict[str, object]]:
+    """Return tool definitions for SGR inline MCP loading."""
+    return [dict(td) for td in list_tools()]
 
 
 if __name__ == "__main__":

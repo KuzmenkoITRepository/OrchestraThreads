@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import logging
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
 
 from core.orchestra_agents.backends.sgr import _mcp_config_interpolation as _interpolation
 from core.orchestra_agents.backends.sgr import _mcp_remote_loader as _remote
@@ -16,16 +18,19 @@ _Servers = dict[str, MCPServerProtocol]
 _Schemas = list[dict[str, Any]]
 
 
-def load_mcp_from_config(raw_config: dict[str, Any]) -> tuple[_Servers, _Schemas]:
+def load_mcp_from_config(
+    raw_config: dict[str, Any], *, agent_slug: str | None = None
+) -> tuple[_Servers, _Schemas]:
     """Load MCP servers and tool schemas from backend config."""
     interpolated = _interpolation.interpolate_config_values(raw_config)
     entries = interpolated.get("mcp_servers")
     if not entries or not isinstance(entries, list):
         return {}, []
+
     servers: _Servers = {}
     schemas: _Schemas = []
     for entry in entries:
-        _load_single_entry(entry, servers, schemas)
+        _load_single_entry(entry, servers, schemas, agent_slug=agent_slug)
     return servers, schemas
 
 
@@ -33,6 +38,8 @@ def _load_single_entry(
     entry: dict[str, Any],
     servers: _Servers,
     schemas: _Schemas,
+    *,
+    agent_slug: str | None = None,
 ) -> None:
     """Load a single MCP server entry from config."""
     transport = str(entry.get("transport") or "").strip()
@@ -40,13 +47,15 @@ def _load_single_entry(
         _remote.load_http_entry(entry, servers, schemas)
         return
 
-    _load_local_entry(entry, servers, schemas)
+    _load_local_entry(entry, servers, schemas, agent_slug=agent_slug)
 
 
 def _load_local_entry(
     entry: dict[str, Any],
     servers: _Servers,
     schemas: _Schemas,
+    *,
+    agent_slug: str | None = None,
 ) -> None:
     """Load a local Python module MCP server."""
     module_path = str(entry.get("module") or "").strip()
@@ -55,28 +64,13 @@ def _load_local_entry(
         logger.warning("Skipping incomplete MCP entry: %s", entry)
         return
 
-    server = _instantiate_server(module_path, class_name)
+    server = _instantiate_server(module_path, class_name, agent_slug=agent_slug)
     if server is None:
         return
 
     schema_fn_name = str(entry.get("schema_fn") or "").strip()
     tool_defs = _load_schemas(module_path, schema_fn_name)
     _register_tools(server, entry, tool_defs, servers, schemas)
-
-
-def _instantiate_server(module_path: str, class_name: str) -> MCPServerProtocol | None:
-    """Import and instantiate an MCP server class."""
-    try:
-        module = importlib.import_module(module_path)
-    except Exception:
-        logger.exception("Failed to import MCP module %s", module_path)
-        return None
-
-    server_cls = getattr(module, class_name, None)
-    if server_cls is None:
-        logger.error("MCP class %s not found in %s", class_name, module_path)
-        return None
-    return server_cls()  # type: ignore[no-any-return]
 
 
 def _register_tools(
@@ -95,9 +89,52 @@ def _register_tools(
                 schemas.append(dict(tool_def))
         return
 
-    fallback = str(entry.get("name") or "").strip()
-    if fallback:
-        servers[fallback] = server
+    fallback_name = str(entry.get("name") or "").strip()
+    if fallback_name:
+        servers[fallback_name] = server
+
+
+def _instantiate_server(
+    module_path: str,
+    class_name: str,
+    *,
+    agent_slug: str | None = None,
+) -> MCPServerProtocol | None:
+    """Import and instantiate an MCP server class."""
+    try:
+        module = importlib.import_module(module_path)
+    except Exception:
+        logger.exception("Failed to import MCP module %s", module_path)
+        return None
+
+    server_cls = getattr(module, class_name, None)
+    if not isinstance(server_cls, type):
+        logger.error("MCP class %s not found in %s", class_name, module_path)
+        return None
+
+    server_factory = cast(Callable[..., object], server_cls)
+    params = _init_params(server_factory, agent_slug)
+    if params is None:
+        return cast(MCPServerProtocol, server_factory())
+    return cast(MCPServerProtocol, server_factory(**params))
+
+
+def _init_params(
+    server_cls: Callable[..., object],
+    agent_slug: str | None,
+) -> dict[str, Any] | None:
+    """Build init params accepted by the constructor."""
+    if not agent_slug:
+        return None
+
+    sig = inspect.signature(server_cls)
+    for name, param in sig.parameters.items():
+        if name == "agent_slug" and param.kind in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        ):
+            return {"agent_slug": agent_slug}
+    return None
 
 
 def _load_schemas(module_path: str, schema_fn_name: str) -> _Schemas:

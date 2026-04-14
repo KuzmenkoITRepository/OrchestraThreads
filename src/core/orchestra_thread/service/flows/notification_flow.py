@@ -177,7 +177,7 @@ class _NotificationFlow:
                 message_text=str(notification_context["message_text"]),
                 interrupts_runtime=bool(notification_context["requires_delivery"]),
                 requires_response=False,
-                touch_activity=bool(notification_context["requires_delivery"]),
+                touch_activity=True,
                 update_last_message_sender=False,
                 set_thread_status=status,
                 set_terminal=bool(notification_context["is_terminal"]),

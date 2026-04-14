@@ -6,6 +6,8 @@ from core.orchestra_memory.mcp.tool_specs import list_memory_tools
 from core.orchestra_memory.mcp.tools import (
     memory_clear,
     memory_delete,
+    memory_list_categories,
+    memory_list_rooms,
     memory_remember,
     memory_search,
 )
@@ -16,6 +18,8 @@ TOOL_HANDLER_ITEMS = (
     ("memory_search", memory_search),
     ("memory_delete", memory_delete),
     ("memory_clear", memory_clear),
+    ("memory_list_rooms", memory_list_rooms),
+    ("memory_list_categories", memory_list_categories),
 )
 
 
