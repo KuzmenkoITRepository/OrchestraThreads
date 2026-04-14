@@ -1,50 +1,43 @@
 # ORCHESTRA AGENTS DOMAIN
 
 ## OVERVIEW
-`orchestra_agents` owns manifest loading, validation, Docker lifecycle control, scaffolding, and the standard HTTP runtime contract shared by managed agents. Includes the `agent_mux_runtime/` subsystem (29 files) for multiplexed agent backends.
+`orchestra_agents` owns manifest loading, validation, Docker lifecycle control, scaffolding, migrations, and the shared HTTP runtime contract for managed agents. Backend adapters live under `backends/`; templates and parity tests keep those adapters aligned.
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| Lifecycle API | `service.py` | `OrchestraAgentsService` delegates to `service_routes.py` + `service_state.py` |
-| HTTP routes | `service_routes.py` | `_AgentReadRoutes`, `_AgentWriteRoutes` with `_Guarded` error handling |
-| Service state | `service_state.py` | `ServiceState` dataclass: registry + driver + lock |
-| Process boot | `service_main.py` | binds the lifecycle service |
-| Manifest parsing | `manifest.py`, `_manifest_parsing.py`, `registry.py` | nested + legacy-flat normalization |
-| Errors | `errors.py` | `ManifestValidationError`, `ServiceError` |
-| Docker execution | `docker_driver.py` | build/start/health probing logic |
-| Shared runtime contract | `runtime/app.py`, `runtime/backend.py`, `runtime/contracts.py` | `/healthz`, `/event`, `/stop`, `/last_status`, `/clear_context` |
-| Agent scaffolding | `scaffold.py`, `templates/` | bundled agent and agent_mux templates |
-| Agent mux runtime | `agent_mux_runtime/` | 29-file subsystem: queue, dispatch, state, codex config, bootstrap |
-| Mux entry point | `agent_mux_runtime/bootstrap.py` | `run_backend()`, `serve_backend()`, logging, manifest loading |
-| Mux dispatch | `agent_mux_runtime/dispatch_engine.py` | `AgentMuxDispatchSpec`, payload marshaling |
-| Mux state | `agent_mux_runtime/state_store.py` | `AgentMuxRuntimeState`, queue/context/dispatch coordination |
-| Mux process | `agent_mux_runtime/backend_process.py` | spawns agent-mux binary, stdin payload |
-| Mux queue | `agent_mux_runtime/queue_store.py`, `queue_mutations.py` | filesystem-backed queue with processing/failed dirs |
-| Tests | `tests/` | registry, runtime, scaffold, Docker, example-agent, mux parity coverage |
+| Lifecycle runtime | `service/runtime.py` | `OrchestraAgentsService` implementation |
+| Route split | `service_routes.py`, `_service_read_ops.py`, `_service_write_ops.py` | HTTP read/write behavior |
+| State holder | `service_state.py` | registry + driver + lock |
+| Service entry | `service_main.py` | process boot |
+| Manifest parsing/building | `manifest.py`, `registry.py`, `_manifest_*` | normalization and schema handling |
+| Migration flow | `_migration_*`, `backend_migration_support.py` | migration CLI/support logic |
+| Docker lifecycle | `docker_driver/`, `_docker_*` | runtime resolution, support, specs |
+| Shared runtime contract | `runtime/` | `/healthz`, `/event`, `/stop`, `/last_status`, `/clear_context` |
+| Backend adapters | `backends/` | `sgr`, `agent_mux`, `opencode`, plus backend-specific helpers |
+| agent_mux implementation references | `backends/agent_mux/`, `templates/agent_mux/` | current mux adapter behavior and scaffold contract |
+| Skills/templates | `skills/`, `templates/`, `scaffold.py` | scaffolded agent layouts and skill assets |
+| Tests | `tests/` | runtime contract, Docker, registry, parity, templates |
 
 ## CONVENTIONS
-- Keep agent lifecycle separate from thread semantics; manifests describe runtimes, not orchestration ownership.
-- Preserve compatibility with both nested manifest shape and earlier flat Orchestra-style fields.
-- Runtime templates are examples and contract carriers; keep the contract stable when adding new backend types.
-- Health status is part Docker state, part HTTP probing; both matter.
-- `agent_mux_runtime/` is the shared core; templates provide concrete backend blueprints and parity tests enforce alignment.
+- Keep agent lifecycle separate from thread ownership. Manifests describe runtime shape, not orchestration semantics.
+- Preserve compatibility between nested manifest shape and legacy-flat fields where the service still supports both.
+- Health is two-part here: Docker/container state plus HTTP probe behavior.
+- Keep mux behavior anchored in `backends/agent_mux/` and `templates/agent_mux/`; do not invent a second shared runtime layer unless the codebase actually grows one.
 
 ## ANTI-PATTERNS
-- Do not push `thread_id` or workflow ownership into the generic runtime contract.
-- Do not break the minimal template when adding `agent_mux` or other backends; prefer additive changes.
-- Do not make `/event` handlers block on long worker runs in managed runtimes.
-- Do not skip manifest validation or registry reload paths when changing agent shape.
-- Do not diverge `agent_mux_runtime/` public API from what templates export — parity tests catch this.
+- Do not push `thread_id` semantics into the generic runtime contract.
+- Do not skip manifest validation or registry reload paths when changing manifest shape.
+- Do not let templates drift from the exported runtime behavior; parity tests exist to catch that.
+- Do not hide Docker/runtime resolution in prompts or manifests when it belongs in `docker_driver/` or backend code.
 
 ## COMMANDS
 ```bash
 PYTHONPATH=src python -m core.orchestra_agents.service_main
-PYTHONPATH=src python -m core.orchestra_agents.scaffold --slug coding_agent --output-dir agents/coding_agent --backend-type codex_framework
+PYTHONPATH=src python -m core.orchestra_agents.scaffold --help
 docker compose --profile test run --rm test
 ```
 
 ## NOTES
-- `templates/agent_mux/IMPLEMENTATION_PLAN.md` contains the strongest constraints for queue-first mux runtimes.
-- `tests/test_runtime_contract.py`, `tests/test_docker_driver.py`, `tests/test_agent_mux_template.py`, and `tests/test_agent_mux_runtime_parity.py` cover most breaking surfaces.
-- Service is decomposed: `service.py` -> `service_routes.py` (HTTP) + `service_state.py` (state) + `errors.py` (error types).
+- `docs/` under this domain and `templates/agent_mux/IMPLEMENTATION_PLAN.md` are strong boundary references before changing mux behavior.
+- If a change touches backends and templates together, run parity-oriented tests first.
