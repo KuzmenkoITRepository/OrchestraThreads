@@ -50,7 +50,7 @@ async def execute_send_via_relay(
             "arguments": {"chat_id": str(chat_id), "message": message},
         },
     }
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(trust_env=False) as client:
         try:
             response = await client.post(
                 relay_url,

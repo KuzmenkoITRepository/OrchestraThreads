@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from core.telegram_events import clear_command
 from core.telegram_events import service_event_payload as _event_payload
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,14 @@ def build_message_delivery(
     return deliver_endpoint, delivery_payload
 
 
+def build_thread_message_text(message_data: dict[str, Any]) -> str:
+    return _event_payload._message_prompt(message_data)  # noqa: WPS437
+
+
+def message_client_request_id(message_data: dict[str, Any]) -> str:
+    return _event_payload._message_event_id(message_data)  # noqa: WPS437
+
+
 def build_clear_delivery(
     message_data: dict[str, Any],
     events_engine_url: str,
@@ -71,20 +80,9 @@ def build_clear_delivery(
     orchestra_agents_url: str,
 ) -> tuple[str, dict[str, Any]] | None:
     """Build delivery payload for clear command."""
-    endpoint = _resolve_clear_endpoint_sync(orchestra_agents_url)
-    if endpoint is None:
+    if not orchestra_agents_url.rstrip("/"):
         return None
-    event_data = {
-        "event_type": "clear_context",
-        "agent_slug": target_agent_slug,
-        "message_id": message_data.get("message_id"),
-    }
+    event_data = clear_command.build_clear_event_payload(message_data, target_agent_slug)
     delivery_payload = _event_payload.build_delivery_payload(target_agent_slug, event_data)
     deliver_endpoint = f"{events_engine_url}/deliver"
     return deliver_endpoint, delivery_payload
-
-
-def _resolve_clear_endpoint_sync(orchestra_agents_url: str) -> str | None:
-    """Resolve clear endpoint (sync helper)."""
-    base = orchestra_agents_url.rstrip("/")
-    return f"{base}/clear_context" if base else None

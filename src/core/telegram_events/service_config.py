@@ -12,6 +12,9 @@ _ENV_EVENTS_ENGINE_URL = "EVENTS_ENGINE_URL"
 _ENV_TARGET_AGENT_SLUG = "TARGET_AGENT_SLUG"
 _ENV_HTTP_HOST = "TELEGRAM_EVENTS_HTTP_HOST"
 _ENV_HTTP_PORT = "TELEGRAM_EVENTS_HTTP_PORT"
+_ENV_ORCHESTRA_THREADS_URL = "ORCHESTRA_THREADS_URL"
+_ENV_TELEGRAM_EVENTS_AGENT_SLUG = "TELEGRAM_EVENTS_AGENT_SLUG"
+_ENV_TELEGRAM_EVENTS_PUBLIC_BASE_URL = "TELEGRAM_EVENTS_PUBLIC_BASE_URL"
 
 _DEFAULT_MCP_URL = "http://better-telegram-mcp:3000/mcp"
 _DEFAULT_EVENTS_URL = "http://better-telegram-mcp:3000/events/telegram"
@@ -19,6 +22,8 @@ _DEFAULT_EVENTS_ENGINE_URL = "http://events-engine:8789"
 _DEFAULT_TARGET_AGENT_SLUG = "secretary"
 _DEFAULT_HTTP_HOST = "0.0.0.0"
 _DEFAULT_HTTP_PORT = "8787"
+_DEFAULT_ORCHESTRA_THREADS_URL = "http://orchestra-threads:8788"
+_DEFAULT_TELEGRAM_EVENTS_AGENT_SLUG = "telegram_events"
 
 
 def configure_logging() -> None:
@@ -45,6 +50,12 @@ def _service_options(logger: logging.Logger) -> dict[str, Any]:
         "target_agent_slug": os.getenv(_ENV_TARGET_AGENT_SLUG, _DEFAULT_TARGET_AGENT_SLUG),
         "http_host": os.getenv(_ENV_HTTP_HOST, _DEFAULT_HTTP_HOST),
         "http_port": int(os.getenv(_ENV_HTTP_PORT, _DEFAULT_HTTP_PORT)),
+        "threads_url": os.getenv(_ENV_ORCHESTRA_THREADS_URL, _DEFAULT_ORCHESTRA_THREADS_URL),
+        "agent_slug": os.getenv(
+            _ENV_TELEGRAM_EVENTS_AGENT_SLUG,
+            _DEFAULT_TELEGRAM_EVENTS_AGENT_SLUG,
+        ),
+        "public_base_url": os.getenv(_ENV_TELEGRAM_EVENTS_PUBLIC_BASE_URL, "").strip(),
     }
 
 
@@ -58,4 +69,7 @@ def build_service(logger: logging.Logger) -> TelegramEventsService:
         target_agent_slug=service_options["target_agent_slug"],
         http_host=service_options["http_host"],
         http_port=service_options["http_port"],
+        threads_url=service_options["threads_url"],
+        agent_slug=service_options["agent_slug"],
+        public_base_url=service_options["public_base_url"],
     )
