@@ -4,16 +4,18 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import sys
 import tempfile
+import unittest
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-_DEFAULT_PROXY_URL = "http://orchestra-wet:8100"
-_DEFAULT_MODELS_URL = "http://orchestra-omniroute:20128/v1/models"
+_DEFAULT_OMNIROUTE_URL = "http://orchestra-omniroute:20128"
+_DEFAULT_MODELS_URL = f"{_DEFAULT_OMNIROUTE_URL}/v1/models"
 _DEFAULT_TIMEOUT_SECONDS = 180
 
 
@@ -100,8 +102,6 @@ def _build_settings(case: _SmokeCase, root_dir: Path) -> Any:
         {
             "state_root": str(root_dir / case.family / "state"),
             "artifact_root": str(root_dir / case.family / "artifacts"),
-            "llm_proxy_url": str(os.getenv("LLM_PROXY_URL") or _DEFAULT_PROXY_URL),
-            "llm_proxy_api_key": str(os.getenv("LLM_PROXY_API_KEY") or "").strip(),
             "llm_route_policy": case.route_policy,
             "model": case.model,
             "timeout_seconds": _DEFAULT_TIMEOUT_SECONDS,
@@ -112,6 +112,44 @@ def _build_settings(case: _SmokeCase, root_dir: Path) -> Any:
         llm_route_policy=case.route_policy,
         llm_model=case.model,
     )
+
+
+class _ScopedEnv:
+    def __init__(self, updates: dict[str, str]) -> None:
+        self._updates = updates
+        self._previous: dict[str, str | None] = {}
+
+    def __enter__(self) -> None:
+        for key, value in self._updates.items():
+            self._previous[key] = os.environ.get(key)
+            os.environ[key] = value
+
+    def __exit__(self, *_args: object) -> None:
+        for key, previous in self._previous.items():
+            if previous is None:
+                os.environ.pop(key, None)
+                continue
+            os.environ[key] = previous
+
+
+def _omniroute_env() -> dict[str, str]:
+    return {
+        "OMNIROUTE_URL": str(os.getenv("OMNIROUTE_URL") or _DEFAULT_OMNIROUTE_URL).strip(),
+        "OMNIROUTE_API_KEY": str(os.getenv("OMNIROUTE_API_KEY") or "").strip(),
+    }
+
+
+def _agent_mux_binary() -> str:
+    return str(os.getenv("AGENT_MUX_BINARY") or "agent-mux").strip() or "agent-mux"
+
+
+def _ensure_smoke_prerequisites() -> None:
+    if shutil.which(_agent_mux_binary()) is None:
+        raise unittest.SkipTest("agent-mux binary not installed")
+    try:
+        _json_get(str(os.getenv("OT_SMOKE_MODELS_URL") or _DEFAULT_MODELS_URL).strip())
+    except (OSError, URLError, json.JSONDecodeError) as exc:
+        raise unittest.SkipTest(f"Omniroute models endpoint unavailable: {exc}") from exc
 
 
 def _request_prompt(case: _SmokeCase) -> str:
@@ -150,13 +188,14 @@ async def _collect_case_result(case: _SmokeCase, root_dir: Path) -> dict[str, ob
         run_agent_mux,
     )
 
-    request = _build_request(case, root_dir)
-    run_state = await run_agent_mux(request)
-    return await collect_agent_mux_result(
-        run_state["process"],
-        run_state["stdin_payload"],
-        close_stdin_after_start=False,
-    )
+    with _ScopedEnv(_omniroute_env()):
+        request = _build_request(case, root_dir)
+        run_state = await run_agent_mux(request)
+        return await collect_agent_mux_result(
+            run_state["process"],
+            run_state["stdin_payload"],
+            close_stdin_after_start=False,
+        )
 
 
 def _failed_result(
@@ -234,6 +273,11 @@ async def _main() -> int:
     with tempfile.TemporaryDirectory(prefix="mux_smoke_") as temp_dir:
         results = await _run_all_cases(Path(temp_dir), listed_models)
     return _emit_summary(results)
+
+
+def test_agent_mux_real_inference_smoke() -> None:
+    _ensure_smoke_prerequisites()
+    assert asyncio.run(_main()) == 0
 
 
 if __name__ == "__main__":

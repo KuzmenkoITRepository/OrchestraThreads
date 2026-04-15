@@ -38,7 +38,7 @@ The script now does this in order:
 
 1. Creates the workspace and runtime directories.
 2. Clones the base Vault runtime secret and regenerates environment-specific passwords.
-3. Starts OmniRoute + WET first.
+3. Starts OmniRoute first.
 4. Logs into OmniRoute with `OMNIROUTE_INITIAL_PASSWORD`.
 5. Creates a runtime API key named `orchestrathreads-<env>-runtime`.
 6. Stores that key back into Vault as `OMNIROUTE_API_KEY`.

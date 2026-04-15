@@ -19,6 +19,17 @@ class AgentMuxCodexConfigTests(unittest.TestCase):
             ),
         )
 
+    def test_codex_config_uses_omniroute_env_key(self) -> None:
+        lines = base_config_lines(
+            model="cx/gpt-5.4-mini",
+            base_url="http://proxy",
+            env_key="OMNIROUTE_API_KEY",
+        )
+
+        self.assertIn('name = "OmniRoute"', lines)
+        self.assertIn('env_key = "OMNIROUTE_API_KEY"', lines)
+        self.assertNotIn('env_key = "LEGACY_API_KEY"', lines)
+
     def test_codex_config_uses_omniroute_api_key(self) -> None:
         self.assertIn(
             'env_key = "OMNIROUTE_API_KEY"',

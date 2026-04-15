@@ -86,7 +86,6 @@ base_data = vault_request(
 
 payload = dict(base_data)
 payload['OT_OMNIROUTE_DATA_DIR'] = f'./runtime_state/orchestrathreads-{environment}/omniroute-data'
-payload['OT_OMNIROUTE_WET_DIR'] = f'./runtime_state/orchestrathreads-{environment}/omniroute-wet'
 payload['OT_SESSIONS_DIR'] = f'./runtime_state/orchestrathreads-{environment}/sessions'
 payload['POSTGRES_PASSWORD'] = f'pg-{environment}-{secrets.token_hex(8)}'
 payload['LANGFUSE_DB_PASSWORD'] = f'lf-{environment}-{secrets.token_hex(8)}'
@@ -109,8 +108,6 @@ for key in (
     'OT_PORT_SCHEDULER',
     'OT_PORT_LANGFUSE',
     'OT_PORT_OMNIROUTE',
-    'OT_PORT_WET',
-    'OT_PORT_WET_ADMIN',
 ):
     payload[key] = ''
 

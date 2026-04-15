@@ -49,7 +49,7 @@ def base_config_lines(*, model: str, base_url: str, env_key: str | None) -> list
         'model_provider = "omniroute"',
         "",
         "[model_providers.omniroute]",
-        'name = "OmniRoute/WET"',
+        'name = "OmniRoute"',
         f"base_url = {toml_quote(base_url)}",
         'wire_api = "responses"',
         f"env_http_headers = {{ {_render_headers()} }}",

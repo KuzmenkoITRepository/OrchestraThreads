@@ -470,7 +470,7 @@ main() {
   if [[ "${pull_flag}" == "--pull" ]]; then
     docker compose --env-file "${output_env_file}" pull
   fi
-  docker compose --env-file "${output_env_file}" up -d --build orchestra-omniroute orchestra-wet
+  docker compose --env-file "${output_env_file}" up -d --build orchestra-omniroute
 
   omniroute_bootstrap_json="$(bash "${OMNIROUTE_BOOTSTRAP_SCRIPT}" \
     --base-url "${omniroute_base_url}" \

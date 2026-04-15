@@ -25,7 +25,7 @@ What the scaffolded wrapper already does:
 - rotates `context_id` only on `POST /clear_context`;
 - carries a compact durable context memory until explicit `clear_context`;
 - exposes queue-oriented runtime status;
-- generates runtime Codex config pointed at `omniroute + wet`;
+- generates runtime Codex config pointed at direct `omniroute`;
 - writes generic active event context for optional MCP tools;
 - launches `agent-mux --stdin` for codex-only worker execution.
 - supports optional MCP server configuration from backend config;
@@ -36,8 +36,8 @@ What you implement next:
 - actual `agent-mux` dispatch execution;
 - event-specific prompts and tool surfaces for each concrete agent;
 - optional integrations such as `orchestra_threads`, Telegram ingress, or future services;
-- steering, recovery, and omniroute/wet compatibility validation.
+- steering, recovery, and direct Omniroute validation.
 
-The compatibility layer is intended to live inside the agent runtime, so
+The execution layer is intended to live inside the agent runtime, so
 external systems keep ownership of workflow semantics while `agent-mux`
 stays an execution substrate.

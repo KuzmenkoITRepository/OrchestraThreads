@@ -1,11 +1,13 @@
+# flake8: noqa: WPS202
 from __future__ import annotations
 
 import os
 import tempfile
 import unittest
 from typing import Any
+from unittest.mock import patch
 
-from core.orchestra_agents.backends.sgr import SGRMinimaxBackend, configure_mcp_tools
+from core.orchestra_agents.backends.sgr import SGRMinimaxBackend, configure_mcp_tools, llm_transport
 from core.orchestra_agents.tests.template_helpers.sgr_assertions import (
     _assert_inactive_delivery_result,
     _assert_message_event_result,
@@ -217,6 +219,35 @@ class SGRMinimaxDeliveryEventTests(_SGRMinimaxBackendBase):
         self.assertEqual(len(self.thread_service.message_calls), 0)
         self.assertEqual(len(self.thread_service.notification_calls), 0)
         self.assertEqual(len(self.omniroute.chat_requests), 2)
+
+
+class SGRDirectOmniRouteTransportTests(unittest.TestCase):
+    def test_chat_completions_url_uses_omniroute(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"OMNIROUTE_URL": "http://example-omniroute:20128/"},
+            clear=False,
+        ):
+            url = llm_transport.chat_completions_url("minimax_only")
+
+        self.assertEqual(url, "http://example-omniroute:20128/v1/chat/completions")
+
+    def test_build_headers_use_direct_bearer_token(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"OMNIROUTE_API_KEY": "  direct-omniroute-key  "},
+            clear=False,
+        ):
+            headers = llm_transport.build_headers(
+                agent_slug="sgr",
+                payload={"agent_slug": "secretary"},
+                trace_agent_header="x-trace-agent",
+                trace_context_header="x-trace-context",
+            )
+
+        self.assertEqual(headers["Authorization"], "Bearer direct-omniroute-key")
+        self.assertEqual(headers["x-trace-agent"], "sgr")
+        self.assertEqual(headers["x-trace-context"], "secretary")
 
 
 def _compact_thread_payload() -> dict[str, Any]:

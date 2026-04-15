@@ -14,7 +14,7 @@ After the Telegram event handling fix, the `secretary` agent now receives and st
 - `events-engine` returns HTTP 500 to `telegram-events`
 - no Telegram reply is sent
 
-This is a runtime/auth configuration failure in the LLM proxy path, not an event-kind routing failure.
+This is a runtime/auth configuration failure in the direct LLM path, not an event-kind routing failure.
 
 ### Severity
 
@@ -37,7 +37,7 @@ Reproduction steps:
 
 ### Observed behavior
 
-The request path reaches the `secretary` agent, but the agent crashes while calling the LLM proxy.
+The request path reaches the `secretary` agent, but the agent crashes while calling the OmniRoute-backed LLM endpoint.
 
 ### Expected behavior
 
@@ -79,7 +79,7 @@ Source: `docker logs orchestra-agent-secretary --tail 200`
 
 This confirms BUG-001 was at least partially addressed: `telegram_message` is now considered actionable.
 
-#### 4. Secretary crashes on LLM proxy authentication
+#### 4. Secretary crashes on OmniRoute authentication
 
 Source: `docker logs orchestra-agent-secretary --tail 200`
 
@@ -121,14 +121,13 @@ RuntimeError: omniroute chat request failed: HTTP 401: {"error":{"message":"Inva
 2026-04-07 13:27:00,970 INFO aiohttp.access: 172.20.0.13 [07/Apr/2026:13:27:00 +0000] "POST /event HTTP/1.1" 500 246 "-" "Python/3.11 aiohttp/3.13.5"
 ```
 
-#### 5. Wet proxy confirms 401 auth failure
+#### 5. OmniRoute auth confirms 401 failure
 
-Source: `docker logs orchestrathreads-orchestra-wet-1 --tail 120`
+Source: `docker logs orchestrathreads-orchestra-omniroute-1 --tail 120`
 
 ```text
-[wet] serving on http://0.0.0.0:8100 (auto mode)
-[wet] session id: 5d25e576-22c1-4e41-a762-2355a0af768e
-[wet] [session:5d25e576-22c1-4e41-a762-2355a0af768e] POST /v1/chat/completions -> 401 (19ms) [req:79be0154c0e32a6ede4d684d4e6ab06b]
+2026-04-07 13:27:00,967 ERROR aiohttp.server: Error handling request from 172.20.0.13
+RuntimeError: omniroute chat request failed: HTTP 401: {"error":{"message":"Invalid API key","type":"authentication_error","code":"invalid_api_key"}}
 ```
 
 ### Relevant config snapshot
@@ -150,14 +149,14 @@ backend:
 
 ### Likely root cause
 
-The `secretary` SGR runtime is now reaching `wet`, but the credential sent to the proxy is rejected.
+The `secretary` SGR runtime is now reaching OmniRoute, but the credential sent to the runtime endpoint is rejected.
 
 Possible reasons:
 
 1. The runtime sent an invalid placeholder credential instead of `OMNIROUTE_API_KEY`.
 2. The SGR LLM client is sending the wrong auth header format.
-3. The other fix changed manifest/runtime structure, but the actual auth contract expected by `wet` was not updated.
-4. The runtime may now be pointing at a different wet/omniroute auth mode than the previous agent-mux path.
+3. The other fix changed manifest/runtime structure, but the actual auth contract expected by OmniRoute was not updated.
+4. The runtime may now be pointing at a different OmniRoute auth mode than the previous agent-mux path.
 
 ### Fix direction
 
@@ -165,14 +164,14 @@ Investigate and align the auth contract between:
 
 - `agents/sgr/agent_runtime/llm_client.py`
 - `agents/secretary/manifest.yaml`
-- current `wet` auth expectations
-- current `omniroute` auth expectations
+- current OmniRoute auth expectations
+- current runtime API key expectations
 
 Specifically verify:
 
 1. what header `SGRLLMClient` sends to `OMNIROUTE_URL`
 2. whether `OMNIROUTE_API_KEY` is passed into that client and used correctly
-3. whether `wet` in `auto` mode expects a real `OMNIROUTE_API_KEY`
+3. whether the runtime endpoint expects a real `OMNIROUTE_API_KEY`
 4. whether the configured direct OmniRoute model path matches the working Minimax setup
 
 ### Current state after failure
@@ -186,7 +185,6 @@ orchestrathreads-langfuse-postgres-1     Up 4 minutes (healthy)
 orchestrathreads-orchestra-agents-1      Up 4 minutes (healthy)
 orchestrathreads-orchestra-omniroute-1   Up 4 minutes (healthy)
 orchestrathreads-orchestra-threads-1     Up 4 minutes (healthy)
-orchestrathreads-orchestra-wet-1         Up 4 minutes (healthy)
 orchestrathreads-postgres-1              Up 4 minutes (healthy)
 orchestrathreads-scheduler-cron-1        Up 4 minutes (healthy)
 orchestrathreads-task-registry-1         Up 4 minutes (healthy)
@@ -199,4 +197,4 @@ orchestrathreads-telegram-mcp-1          Up 4 minutes (healthy)
 This is a follow-up failure after the previous `telegram_message` routing issue:
 
 - BUG-001: event dropped before processing
-- BUG-002: event processed, but LLM proxy auth fails
+- BUG-002: event processed, but OmniRoute auth fails

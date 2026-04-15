@@ -55,15 +55,10 @@ def llm_runtime_settings(
 ) -> dict[str, Any]:
     return {
         "omniroute_url": str(
-            raw_config.get("omniroute_url")
-            or raw_config.get("llm_proxy_url")
-            or "http://orchestra-omniroute:20128"
+            raw_config.get("omniroute_url") or "http://orchestra-omniroute:20128"
         ).rstrip("/"),
         "omniroute_api_key": str(
-            raw_config.get("omniroute_api_key")
-            or raw_config.get("llm_proxy_api_key")
-            or os.getenv("OMNIROUTE_API_KEY")
-            or ""
+            raw_config.get("omniroute_api_key") or os.getenv("OMNIROUTE_API_KEY") or ""
         ).strip(),
         "llm_route_policy": str(
             llm_route_policy or llm_config.route_policy or CODEX_ONLY_POLICY
