@@ -17,7 +17,7 @@ This file captures every blocker, workaround, and extra manual step encountered 
 - Starting the Vault profile and querying seal status immediately caused a transient `curl: (56) Recv failure: Connection reset by peer`.
 - Operational impact: even the first health probe may fail unless operators manually retry after container startup.
 
-- Canonical prod deploy on approved ref `0df818b` progressed through workspace preparation and startup of `orchestra-omniroute`/`orchestra-wet`, then failed inside `deploy/bootstrap-omniroute.sh` with HTTP `401`.
+- Canonical prod deploy on approved ref `0df818b` progressed through workspace preparation and startup of `orchestra-omniroute`, then failed inside `deploy/bootstrap-omniroute.sh` with HTTP `401`.
 - Operational impact: `deploy/deploy-env.sh prod` can leave the environment partially started and require manual diagnosis across OmniRoute credentials, readiness, and Vault-stored runtime values.
 
 - The prod OmniRoute instance reports `setupComplete=true` while using a persistent host bind mount at `runtime_state/orchestrathreads-prod/omniroute-data`.

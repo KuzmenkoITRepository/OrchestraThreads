@@ -1,16 +1,15 @@
-# OmniRoute + WET Cookbook
+# OmniRoute Cookbook
 
 ## Overview
 
-OrchestraThreads uses **OmniRoute** + **WET** for LLM inference routing.
+OrchestraThreads uses **OmniRoute** for LLM inference routing.
 
 - **OmniRoute**: Provider management, OAuth, API key storage, model routing
-- **WET**: OpenAI-compatible proxy that routes requests through OmniRoute
 
 ## Architecture
 
 ```
-Agent → WET (port 8100) → OmniRoute (port 20129) → LLM Provider
+Agent → OmniRoute (service URL: http://orchestra-omniroute:20128) → LLM Provider
 ```
 
 ## Quick Start
@@ -18,12 +17,12 @@ Agent → WET (port 8100) → OmniRoute (port 20129) → LLM Provider
 ### 1. Start Services
 
 ```bash
-docker compose up -d orchestra-omniroute orchestra-wet
+docker compose up -d orchestra-omniroute
 ```
 
 ### 2. Log In and Configure Providers
 
-Open OmniRoute UI: http://localhost:20129
+Open OmniRoute UI: http://localhost:20229
 
 Use the `OMNIROUTE_INITIAL_PASSWORD` value printed by the deploy/provision scripts.
 
@@ -31,6 +30,7 @@ The OrchestraThreads deploy flow now auto-creates the runtime API key and stores
 You do **not** need to create the runtime API key manually anymore.
 
 Add your providers:
+
 - **Codex**: OAuth or API key
 - **Anthropic (Claude)**: API key
 - **OpenAI**: API key
@@ -40,7 +40,7 @@ Add your providers:
 ### 3. Test Connection
 
 ```bash
-curl -X POST http://localhost:8101/v1/chat/completions \
+curl -X POST http://localhost:20229/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "codex/gpt-5.4-mini",
@@ -81,10 +81,11 @@ backend:
 Query available models:
 
 ```bash
-curl http://localhost:20129/v1/models | jq '.data[] | .id'
+curl http://localhost:20229/v1/models | jq '.data[] | .id'
 ```
 
 Common models:
+
 - `codex/gpt-5.4-mini` - Fast Codex model
 - `codex/gpt-5.4` - Full Codex model
 - `kiro/claude-haiku-4.5` - Fast Claude
@@ -93,15 +94,15 @@ Common models:
 
 ## Storage
 
-OmniRoute and WET store data in `.omniroute/`:
+OmniRoute stores data in `.omniroute/`:
 
 ```
 .omniroute/
 ├── data/           # OmniRoute database and config
-└── wet/            # WET session data
 ```
 
 This directory is gitignored and contains:
+
 - Provider credentials
 - API keys
 - OAuth tokens
@@ -115,10 +116,7 @@ This directory is gitignored and contains:
 
 ```bash
 # OmniRoute
-curl http://localhost:20129/health
-
-# WET
-docker logs orchestra-wet --tail 50
+curl http://localhost:20229/health
 ```
 
 ### Provider Not Working
@@ -126,6 +124,7 @@ docker logs orchestra-wet --tail 50
 1. Check OmniRoute UI for provider status
 2. Verify API key/OAuth token is valid
 3. Check logs:
+
    ```bash
    docker logs orchestra-omniroute --tail 100
    ```
@@ -133,6 +132,7 @@ docker logs orchestra-wet --tail 50
 ### Model Not Found
 
 Use provider prefix:
+
 - ❌ `gpt-5.4` (ambiguous)
 - ✅ `codex/gpt-5.4` (explicit)
 
@@ -142,13 +142,14 @@ Use provider prefix:
 {"error": {"message": "No credentials for provider: anthropic"}}
 ```
 
-**Solution**: Add provider credentials in OmniRoute UI (http://localhost:20129)
+**Solution**: Add provider credentials in OmniRoute UI (http://localhost:20229)
 
 ## Advanced Configuration
 
 ### Custom Routing
 
 OmniRoute supports:
+
 - Load balancing across multiple accounts
 - Fallback providers
 - Rate limiting
@@ -162,12 +163,9 @@ Configure in OmniRoute UI → Settings → Routing
 # docker-compose.yml
 orchestra-omniroute:
   environment:
-    OMNIROUTE_PORT: 20129
+    PORT: 20128
+    HOSTNAME: 0.0.0.0
     INITIAL_PASSWORD: your-secure-password
-
-orchestra-wet:
-  environment:
-    WET_UPSTREAM: http://orchestra-omniroute:20129
 ```
 
 ## Migration to OmniRoute defaults
@@ -176,9 +174,6 @@ If updating existing agents:
 
 1. Update agent manifests:
    ```yaml
-   # Previous runtime contract
-   WET-compatible endpoint via legacy naming
-
    # Current runtime contract
    OMNIROUTE_URL: http://orchestra-omniroute:20128
    OMNIROUTE_API_KEY: ${OMNIROUTE_API_KEY}
@@ -198,10 +193,8 @@ If updating existing agents:
 2. **Monitor costs**: Check OmniRoute UI for usage stats
 3. **Backup credentials**: Export provider config from OmniRoute UI
 4. **Test before production**: Verify each provider works before deploying
-5. **Keep WET internal**: Only expose OmniRoute UI externally if needed
 
 ## References
 
 - OmniRoute: https://github.com/diegosouzapw/omniroute
-- WET Proxy: https://github.com/dzhng/wet
 - OpenAI API Spec: https://platform.openai.com/docs/api-reference
