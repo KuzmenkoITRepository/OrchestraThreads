@@ -42,10 +42,10 @@ bash deploy/provision-environment.sh <env-name> [base-env]
 What it does:
 1. Validates environment name and checks disk space
 2. Creates directory structure under `environments/<env>/`
-3. Allocates 10 unique host ports (range 30000-39999)
+3. Allocates unique host ports in range 30000-39999
 4. Creates a git worktree (detached HEAD from current master)
 5. Provisions Vault secrets (cloned from base env with isolated passwords)
-6. Starts OmniRoute + WET and auto-creates the runtime API key
+6. Starts OmniRoute and auto-creates the runtime API key
 7. Deploys the full Docker Compose stack
 
 ### teardown-environment.sh
@@ -85,7 +85,7 @@ Supports both standard environments (dev/stg/prod) and provisioned environments.
 
 `deploy-env.sh` now bootstraps OmniRoute access automatically:
 
-1. Starts OmniRoute + WET first
+1. Starts OmniRoute first
 2. Logs into OmniRoute with `OMNIROUTE_INITIAL_PASSWORD`
 3. Creates the runtime API key `orchestrathreads-<env>-runtime`
 4. Stores it back into Vault as `OMNIROUTE_API_KEY`
@@ -125,7 +125,6 @@ environments/
 │   ├── workspace/          # git worktree (detached HEAD)
 │   ├── runtime/
 │   │   ├── omniroute-data/ # isolated omniroute state
-│   │   ├── omniroute-wet/  # isolated wet proxy state
 │   │   └── sessions/       # isolated telegram sessions
 │   ├── ports.env           # allocated host ports
 │   └── approle.env         # Vault AppRole credentials
@@ -147,20 +146,19 @@ Each environment is isolated across these dimensions:
 
 ## Port Allocation
 
-Each environment gets 10 sequential ports from the 30000-39999 range:
+Each environment gets 7 dynamic ports from the 30000-39999 range, plus fixed Vault `OT_PORT_VAULT=8200`:
 
 | Offset | Service | Env Variable |
 |--------|---------|--------------|
-| +0 | Vault | OT_PORT_VAULT |
-| +1 | Langfuse | OT_PORT_LANGFUSE |
-| +2 | Orchestra Threads | OT_PORT_THREADS |
-| +3 | Events Engine | OT_PORT_EVENTS |
-| +4 | Orchestra Agents | OT_PORT_AGENTS |
-| +5 | Task Registry | OT_PORT_TASK_REGISTRY |
-| +6 | Scheduler | OT_PORT_SCHEDULER |
-| +7 | Omniroute | OT_PORT_OMNIROUTE |
-| +8 | WET | OT_PORT_WET |
-| +9 | WET Admin | OT_PORT_WET_ADMIN |
+| +0 | Orchestra Threads | OT_PORT_THREADS |
+| +1 | Events Engine | OT_PORT_EVENTS |
+| +2 | Orchestra Agents | OT_PORT_AGENTS |
+| +3 | Task Registry | OT_PORT_TASK_REGISTRY |
+| +4 | Scheduler | OT_PORT_SCHEDULER |
+| +5 | Langfuse | OT_PORT_LANGFUSE |
+| +6 | Omniroute | OT_PORT_OMNIROUTE |
+
+Vault uses fixed `OT_PORT_VAULT=8200` and is not part of sequential allocation.
 
 Collision detection scans existing `ports.env` files and verifies port availability with `ss`.
 

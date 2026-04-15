@@ -31,16 +31,14 @@ _port_allocator_ports_file() {
 
 _port_allocator_port_keys() {
   printf '%s\n' \
-    OT_PORT_VAULT \
-    OT_PORT_LANGFUSE \
     OT_PORT_THREADS \
     OT_PORT_EVENTS \
     OT_PORT_AGENTS \
     OT_PORT_TASK_REGISTRY \
     OT_PORT_SCHEDULER \
+    OT_PORT_LANGFUSE \
     OT_PORT_OMNIROUTE \
-    OT_PORT_WET \
-    OT_PORT_WET_ADMIN
+    OT_PORT_VAULT
 }
 
 _port_allocator_port_values() {
@@ -56,8 +54,7 @@ _port_allocator_port_values() {
     "$((base_port + 5))" \
     "$((base_port + 6))" \
     "$((base_port + 7))" \
-    "$((base_port + 8))" \
-    "$((base_port + 9))"
+    "8200"
 }
 
 _port_allocator_validate_env_name() {
