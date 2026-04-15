@@ -13,7 +13,7 @@ Infrastructure:
 - database: Postgres in a dedicated container
 - service: `orchestra-threads` container
 - agent lifecycle service: `orchestra-agents` container
-- llm routing: `orchestra-omniroute` + `orchestra-wet` containers
+- llm routing: `orchestra-omniroute` container
 - tests: Docker-only, against Postgres
 
 Docker test suite:
