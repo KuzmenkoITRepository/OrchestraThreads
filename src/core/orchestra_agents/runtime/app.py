@@ -16,6 +16,9 @@ from core.orchestra_agents.runtime.contracts import (
     StopRequest,
 )
 
+_REGISTRATION_RETRY_ATTEMPTS = 5
+_REGISTRATION_RETRY_DELAY_SECONDS = 1.0
+
 
 def _json_error(message: str, *, status: int) -> web.Response:
     return web.json_response({"success": False, "error": message}, status=status)
@@ -128,19 +131,32 @@ class StandardAgentApplication:
         if request_data is None:
             return
         registration_url, registration_payload = request_data
-        response = await _post_registration(registration_url, registration_payload)
+        response = await _post_registration_attempt(
+            registration_url,
+            registration_payload,
+            attempts_left=_REGISTRATION_RETRY_ATTEMPTS,
+        )
         _validate_registration_response(response)
 
 
-async def _post_registration(
+async def _post_registration_attempt(
     registration_url: str,
     registration_payload: dict[str, str],
+    *,
+    attempts_left: int,
 ) -> httpx.Response:
     try:
         async with httpx.AsyncClient(trust_env=False, timeout=30.0) as client:
             return await client.post(registration_url, json=registration_payload)
-    except httpx.HTTPError as exc:
-        raise RuntimeError("telegram-events self-registration failed") from exc
+    except httpx.TransportError as exc:
+        if attempts_left <= 1:
+            raise RuntimeError("telegram-events self-registration failed") from exc
+        await asyncio.sleep(_REGISTRATION_RETRY_DELAY_SECONDS)
+        return await _post_registration_attempt(
+            registration_url,
+            registration_payload,
+            attempts_left=attempts_left - 1,
+        )
 
 
 def _validate_registration_response(response: httpx.Response) -> None:

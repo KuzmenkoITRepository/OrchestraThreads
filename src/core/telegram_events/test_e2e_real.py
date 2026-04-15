@@ -1,4 +1,8 @@
 from core.telegram_events.tests import test_e2e_real as _test_e2e_real
 
+test_startup_skips_thread_self_registration = (
+    _test_e2e_real.test_startup_skips_thread_self_registration
+)
 test_clear_resolves_and_delivers = _test_e2e_real.test_clear_resolves_and_delivers
 test_message_forwarded = _test_e2e_real.test_message_forwarded
+test_unknown_source_warn_drop = _test_e2e_real.test_unknown_source_event_warns_and_drops

@@ -18,7 +18,6 @@ class RuntimeResourceConfig:
     http_host: str
     http_port: int
     threads_url: str
-    agent_slug: str
     agent_registry: Any
     register_agent: Any
 
@@ -38,7 +37,6 @@ class RuntimeResources:
     http_client: httpx.AsyncClient
     threads_client: OrchestraThreadsClient
     http_runner: web.AppRunner
-    heartbeat_task: asyncio.Task[None]
 
 
 @dataclass(frozen=True)

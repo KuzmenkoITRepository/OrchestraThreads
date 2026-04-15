@@ -29,16 +29,11 @@ async def start_runtime_resources(
         agent_registry=config.agent_registry,
         register_agent=config.register_agent,
     )
-    heartbeat_task = asyncio.create_task(
-        _heartbeat_loop(threads_client, agent_slug=config.agent_slug),
-        name=f"{config.agent_slug}-threads-heartbeat",
-    )
     return RuntimeResources(
         shutdown_future=asyncio.get_running_loop().create_future(),
         http_client=http_client,
         threads_client=threads_client,
         http_runner=http_runner,
-        heartbeat_task=heartbeat_task,
     )
 
 
@@ -60,16 +55,11 @@ async def start_sse_consumer(*, config: ConsumerConfig) -> ManagedConsumer:
 async def stop_runtime(
     runner: web.AppRunner | None,
     shutdown_future: asyncio.Future[None] | None,
-    heartbeat_task: asyncio.Task[None] | None,
 ) -> None:
     if runner is not None:
         await runner.cleanup()
     if shutdown_future is not None and not shutdown_future.done():
         shutdown_future.set_result(None)
-    if heartbeat_task is None:
-        return
-    heartbeat_task.cancel()
-    await asyncio.gather(heartbeat_task, return_exceptions=True)
 
 
 async def close_runtime_clients(
@@ -87,9 +77,3 @@ async def stop_consumers(consumers: Iterable[ManagedConsumer]) -> None:
         *(consumer.consumer.stop() for consumer in consumers),
         return_exceptions=True,
     )
-
-
-async def _heartbeat_loop(client: OrchestraThreadsClient, *, agent_slug: str) -> None:
-    while True:
-        await asyncio.sleep(15.0)
-        await client.heartbeat(agent_slug=agent_slug)

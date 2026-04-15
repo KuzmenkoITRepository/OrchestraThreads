@@ -92,3 +92,65 @@ Events sent through `events-engine` keep Telegram source metadata and registry-d
 - Internal registration uses registry outcomes `REGISTERED`, `DUPLICATE`, `REMAPPED`, and `CONFLICT`.
 - Unknown source MCP URLs are ignored after logging.
 - `telegram-events` owns inbound routing only. Direct Telegram send path stays in agent runtime through `telegram-mcp` MCP.
+
+## Prod stale-state cleanup runbook
+
+Use this runbook only for the legacy `telegram_events` slug that came from the old self-registration path. It is a one-time operational cleanup for stale prod thread-service state, not a runtime feature.
+
+### 1. Inspect stale agent row
+
+Check the thread-service `agents` row for the obsolete callback target:
+
+```sql
+SELECT agent_slug, display_name, event_callback_url, stop_callback_url, last_seen_at
+FROM agents
+WHERE agent_slug = 'telegram_events';
+```
+
+Expected stale values, if row still exists, include `agent_slug = 'telegram_events'` and `event_callback_url = 'http://telegram-events:8787/event'`.
+
+### 2. Inspect pending deliveries for `telegram_events`
+
+Check queued thread events that still target the stale slug:
+
+```sql
+SELECT event_id, thread_id, to_agent_slug, pending_delivery, next_delivery_attempt_at, delivery_attempt_count, last_delivery_error
+FROM thread_events
+WHERE to_agent_slug = 'telegram_events'
+  AND pending_delivery = TRUE
+ORDER BY next_delivery_attempt_at NULLS FIRST, created_at ASC, sequence_no ASC;
+```
+
+If you want the exact active-delivery set the worker sees, use the same filter as the delivery loop:
+
+```sql
+SELECT e.event_id, e.thread_id, e.to_agent_slug
+FROM thread_events e
+JOIN threads t ON t.thread_id = e.thread_id
+WHERE e.pending_delivery = TRUE
+  AND e.to_agent_slug = 'telegram_events'
+  AND t.status NOT IN ('done', 'closed')
+  AND COALESCE(e.next_delivery_attempt_at, e.created_at) <= NOW();
+```
+
+### 3. Cleanup order
+
+1. Deploy the code removal that stops `telegram-events` self-registration.
+2. Re-run the stale row and pending-delivery inspection above and confirm the obsolete slug is still the only cleanup target.
+3. Cancel pending deliveries for `telegram_events` in thread service first, before deleting any stale agent row. If you use the thread-service store path, this means clearing pending deliveries tied to the stale slug so no future retry keeps pointing at `http://telegram-events:8787/event`.
+4. Remove the stale `agents` row for `telegram_events` after pending deliveries are cleared.
+
+### 4. Post-cleanup verification
+
+Verify both checks are clean:
+
+```sql
+SELECT 1 FROM agents WHERE agent_slug = 'telegram_events';
+SELECT 1 FROM thread_events WHERE to_agent_slug = 'telegram_events' AND pending_delivery = TRUE;
+```
+
+Both queries must return no rows. Also confirm thread-service logs no longer show delivery attempts toward `http://telegram-events:8787/event` after the deploy.
+
+### Operational boundary
+
+This cleanup is runbook-only. No generic unregister or delete API is added to `telegram-events`, and no runtime auto-delete behavior is introduced.

@@ -50,17 +50,12 @@ def _client_request_id(message_data: dict[str, Any]) -> str:
     return _runtime_message_handler.message_client_request_id(message_data)
 
 
-def _public_base_url(options: dict[str, Any]) -> str:
-    return str(options.get("public_base_url", "")).strip().rstrip("/")
-
-
 async def _prepare_runtime(service: TelegramEventsService) -> None:
     clear_proxy_env()
     runtime_resources = await runtime_support.start_runtime_resources(
         config=runtime_binding_support.runtime_resource_config(service),
     )
     runtime_binding_support.apply_runtime_resources(service, runtime_resources)
-    await runtime_binding_support.register_with_threads(service)
 
 
 class _TelegramThreadRegistry:
@@ -89,7 +84,7 @@ class TelegramEventsService:
         self._http_port = int(options.get("http_port", 8787))
         config = resolve_forwarding_config(options)
         self._events_engine_url = config.events_engine_url
-        self._agent_slug = str(options.get("agent_slug", _TELEGRAM_EVENTS_AGENT_SLUG)).strip()
+        self._agent_slug = _TELEGRAM_EVENTS_AGENT_SLUG
         self._bearer_token = str(options.get("bearer_token", ""))
         self._agent_registry = TelegramAgentRegistry()
         self._agent_registry_lock = asyncio.Lock()
@@ -101,10 +96,8 @@ class TelegramEventsService:
             options.get("orchestra_agents_url", _ORCHESTRA_AGENTS_URL)
         ).rstrip("/")
         self._threads_url = str(options.get("threads_url", _ORCHESTRA_THREADS_URL)).rstrip("/")
-        self._public_base_url = _public_base_url(options)
         self._threads_client: OrchestraThreadsClient | None = None
         self._thread_registry = _TelegramThreadRegistry()
-        self._heartbeat_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         """Start the service."""
@@ -126,7 +119,6 @@ class TelegramEventsService:
         await runtime_support.stop_runtime(
             self._http_runner,
             self._shutdown_future,
-            self._heartbeat_task,
         )
         await runtime_support.stop_consumers(tuple(self._consumers_by_mcp_url.values()))
         self._consumers_by_mcp_url.clear()

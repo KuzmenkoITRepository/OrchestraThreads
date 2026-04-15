@@ -9,12 +9,20 @@ async def test_register_idempotent() -> None:
     await _impl.test_register_agent_is_idempotent_for_duplicate_registration()
 
 
+async def test_start_skips_threads_self_registration() -> None:
+    await _impl.test_start_skips_threads_self_registration()
+
+
 async def test_register_callback_binding() -> None:
     await _impl.test_register_agent_binds_callback_to_normalized_source_mcp_url()
 
 
 async def test_register_remap_consumer_swap() -> None:
     await _impl.test_register_agent_remap_starts_new_consumer_and_stops_old_unused_consumer()
+
+
+async def test_register_failure_rollback() -> None:
+    await _impl.test_register_agent_failure_keeps_registry_and_consumers_unchanged()
 
 
 async def test_stop_active_consumers() -> None:

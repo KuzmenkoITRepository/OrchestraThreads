@@ -194,6 +194,7 @@ class RuntimeContractTests(unittest.IsolatedAsyncioTestCase):
         site = MagicMock()
         site.start = AsyncMock()
         post = AsyncMock(side_effect=httpx.TransportError("register failed"))
+        sleep = AsyncMock()
 
         with patch.dict(
             os.environ,
@@ -205,22 +206,57 @@ class RuntimeContractTests(unittest.IsolatedAsyncioTestCase):
         ):
             with patch("core.orchestra_agents.runtime.app.web.AppRunner", return_value=app_runner):
                 with patch("core.orchestra_agents.runtime.app.web.TCPSite", return_value=site):
-                    with patch(
-                        "core.orchestra_agents.runtime.app.httpx.AsyncClient",
-                        return_value=_DummyAsyncClient(post=post),
-                    ):
-                        with self.assertRaisesRegex(
-                            RuntimeError,
-                            "telegram-events self-registration failed",
+                    with patch("core.orchestra_agents.runtime.app.asyncio.sleep", sleep):
+                        with patch(
+                            "core.orchestra_agents.runtime.app.httpx.AsyncClient",
+                            return_value=_DummyAsyncClient(post=post),
                         ):
-                            await app.start()
+                            with self.assertRaisesRegex(
+                                RuntimeError,
+                                "telegram-events self-registration failed",
+                            ):
+                                await app.start()
 
         app_runner.setup.assert_awaited_once()
         site.start.assert_awaited_once()
-        post.assert_awaited_once()
+        self.assertEqual(post.await_count, 5)
+        self.assertEqual(sleep.await_count, 4)
         app_runner.cleanup.assert_awaited_once()
         self.assertEqual(backend.on_shutdown_calls, 1)
         self.assertIsNone(app.runner)
+
+    async def test_start_retries_transient_registration_failure_then_succeeds(self) -> None:
+        backend = _RegisteringBackend()
+        app = StandardAgentApplication(backend=backend, host="127.0.0.1", port=_free_port())
+        app_runner = _DummyRunner()
+        site = MagicMock()
+        site.start = AsyncMock()
+        post = AsyncMock(side_effect=[httpx.ConnectError("dns"), _DummyResponse()])
+        sleep = AsyncMock()
+
+        with patch.dict(
+            os.environ,
+            {
+                "BETTER_TELEGRAM_MCP_URL": "http://telegram-mcp/mcp/",
+                "TELEGRAM_EVENTS_URL": "http://telegram-events/",
+            },
+            clear=False,
+        ):
+            with patch("core.orchestra_agents.runtime.app.web.AppRunner", return_value=app_runner):
+                with patch("core.orchestra_agents.runtime.app.web.TCPSite", return_value=site):
+                    with patch("core.orchestra_agents.runtime.app.asyncio.sleep", sleep):
+                        with patch(
+                            "core.orchestra_agents.runtime.app.httpx.AsyncClient",
+                            return_value=_DummyAsyncClient(post=post),
+                        ):
+                            await app.start()
+
+        site.start.assert_awaited_once()
+        self.assertEqual(post.await_count, 2)
+        sleep.assert_awaited_once()
+        app_runner.cleanup.assert_not_awaited()
+        self.assertEqual(backend.on_shutdown_calls, 0)
+        self.assertIs(app.runner, app_runner)
 
     async def test_start_skips_registration_when_env_missing(self) -> None:
         backend = _RegisteringBackend()
@@ -252,6 +288,7 @@ class RuntimeContractTests(unittest.IsolatedAsyncioTestCase):
         backend = _RegisteringBackend()
         app = StandardAgentApplication(backend=backend, host="127.0.0.1", port=_free_port())
         post = AsyncMock(return_value=_DummyResponse(payload={"ok": False}))
+        sleep = AsyncMock()
 
         with patch.dict(
             os.environ,
@@ -261,15 +298,19 @@ class RuntimeContractTests(unittest.IsolatedAsyncioTestCase):
             },
             clear=False,
         ):
-            with patch(
-                "core.orchestra_agents.runtime.app.httpx.AsyncClient",
-                return_value=_DummyAsyncClient(post=post),
-            ):
-                with self.assertRaisesRegex(
-                    RuntimeError,
-                    "telegram-events self-registration returned malformed response",
+            with patch("core.orchestra_agents.runtime.app.asyncio.sleep", sleep):
+                with patch(
+                    "core.orchestra_agents.runtime.app.httpx.AsyncClient",
+                    return_value=_DummyAsyncClient(post=post),
                 ):
-                    await app._register_self()
+                    with self.assertRaisesRegex(
+                        RuntimeError,
+                        "telegram-events self-registration returned malformed response",
+                    ):
+                        await app._register_self()
+
+        post.assert_awaited_once()
+        sleep.assert_not_awaited()
 
     async def test_stop_endpoint(self) -> None:
         stop_result = await self._request("POST", "/stop", {"reason": "closed"})

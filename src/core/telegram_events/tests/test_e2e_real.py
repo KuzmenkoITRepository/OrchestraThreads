@@ -247,11 +247,9 @@ async def _run_service(stack: _StackFixture) -> AsyncIterator[_ServiceFixture]:
     await asyncio.wait_for(task, timeout=_TIMEOUT)
 
 
-def _assert_thread_registration(threads: _ThreadsApp) -> None:
-    assert len(threads.registrations) == 1
-    assert threads.registrations[0]["agent_slug"] == "telegram_events"
-    assert threads.registrations[0]["base_url"].startswith("http://127.0.0.1:")
-    assert not threads.registrations[0]["base_url"].endswith(":0")
+def _assert_no_thread_self_registration(threads: _ThreadsApp) -> None:
+    assert threads.registrations == []
+    assert threads.heartbeats == []
 
 
 def _assert_forwarded_message(threads: _ThreadsApp) -> None:
@@ -288,8 +286,17 @@ async def test_message_forwarded(
             threads = service["threads"]
             relay.events_q.put_nowait(_make_msg_event())
             await asyncio.wait_for(threads.received.wait(), timeout=_TIMEOUT)
-            _assert_thread_registration(threads)
+            _assert_no_thread_self_registration(threads)
             _assert_forwarded_message(threads)
+
+
+async def test_startup_skips_thread_self_registration(
+    aiohttp_server: Callable[[web.Application], Awaitable[TestServer]],
+) -> None:
+    async with _open_stack(aiohttp_server) as stack:
+        async with _run_service(stack) as service:
+            assert service["threads"].messages == []
+            _assert_no_thread_self_registration(service["threads"])
 
 
 async def test_clear_resolves_and_delivers(
@@ -299,6 +306,7 @@ async def test_clear_resolves_and_delivers(
         async with _run_service(stack) as service:
             stack["relay"].events_q.put_nowait(_make_clear_event())
             await asyncio.wait_for(service["engine"].received.wait(), timeout=_TIMEOUT)
+            _assert_no_thread_self_registration(service["threads"])
             _assert_clear_delivery(service)
             _assert_clear_event_metadata(service)
 

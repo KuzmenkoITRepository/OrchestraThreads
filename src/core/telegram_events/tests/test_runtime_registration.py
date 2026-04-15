@@ -31,6 +31,36 @@ async def test_runtime_starts_with_zero_consumers() -> None:
     assert service._consumers_by_mcp_url == {}
 
 
+async def test_start_skips_threads_self_registration() -> None:
+    service = _service()
+    shutdown_future = __import__("asyncio").get_running_loop().create_future()
+    threads_client = AsyncMock()
+
+    with (
+        patch(
+            "core.telegram_events.service.runtime_support.start_runtime_resources",
+            new=AsyncMock(
+                return_value=Mock(
+                    shutdown_future=shutdown_future,
+                    http_client=AsyncMock(),
+                    threads_client=threads_client,
+                    http_runner=Mock(),
+                )
+            ),
+        ) as start_resources_mock,
+        patch(
+            "core.telegram_events.service.runtime.wait_for_shutdown",
+            new=AsyncMock(),
+        ) as wait_for_shutdown_mock,
+    ):
+        await service.start()
+
+    start_resources_mock.assert_awaited_once()
+    wait_for_shutdown_mock.assert_awaited_once_with(shutdown_future)
+    threads_client.register_agent.assert_not_awaited()
+    threads_client.send_heartbeat.assert_not_awaited()
+
+
 async def test_register_agent_is_idempotent_for_duplicate_registration() -> None:
     service = _service()
     created_consumer = _managed_consumer("alpha", "http://relay.test/mcp")
@@ -204,7 +234,7 @@ async def test_stop_stops_all_active_consumers() -> None:
     ):
         await service.stop()
 
-    stop_runtime_mock.assert_awaited_once_with(None, None, None)
+    stop_runtime_mock.assert_awaited_once_with(None, None)
     stop_consumers_mock.assert_awaited_once_with((first_consumer, second_consumer))
     close_clients_mock.assert_awaited_once_with(None, None)
     assert service._consumers_by_mcp_url == {}
