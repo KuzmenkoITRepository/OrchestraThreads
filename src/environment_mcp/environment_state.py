@@ -133,8 +133,6 @@ class _EnvironmentState:
             "scheduler": cls._http_url(ports.get("OT_PORT_SCHEDULER")),
             "langfuse": cls._http_url(ports.get("OT_PORT_LANGFUSE")),
             "omniroute": cls._http_url(ports.get("OT_PORT_OMNIROUTE")),
-            "wet": cls._http_url(ports.get("OT_PORT_WET")),
-            "wet_admin": cls._http_url(ports.get("OT_PORT_WET_ADMIN")),
             "vault": cls._http_url(ports.get("OT_PORT_VAULT")),
         }
 
