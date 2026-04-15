@@ -54,11 +54,11 @@ def _parse_message_fields(raw_update: dict[str, Any], occurred_at: str) -> dict[
 def build_message_delivery(
     message_data: dict[str, Any],
     events_engine_url: str,
-    target_agent_slug: str,
+    resolved_agent_slug: str,
 ) -> tuple[str, dict[str, Any]]:
     """Build delivery payload for a message event."""
-    event_data = _event_payload.build_message_event_payload(message_data)
-    delivery_payload = _event_payload.build_delivery_payload(target_agent_slug, event_data)
+    event_data = _event_payload.build_message_event_payload(message_data, resolved_agent_slug)
+    delivery_payload = _event_payload.build_delivery_payload(resolved_agent_slug, event_data)
     deliver_endpoint = f"{events_engine_url}/deliver"
     logger.info("Forwarding message to events-engine: %s", deliver_endpoint)
     logger.debug("Delivery payload: %s", delivery_payload)
@@ -76,13 +76,13 @@ def message_client_request_id(message_data: dict[str, Any]) -> str:
 def build_clear_delivery(
     message_data: dict[str, Any],
     events_engine_url: str,
-    target_agent_slug: str,
+    resolved_agent_slug: str,
     orchestra_agents_url: str,
 ) -> tuple[str, dict[str, Any]] | None:
     """Build delivery payload for clear command."""
     if not orchestra_agents_url.rstrip("/"):
         return None
-    event_data = clear_command.build_clear_event_payload(message_data, target_agent_slug)
-    delivery_payload = _event_payload.build_delivery_payload(target_agent_slug, event_data)
+    event_data = clear_command.build_clear_event_payload(message_data, resolved_agent_slug)
+    delivery_payload = _event_payload.build_delivery_payload(resolved_agent_slug, event_data)
     deliver_endpoint = f"{events_engine_url}/deliver"
     return deliver_endpoint, delivery_payload

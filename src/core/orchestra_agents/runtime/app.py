@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass
 
+import httpx
 from aiohttp import web
 
 from core.orchestra_agents.runtime.backend import BaseAgentBackend
@@ -17,6 +19,25 @@ from core.orchestra_agents.runtime.contracts import (
 
 def _json_error(message: str, *, status: int) -> web.Response:
     return web.json_response({"success": False, "error": message}, status=status)
+
+
+def _registration_request(agent_slug: str) -> tuple[str, dict[str, str]] | None:
+    telegram_events_url = os.getenv("TELEGRAM_EVENTS_URL", "").strip()
+    telegram_mcp_url = os.getenv("BETTER_TELEGRAM_MCP_URL", "").strip()
+    if not telegram_events_url or not telegram_mcp_url:
+        return None
+    return (
+        f"{telegram_events_url.rstrip('/')}/register",
+        {
+            "agent_slug": agent_slug,
+            "telegram_mcp_url": telegram_mcp_url.rstrip("/"),
+        },
+    )
+
+
+async def _start_site(site: web.TCPSite, app: StandardAgentApplication) -> None:
+    await site.start()
+    await app._register_self()
 
 
 @dataclass(frozen=True)
@@ -79,7 +100,11 @@ class StandardAgentApplication:
         self.runner = web.AppRunner(self.build_app())
         await self.runner.setup()
         site = web.TCPSite(self.runner, host=self.host, port=self.port)
-        await site.start()
+        try:
+            await _start_site(site, self)
+        except Exception:
+            await self.stop()
+            raise
 
     async def stop(self) -> None:
         runner = self.runner
@@ -97,3 +122,35 @@ class StandardAgentApplication:
             raise
         finally:
             await self.stop()
+
+    async def _register_self(self) -> None:
+        request_data = _registration_request(self.backend.agent_slug)
+        if request_data is None:
+            return
+        registration_url, registration_payload = request_data
+        response = await _post_registration(registration_url, registration_payload)
+        _validate_registration_response(response)
+
+
+async def _post_registration(
+    registration_url: str,
+    registration_payload: dict[str, str],
+) -> httpx.Response:
+    try:
+        async with httpx.AsyncClient(trust_env=False, timeout=30.0) as client:
+            return await client.post(registration_url, json=registration_payload)
+    except httpx.HTTPError as exc:
+        raise RuntimeError("telegram-events self-registration failed") from exc
+
+
+def _validate_registration_response(response: httpx.Response) -> None:
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"telegram-events self-registration failed with status {response.status_code}"
+        )
+    try:
+        response_payload = response.json()
+    except ValueError as exc:
+        raise RuntimeError("telegram-events self-registration returned malformed response") from exc
+    if response_payload != {"ok": True}:
+        raise RuntimeError("telegram-events self-registration returned malformed response")

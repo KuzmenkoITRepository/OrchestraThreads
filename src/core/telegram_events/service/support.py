@@ -25,39 +25,35 @@ _PROXY_KEYS = (
 @dataclass(frozen=True)
 class ForwardingConfig:
     events_engine_url: str = "http://events-engine:8789"
-    target_agent_slug: str = "secretary"
 
 
 def log_startup(
     events_engine_url: str,
-    target_agent_slug: str,
     http_host: str,
     http_port: int,
 ) -> None:
     logger.info("Starting Telegram events service...")
     logger.info("Events engine endpoint: %s", events_engine_url)
-    logger.info("Target agent: %s", target_agent_slug)
     logger.info("HTTP server bind: %s:%s", http_host, http_port)
 
 
 def resolve_forwarding_config(options: dict[str, Any]) -> ForwardingConfig:
     return ForwardingConfig(
         events_engine_url=str(options.get("events_engine_url", "http://events-engine:8789")),
-        target_agent_slug=str(options.get("target_agent_slug", "secretary")),
     )
 
 
 async def start_http_server(
     http_host: str,
     http_port: int,
-    relay_url: str | None = None,
-    bearer_token: str | None = None,
+    agent_registry: Any | None = None,
+    register_agent: Any | None = None,
 ) -> web.AppRunner:
     app = build_app()
-    if relay_url:
-        app["relay_url"] = relay_url
-    if bearer_token:
-        app["bearer_token"] = bearer_token
+    if agent_registry is not None:
+        app["agent_registry"] = agent_registry
+    if register_agent is not None:
+        app["register_agent"] = register_agent
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host=http_host, port=http_port)

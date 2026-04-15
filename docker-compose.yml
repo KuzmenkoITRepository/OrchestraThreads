@@ -6,6 +6,7 @@ x-agent-common: &agent-common
       condition: service_healthy
   environment:
     PYTHONPATH: /app/src
+    TELEGRAM_EVENTS_URL: ${TELEGRAM_EVENTS_URL:-http://telegram-events:8787}
     BETTER_TELEGRAM_MCP_URL: ${BETTER_TELEGRAM_MCP_URL:-http://better-telegram-mcp:3000/mcp}
     BETTER_TELEGRAM_MCP_TOKEN: ${BETTER_TELEGRAM_MCP_TOKEN:-}
     NO_PROXY: localhost,127.0.0.1,orchestra-agents,orchestra-threads,events-engine,telegram-events,better-telegram-mcp,postgres,langfuse-postgres,langfuse
@@ -535,7 +536,8 @@ services:
       - core.orchestra_thread.tests.test_mcp_server
       - core.orchestra_thread.tests.test_agent_cli
       - core.orchestra_agents.tests.test_manifest_registry
-      - core.orchestra_agents.tests.test_docker_driver
+      - core.orchestra_agents.tests.test_docker_cli_runtime
+      - core.orchestra_agents.tests.test_compose_runtime
       - core.orchestra_agents.tests.test_runtime_contract
       - core.orchestra_agents.tests.test_scaffold
       - core.orchestra_agents.tests.test_agent_mux_template
@@ -544,8 +546,11 @@ services:
       - core.orchestra_agents.tests.test_sgr_internal_tools
       - core.orchestra_agents.tests.test_sgr_status_and_config
       - core.orchestra_agents.tests.test_service
-      - core.telegram_events.test_http_send_helpers
+      - core.telegram_events.test_agent_registry
       - core.telegram_events.test_http_server
+      - core.telegram_events.test_runtime_registration
+      - core.telegram_events.test_e2e_relay_inbound
+      - core.telegram_events.test_e2e_real
       - core.orchestra_agents.backends.sgr.test_mcp_config_interpolation
       - core.telegram_events.test_service_config
       - core.orchestra_memory.tests.test_memory_service

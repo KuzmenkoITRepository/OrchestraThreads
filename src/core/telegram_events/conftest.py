@@ -10,6 +10,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestServer
 
 from core.telegram_events import http_server
+from core.telegram_events.agent_registry import TelegramAgentRegistry
 
 
 class AiohttpServerFactory(Protocol):
@@ -109,16 +110,25 @@ class FakeRelayServer:
         return "\n\n".join([*lines, ""])
 
 
+async def _register_agent(
+    agent_registry: TelegramAgentRegistry,
+    agent_slug: str,
+    telegram_mcp_url: str,
+) -> Any:
+    return agent_registry.register(agent_slug, telegram_mcp_url)
+
+
 def _build_telegram_events_app(
     relay_server: TestServer,
     events_engine_server: TestServer,
 ) -> web.Application:
     """Build a telegram-events app wired to fake relay services."""
     app = http_server.build_app()
-    app["relay_url"] = str(relay_server.make_url("/mcp"))
-    app["bearer_token"] = "test-secret-token"
+    telegram_agent_registry = TelegramAgentRegistry()
+
+    app["agent_registry"] = telegram_agent_registry
+    app["register_agent"] = _register_agent
     app["events_engine_url"] = str(events_engine_server.make_url(""))
-    app["target_agent_slug"] = "secretary"
     return app
 
 
@@ -144,6 +154,7 @@ async def open_telegram_events_context() -> AsyncIterator[dict[str, Any]]:
         )
 
         yield {
+            "agent_registry": telegram_events_server.app["agent_registry"],
             "bearer_token": "test-secret-token",
             "fake_relay": fake_relay,
             "relay_server": relay_server,

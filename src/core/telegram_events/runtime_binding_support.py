@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from core.orchestra_thread.client import OrchestraThreadsClient
-from core.telegram_events.service.runtime_support import (
+from core.telegram_events.service.runtime_models import (
     RuntimeResourceConfig,
     RuntimeResources,
 )
@@ -25,19 +25,14 @@ def extract_thread_id(response: dict[str, Any]) -> str:
     return thread_id
 
 
-def normalized_public_base_url(options: dict[str, Any]) -> str:
-    return str(options.get("public_base_url", "")).strip().rstrip("/")
-
-
 def runtime_resource_config(service: Any) -> RuntimeResourceConfig:
     return RuntimeResourceConfig(
-        events_url=service._events_url,
-        bearer_token=service._bearer_token,
         http_host=service._http_host,
         http_port=service._http_port,
-        relay_url=service._mcp_url,
         threads_url=service._threads_url,
         agent_slug=service._agent_slug,
+        agent_registry=service._agent_registry,
+        register_agent=service.register_agent,
     )
 
 
@@ -48,7 +43,6 @@ def apply_runtime_resources(
     service._shutdown_future = runtime_resources.shutdown_future
     service._http_client = runtime_resources.http_client
     service._threads_client = runtime_resources.threads_client
-    service._consumer = runtime_resources.consumer
     service._http_runner = runtime_resources.http_runner
     service._heartbeat_task = runtime_resources.heartbeat_task
 
@@ -60,6 +54,20 @@ def registration_base_url(service: Any) -> str:
     if runner_url is not None:
         return runner_url
     return f"http://{service._http_host}:{service._http_port}"
+
+
+async def register_with_threads(service: Any) -> None:
+    threads_client = require_threads_client(service._threads_client)
+    await threads_client.register_agent(
+        agent_slug=service._agent_slug,
+        display_name=service._agent_slug,
+        base_url=registration_base_url(service),
+        metadata={
+            "kind": "telegram-events-service",
+            "backend_type": "telegram-events",
+            "tool_surface": "telegram-events-ingress",
+        },
+    )
 
 
 def _runner_base_url(runner: Any) -> str | None:

@@ -1,35 +1,33 @@
 # Telegram Events Service
 
-`core.telegram_events` is a standalone ingress service that receives Telegram messages and forwards them to the secretary agent as non-thread events. The current runtime is relay-based: the service consumes the `better-telegram-mcp` server as an SSE client, and outbound Telegram sending happens through the relay’s HTTP MCP surface.
+`core.telegram_events` is the ingress bridge for Telegram updates. It accepts agent registration, opens SSE consumers only for registered MCP URLs, and routes inbound events through the registry. Outbound agent messages go directly to `telegram-mcp` through MCP, outside this service.
 
 ## Responsibilities
 
-- Consume Telegram updates from the `better-telegram-mcp` relay over SSE
-- Format incoming messages into event payloads
-- Forward events to the secretary agent via HTTP
-- Send Telegram replies through the relay’s `/mcp` endpoint when needed
+- Accept internal `/register` calls from agent runtime
+- Create or reuse an SSE consumer for each registered Telegram MCP URL
+- Route inbound updates by registry slug through `events-engine`
+- Drop or log updates from unknown source MCP URLs
+- Keep Telegram outbound flow on direct MCP calls from agents to `telegram-mcp`
 
 ## Architecture
 
-The service no longer treats a Telethon listener session as the primary runtime model. Instead, `telegram-events` runs as an SSE consumer against `better-telegram-mcp`, which handles Telegram transport and exposes two integration points:
+`telegram-events` no longer runs as a single startup SSE listener with one fixed target. Runtime starts with zero Telegram consumers. When an agent registers, the service records its slug, normalized MCP URL, and routing metadata in an in-memory registry, then creates a consumer for that URL at `{telegram_mcp_url}/events/telegram`.
 
-- `BETTER_TELEGRAM_MCP_EVENTS_URL` for the SSE event stream
-- `BETTER_TELEGRAM_MCP_URL` for MCP calls, including sending messages through `/mcp`
+Registration is internal and unauthenticated. Success returns `{"ok": True}`. Duplicate registration with same slug and same normalized MCP URL is accepted. Same slug with a new MCP URL remaps the consumer. Different slug with same normalized MCP URL is a conflict and returns `409`.
 
-Incoming Telegram updates are converted into the same event payloads the secretary expects. When the service needs to send a Telegram reply, it calls the relay’s HTTP MCP endpoint rather than talking to Telegram directly.
+Inbound Telegram updates are mapped to the registered slug for that source MCP URL, then forwarded through `events-engine`. Outbound replies are handled by the agent itself through `telegram-mcp` MCP, so this service only owns inbound routing.
 
 ## Configuration
 
-Environment variables:
+Environment variables currently relevant to this service:
 
-- `TELEGRAM_API_ID` - Telegram API ID (required by the relay)
-- `TELEGRAM_API_HASH` - Telegram API Hash (required by the relay)
-- `TELEGRAM_SESSION_STRING` - Session string used by the relay for Telegram auth when present
-- `BETTER_TELEGRAM_MCP_URL` - Relay MCP endpoint, usually `http://better-telegram-mcp:3000/mcp`
-- `BETTER_TELEGRAM_MCP_EVENTS_URL` - Relay SSE events endpoint, usually `http://better-telegram-mcp:3000/events/telegram`
-- `BETTER_TELEGRAM_MCP_TOKEN` - Bearer token required by the relay
-- `SECRETARY_URL` - Secretary agent HTTP endpoint (default: `http://secretary:8787`)
-- `LOG_LEVEL` - Logging level (default: `INFO`)
+- `TELEGRAM_EVENTS_HTTP_HOST`, host for internal HTTP service, usually `0.0.0.0`
+- `TELEGRAM_EVENTS_HTTP_PORT`, port for internal HTTP service, usually `8787`
+- `EVENTS_ENGINE_URL`, routing endpoint for outbound event delivery, usually `http://events-engine:8789`
+- `LOG_LEVEL`, logging level, default `INFO`
+
+Telegram API credentials and relay-specific send settings are owned by `telegram-mcp` or other upstream components, not by this service docs.
 
 ## Running
 
@@ -39,26 +37,20 @@ Start the service with the main application entry point:
 python -m core.telegram_events.service_main
 ```
 
-In Docker Compose, `telegram-events` depends on `better-telegram-mcp` and `events-engine`:
+In Docker Compose, `telegram-events` depends on `events-engine` and exposes its own internal HTTP listener:
 
 ```yaml
 telegram-events:
   build: .
   image: orchestra-threads:${OT_TAG:-local}
   depends_on:
-    better-telegram-mcp:
-      condition: service_healthy
     events-engine:
       condition: service_healthy
   environment:
     PYTHONPATH: /app/src
-    BETTER_TELEGRAM_MCP_URL: ${BETTER_TELEGRAM_MCP_URL:-http://better-telegram-mcp:3000/mcp}
-    BETTER_TELEGRAM_MCP_EVENTS_URL: ${BETTER_TELEGRAM_MCP_EVENTS_URL:-http://better-telegram-mcp:3000/events/telegram}
-    BETTER_TELEGRAM_MCP_TOKEN: ${BETTER_TELEGRAM_MCP_TOKEN:-}
     TELEGRAM_EVENTS_HTTP_HOST: 0.0.0.0
     TELEGRAM_EVENTS_HTTP_PORT: "8787"
     EVENTS_ENGINE_URL: http://events-engine:8789
-    TARGET_AGENT_SLUG: ${TARGET_AGENT_SLUG:-secretary}
     LOG_LEVEL: ${LOG_LEVEL:-INFO}
   command:
     - python
@@ -68,15 +60,17 @@ telegram-events:
 
 ## Service startup flow
 
-1. Load relay and secretary configuration from environment variables.
-2. Create an `SSEConsumer` for `BETTER_TELEGRAM_MCP_EVENTS_URL`.
-3. Start consuming Telegram events from `better-telegram-mcp`.
-4. Forward each update to the secretary agent through the HTTP event pipeline.
-5. Use `BETTER_TELEGRAM_MCP_URL` with `/mcp` when a send operation is required.
+1. Start internal HTTP surface and shared runtime clients.
+2. Wait for `/register` calls from agent runtime.
+3. Normalize incoming MCP URL and record slug to URL mapping in registry.
+4. Create SSE consumer for `{telegram_mcp_url}/events/telegram` for each registration.
+5. Route incoming updates by registry lookup on source MCP URL.
+6. Forward matched events through `events-engine`.
+7. Leave outbound Telegram sending to agent runtime via direct MCP calls to `telegram-mcp`.
 
 ## Event Format
 
-Events sent to secretary:
+Events sent through `events-engine` keep Telegram source metadata and registry-derived routing context.
 
 ```json
 {
@@ -93,12 +87,8 @@ Events sent to secretary:
 }
 ```
 
-## Archived telegram-mcp context
+## Notes
 
-The previous operator flow used a standalone `telegram-mcp` container for direct outbound Telegram replies. That service is no longer part of the supported stack.
-
-For historical reference only:
-
-- the old listener-centric model used Telethon as the primary runtime
-- outbound Telegram sending used to be handled by the removed `telegram-mcp` container
-- current deployments should use the `better-telegram-mcp` relay for both SSE consumption and `/mcp` send operations
+- Internal registration uses registry outcomes `REGISTERED`, `DUPLICATE`, `REMAPPED`, and `CONFLICT`.
+- Unknown source MCP URLs are ignored after logging.
+- `telegram-events` owns inbound routing only. Direct Telegram send path stays in agent runtime through `telegram-mcp` MCP.

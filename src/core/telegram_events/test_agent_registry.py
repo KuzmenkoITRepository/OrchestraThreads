@@ -1,0 +1,3 @@
+from core.telegram_events.tests import test_agent_registry as _test_agent_registry
+
+TelegramAgentRegistryTests = _test_agent_registry.TelegramAgentRegistryTests

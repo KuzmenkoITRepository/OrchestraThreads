@@ -144,9 +144,11 @@ async def test_delivery_payload_to_events_engine() -> None:
                 "chat_name": "Private",
                 "text": "Delivery test",
                 "timestamp": "2024-01-01T00:00:00Z",
-            }
+            },
+            target_agent_slug="assistant-alpha",
         )
 
         assert payload["delivery_id"] == "telegram_404_777"
         assert len(payload["events"]) == 1
         assert payload["events"][0]["event_kind"] == "telegram_message"
+        assert payload["events"][0]["to_agent_slug"] == "assistant-alpha"

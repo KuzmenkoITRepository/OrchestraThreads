@@ -7,7 +7,7 @@ from core.telegram_events.runtime_binding_support import (
     extract_thread_id as extract_thread_id,
 )
 from core.telegram_events.runtime_binding_support import (
-    normalized_public_base_url as normalized_public_base_url,
+    register_with_threads as register_with_threads,
 )
 from core.telegram_events.runtime_binding_support import (
     registration_base_url as registration_base_url,

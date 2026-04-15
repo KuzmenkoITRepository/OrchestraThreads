@@ -9,7 +9,7 @@ _TELEGRAM_MESSAGE_KIND = "telegram_message"
 
 def build_message_event_payload(
     message_data: dict[str, Any],
-    target_agent_slug: str = "secretary",
+    target_agent_slug: str,
 ) -> dict[str, Any]:
     """Build the events-engine payload for a normal Telegram message."""
     event_id = _message_event_id(message_data)
