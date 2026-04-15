@@ -59,11 +59,8 @@ class _RuntimeSecretBuilder:
         "OT_PORT_SCHEDULER",
         "OT_PORT_LANGFUSE",
         "OT_PORT_OMNIROUTE",
-        "OT_PORT_WET",
-        "OT_PORT_WET_ADMIN",
         "OT_PORT_VAULT",
         "OT_OMNIROUTE_DATA_DIR",
-        "OT_OMNIROUTE_WET_DIR",
         "OT_SESSIONS_DIR",
         "TELEGRAM_API_ID",
         "TELEGRAM_API_HASH",
@@ -118,11 +115,8 @@ class _RuntimeSecretBuilder:
         ("OT_PORT_SCHEDULER", "8792"),
         ("OT_PORT_LANGFUSE", "3000"),
         ("OT_PORT_OMNIROUTE", "20229"),
-        ("OT_PORT_WET", "8100"),
-        ("OT_PORT_WET_ADMIN", "8101"),
         ("OT_PORT_VAULT", "8200"),
         ("OT_OMNIROUTE_DATA_DIR", "./runtime_state/orchestrathreads/omniroute-data"),
-        ("OT_OMNIROUTE_WET_DIR", "./runtime_state/orchestrathreads/omniroute-wet"),
         ("OT_SESSIONS_DIR", "./runtime_state/orchestrathreads/sessions"),
         ("TELEGRAM_API_ID", ""),
         ("TELEGRAM_API_HASH", ""),
@@ -178,14 +172,9 @@ class _RuntimeSecretBuilder:
         payload["OT_PORT_SCHEDULER"] = str(8792 + offset)
         payload["OT_PORT_LANGFUSE"] = str(3000 + offset)
         payload["OT_PORT_OMNIROUTE"] = str(20229 + offset)
-        payload["OT_PORT_WET"] = str(8100 + offset)
-        payload["OT_PORT_WET_ADMIN"] = str(8101 + offset)
         payload["OT_PORT_VAULT"] = "8200"
         payload["OT_OMNIROUTE_DATA_DIR"] = (
             f"./runtime_state/orchestrathreads-{environment}/omniroute-data"
-        )
-        payload["OT_OMNIROUTE_WET_DIR"] = (
-            f"./runtime_state/orchestrathreads-{environment}/omniroute-wet"
         )
         payload["OT_SESSIONS_DIR"] = f"./runtime_state/orchestrathreads-{environment}/sessions"
         if environment != "prod":
