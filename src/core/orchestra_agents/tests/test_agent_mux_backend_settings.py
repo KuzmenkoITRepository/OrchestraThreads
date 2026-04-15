@@ -15,21 +15,20 @@ def test_default_model_uses_kiro_alias() -> None:
     assert settings.default_model == "cx/gpt-5.4-mini"
 
 
-def test_llm_proxy_url_alias_sets_omniroute_url() -> None:
+def test_omniroute_url_uses_direct_key() -> None:
     settings = build_runtime_settings(
-        {"llm_proxy_url": "http://127.0.0.1:8104"},
+        {"omniroute_url": "http://127.0.0.1:8104"},
         working_dir="/workspace/agents/orchestra",
         http_endpoint="http://orchestra-agent-orchestra:8787",
         llm_route_policy=None,
         llm_model=None,
     )
     assert settings.omniroute_url == "http://127.0.0.1:8104"
-    assert settings.omniroute_url == "http://127.0.0.1:8104"
 
 
-def test_llm_proxy_api_key_alias_sets_runtime_key() -> None:
+def test_omniroute_api_key_uses_direct_key() -> None:
     settings = build_runtime_settings(
-        {"llm_proxy_api_key": "runtime-test-key"},
+        {"omniroute_api_key": "runtime-test-key"},
         working_dir="/workspace/agents/orchestra",
         http_endpoint="http://orchestra-agent-orchestra:8787",
         llm_route_policy=None,
@@ -37,3 +36,21 @@ def test_llm_proxy_api_key_alias_sets_runtime_key() -> None:
     )
 
     assert settings.omniroute_api_key == "runtime-test-key"
+
+
+def test_unknown_inputs_keep_direct_keys() -> None:
+    settings = build_runtime_settings(
+        {
+            "omniroute_url": "http://direct-omniroute:20128",
+            "omniroute_api_key": "direct-key",
+            "legacy_url": "http://legacy-proxy:8104",
+            "legacy_api_key": "legacy-key",
+        },
+        working_dir="/workspace/agents/orchestra",
+        http_endpoint="http://orchestra-agent-orchestra:8787",
+        llm_route_policy=None,
+        llm_model=None,
+    )
+
+    assert settings.omniroute_url == "http://direct-omniroute:20128"
+    assert settings.omniroute_api_key == "direct-key"
