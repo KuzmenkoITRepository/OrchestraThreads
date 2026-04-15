@@ -80,7 +80,6 @@ for raw_line in ports_file.read_text(encoding='utf-8').splitlines():
     key, value = line.split('=', 1)
     if key.startswith('OT_PORT_') or key in (
         'OT_OMNIROUTE_DATA_DIR',
-        'OT_OMNIROUTE_WET_DIR',
         'OT_SESSIONS_DIR',
     ):
         ports_payload[key] = value
@@ -185,11 +184,10 @@ main() {
   _PROVISION_ENV_NAME="${env_name}"
   trap _cleanup_on_failure EXIT
 
-  mkdir -p "${runtime_root}/omniroute-data" "${runtime_root}/omniroute-wet" "${runtime_root}/sessions"
+  mkdir -p "${runtime_root}/omniroute-data" "${runtime_root}/sessions"
   allocate_ports "${env_name}"
   {
     printf 'OT_OMNIROUTE_DATA_DIR=%s\n' "${runtime_root}/omniroute-data"
-    printf 'OT_OMNIROUTE_WET_DIR=%s\n' "${runtime_root}/omniroute-wet"
     printf 'OT_SESSIONS_DIR=%s\n' "${runtime_root}/sessions"
   } >> "${ports_file}"
 
@@ -242,8 +240,6 @@ OT_PORT_AGENTS
 OT_PORT_TASK_REGISTRY
 OT_PORT_SCHEDULER
 OT_PORT_OMNIROUTE
-OT_PORT_WET
-OT_PORT_WET_ADMIN
 EOF
   printf '  Vault path: %s\n' "${vault_path}"
 }

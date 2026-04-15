@@ -64,11 +64,8 @@ vault kv put kv/orchestrathreads/dev/runtime \
   OT_PORT_SCHEDULER="8792" \
   OT_PORT_LANGFUSE="3000" \
   OT_PORT_OMNIROUTE="20229" \
-  OT_PORT_WET="8100" \
-  OT_PORT_WET_ADMIN="8101" \
   OT_PORT_VAULT="8200" \
   OT_OMNIROUTE_DATA_DIR="./runtime_state/orchestrathreads-dev/omniroute-data" \
-  OT_OMNIROUTE_WET_DIR="./runtime_state/orchestrathreads-dev/omniroute-wet" \
   OT_SESSIONS_DIR="./runtime_state/orchestrathreads-dev/sessions" \
   POSTGRES_PASSWORD="..." \
   ORCHESTRA_THREADS_DATABASE_URL="..." \
