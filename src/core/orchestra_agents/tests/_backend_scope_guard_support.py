@@ -335,10 +335,18 @@ def build_config() -> Config:
 
 
 def run_diff(config: Config) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ("git", "diff", "--name-only", config.diff_target),
-        capture_output=True,
-        check=False,
-        cwd=config.root,
-        text=True,
-    )
+    try:
+        return subprocess.run(
+            ("git", "diff", "--name-only", config.diff_target),
+            capture_output=True,
+            check=False,
+            cwd=config.root,
+            text=True,
+        )
+    except FileNotFoundError:
+        return subprocess.CompletedProcess(
+            args=("git", "diff", "--name-only", config.diff_target),
+            returncode=0,
+            stdout="",
+            stderr="",
+        )

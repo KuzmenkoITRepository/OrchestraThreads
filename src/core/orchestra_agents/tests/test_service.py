@@ -1,166 +1,150 @@
 from __future__ import annotations
 
-import json
-import socket
 import tempfile
 import unittest
 from importlib import import_module
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
-from aiohttp import ClientSession, ClientTimeout, web
+from core.orchestra_agents.tests._service_test_fakes import FakeRuntime, public_service_state_fields
+from core.orchestra_agents.tests._service_test_harness import (
+    ServiceHTTPHarness,
+    write_coding_agent_manifest,
+)
 
-from core.orchestra_agents.registry import AgentManifestRegistry
+_service_constants = import_module("core.orchestra_agents.tests._service_test_constants")
+COMPOSE_RUNTIME = cast(str, _service_constants.COMPOSE_RUNTIME)
+DOCKER_CLI_RUNTIME = cast(str, _service_constants.DOCKER_CLI_RUNTIME)
+STATUS_RUNNING = cast(str, _service_constants.STATUS_RUNNING)
 
-_service_runtime = import_module("core.orchestra_agents.service.runtime")
-OrchestraAgentsService = cast(type[Any], _service_runtime.OrchestraAgentsService)
-build_app = _service_runtime.build_app
-
-_STATUS_RUNNING = "running"
-
-
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        sock.listen(1)
-        return int(sock.getsockname()[1])
-
-
-class FakeDriver:
-    def __init__(self) -> None:
-        self.started: list[str] = []
-        self.stopped: list[tuple[str, bool]] = []
-        self.restarted: list[str] = []
-
-    def container_name(self, slug: str) -> str:
-        return f"orchestra-agent-{slug}"
-
-    def status(self, manifest: Any) -> dict[str, Any]:
-        return {
-            "slug": manifest.slug,
-            "container_name": self.container_name(manifest.slug),
-            "exists": True,
-            _STATUS_RUNNING: manifest.slug in self.started or manifest.slug in self.restarted,
-            "healthy": True,
-            "backend_type": manifest.backend.type,
-            "http_endpoint": manifest.resolve_http_endpoint(
-                container_name=self.container_name(manifest.slug)
-            ),
-            "docker_status": _STATUS_RUNNING,
-            "health_status": {"ok": True},
-            "started_at": "2025-01-01T00:00:00Z",
-            "last_error": None,
-        }
-
-    def start(self, manifest: Any) -> dict[str, Any]:
-        self.started.append(manifest.slug)
-        return self.status(manifest)
-
-    def stop(self, slug: str, *, remove: bool = False) -> dict[str, Any]:
-        self.stopped.append((slug, remove))
-        return {
-            "slug": slug,
-            "container_name": self.container_name(slug),
-            "exists": not remove,
-            _STATUS_RUNNING: False,
-            "removed": remove,
-        }
-
-    def restart(self, manifest: Any) -> dict[str, Any]:
-        self.restarted.append(manifest.slug)
-        return self.status(manifest)
+_service_support = import_module("core.orchestra_agents.tests._service_test_support")
+created_service = _service_support.created_service
+research_manifest_yaml = _service_support.research_manifest_yaml
+resolved_runtime_name = _service_support.resolved_runtime_name
 
 
-class ServiceHTTPTests(unittest.IsolatedAsyncioTestCase):
+class ServiceStateContractTests(unittest.TestCase):
+    def test_public_fields_match_target_deps(self) -> None:
+        self.assertEqual(
+            public_service_state_fields(),
+            {
+                "registry",
+                "builder",
+                "default_runtime",
+                "runtime_selector",
+                "manifest_class",
+                "lock",
+            },
+        )
+
+
+class ServiceCreateRuntimeTests(unittest.TestCase):
+    def test_create_uses_compose_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            write_coding_agent_manifest(root)
+            service = created_service(root)
+
+            self.assertIsNone(service.state.runtime_selector)
+            self.assertEqual(resolved_runtime_name(service), "ComposeRuntime")
+
+    def test_create_keeps_docker_cli_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            write_coding_agent_manifest(root)
+            service = created_service(root, runtime_name=DOCKER_CLI_RUNTIME)
+
+            self.assertIsNotNone(service.state.runtime_selector)
+            self.assertEqual(resolved_runtime_name(service), "DockerCliRuntime")
+
+
+class _ServiceHTTPBase(unittest.IsolatedAsyncioTestCase):
+    selector_runtime_name: str | None = None
+
     async def asyncSetUp(self) -> None:
         self.tmpdir = tempfile.TemporaryDirectory()
-        root = Path(self.tmpdir.name)
-        agent_dir = root / "coding_agent"
-        agent_dir.mkdir()
-        (agent_dir / "manifest.yaml").write_text(
-            """
-slug: coding_agent
-display_name: Coding Agent
-status: active
-agent:
-  working_dir: /workspace
-  http_endpoint: http://orchestra-agent-coding_agent:8787
-  system_prompt_file: system_prompt.md
-runtime:
-  driver: docker
-  image: agent-image:latest
-backend:
-  type: codex_framework
-            """.strip(),
-            encoding="utf-8",
+        self.root = Path(self.tmpdir.name)
+        write_coding_agent_manifest(self.root)
+        self.harness = await ServiceHTTPHarness.create(
+            root=self.root,
+            selector_runtime_name=self.selector_runtime_name,
         )
-        self.driver = FakeDriver()
-        self.service = OrchestraAgentsService.create(
-            manifests_root=str(root),
-            registry=AgentManifestRegistry(manifests_root=root),
-            driver=cast(Any, self.driver),
-        )
-        app = build_app(self.service)
-        self.runner = web.AppRunner(app)
-        await self.runner.setup()
-        self.port = _free_port()
-        await web.TCPSite(self.runner, host="127.0.0.1", port=self.port).start()
-        self.session = ClientSession(timeout=ClientTimeout(total=10))
 
     async def asyncTearDown(self) -> None:
-        await self.session.close()
-        await self.runner.cleanup()
+        await self.harness.close()
         self.tmpdir.cleanup()
 
-    async def test_lists_and_starts_agents(self) -> None:
-        agents = await self._request("GET", "/api/v1/agents")
-        self.assertEqual(agents["count"], 1)
-        self.assertEqual(agents["agents"][0]["slug"], "coding_agent")
 
-        started = await self._request("POST", "/api/v1/agents/coding_agent/start")
+class ServiceHTTPDefaultTests(_ServiceHTTPBase):
+    async def test_lists_agents(self) -> None:
+        agents = await self.harness.request("GET", "/api/v1/agents")
+        agent = agents["agents"][0]
+        compose = cast(FakeRuntime, self.harness.compose_runtime)
+        docker_cli = cast(FakeRuntime, self.harness.docker_cli_runtime)
+
+        self.assertEqual(agent["slug"], "coding_agent")
+        self.assertEqual(agent["runtime"]["runtime_name"], COMPOSE_RUNTIME)
+        self.assertEqual(compose.calls.status_calls, ["coding_agent"])
+        self.assertEqual(compose.calls.container_name_calls, ["coding_agent"])
+        self.assertEqual(docker_cli.calls.status_calls, [])
+
+    async def test_start_builds_spec_before_runtime(self) -> None:
+        started = await self.harness.request("POST", "/api/v1/agents/coding_agent/start")
+        compose = cast(FakeRuntime, self.harness.compose_runtime)
+
         self.assertTrue(started["success"])
-        self.assertEqual(self.driver.started, ["coding_agent"])
+        self.assertEqual(started["result"]["runtime_name"], COMPOSE_RUNTIME)
+        self.assertEqual(compose.calls.started, ["coding_agent"])
 
-        status = await self._request("GET", "/api/v1/agents/coding_agent/status")
-        self.assertTrue(status["status"][_STATUS_RUNNING])
+    async def test_stop_builds_spec_before_runtime(self) -> None:
+        stopped = await self.harness.request(
+            "POST",
+            "/api/v1/agents/coding_agent/stop",
+            {"remove": True},
+        )
+        compose = cast(FakeRuntime, self.harness.compose_runtime)
 
+        self.assertFalse(stopped["result"][STATUS_RUNNING])
+        self.assertTrue(stopped["result"]["removed"])
+        self.assertEqual(compose.calls.stopped, [("coding_agent", True)])
+
+    async def test_restart_builds_spec_before_runtime(self) -> None:
+        restarted = await self.harness.request("POST", "/api/v1/agents/coding_agent/restart")
+        compose = cast(FakeRuntime, self.harness.compose_runtime)
+
+        self.assertTrue(restarted["success"])
+        self.assertEqual(compose.calls.restarted, ["coding_agent"])
+
+    async def test_status_builds_spec_before_runtime(self) -> None:
+        await self.harness.request("POST", "/api/v1/agents/coding_agent/start")
+        self.harness.events.clear()
+
+        status = await self.harness.request("GET", "/api/v1/agents/coding_agent/status")
+
+        self.assertTrue(status["status"][STATUS_RUNNING])
+        self.assertEqual(status["status"]["runtime_name"], COMPOSE_RUNTIME)
+
+
+class ServiceHTTPSelectorTests(_ServiceHTTPBase):
+    selector_runtime_name = DOCKER_CLI_RUNTIME
+
+    async def test_selector_can_choose_docker_cli(self) -> None:
+        status = await self.harness.request("GET", "/api/v1/agents/coding_agent/status")
+        compose = cast(FakeRuntime, self.harness.compose_runtime)
+        docker_cli = cast(FakeRuntime, self.harness.docker_cli_runtime)
+
+        self.assertEqual(status["status"]["runtime_name"], DOCKER_CLI_RUNTIME)
+        self.assertEqual(compose.calls.status_calls, [])
+        self.assertEqual(docker_cli.calls.status_calls, ["coding_agent"])
+
+
+class ServiceHTTPValidationTests(_ServiceHTTPBase):
     async def test_validates_manifest_payload(self) -> None:
-        manifest_yaml_raw = """
-slug: research_agent
-display_name: Research Agent
-status: active
-agent:
-  working_dir: /workspace
-  http_endpoint: http://orchestra-agent-research_agent:8787
-runtime:
-  driver: docker
-  image: agent-image:latest
-backend:
-  type: sgr
-        """
-        manifest_yaml = manifest_yaml_raw.strip()
-        validation_result = await self._request(
+        result = await self.harness.request(
             "POST",
             "/api/v1/manifests/validate",
-            {"yaml": manifest_yaml},
+            {"yaml": research_manifest_yaml()},
         )
-        self.assertTrue(validation_result["success"])
-        self.assertEqual(validation_result["manifest"]["backend"]["type"], "sgr")
 
-    async def _request(
-        self,
-        method: str,
-        path: str,
-        payload: dict[str, Any] | None = None,
-        expected_status: int = 200,
-    ) -> dict[str, Any]:
-        async with self.session.request(
-            method,
-            f"http://127.0.0.1:{self.port}{path}",
-            json=payload,
-        ) as response:
-            raw = await response.text()
-            parsed = json.loads(raw) if raw else {}
-            if response.status != expected_status:
-                raise AssertionError(f"{method} {path} -> {response.status}: {parsed}")
-            return cast(dict[str, Any], parsed)
+        self.assertTrue(result["success"])
+        self.assertEqual(result["manifest"]["backend"]["type"], "sgr")

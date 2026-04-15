@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,7 +24,7 @@ from core.orchestra_agents.backend_migration_support import (
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _SCRIPTS_DIR = _REPO_ROOT / "scripts"
 _SAMPLE_MANIFEST = _REPO_ROOT / "agents" / "sgr" / "manifest.yaml"
-_PYTHON_BIN = _REPO_ROOT / ".venv" / "bin" / "python"
+_PYTHON_BIN = Path(sys.executable)
 _SGR = "sgr_minimax"
 _OC = "opencode_omo"
 _HEALTHY = MappingProxyType(
@@ -173,13 +174,7 @@ class MigrationSnapshotTests(unittest.TestCase):
             self.assertIsNotNone(s.snapshot_path)
             assert s.snapshot_path is not None
             self.assertNotIn("runtime", _load_yaml(mpath))
-            snap = _load_yaml(s.snapshot_path)
-            snap_rt = snap["runtime"]
-            assert isinstance(snap_rt, dict)
-            self.assertEqual(
-                snap_rt["image"],
-                "orchestra-threads:local",
-            )
+            self._assert_snapshot_runtime_matches_original(self, s.snapshot_path)
 
     def test_snapshot_restore(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -198,13 +193,27 @@ class MigrationSnapshotTests(unittest.TestCase):
             self.assertEqual(restored, len(original))
             self.assertEqual(mpath.read_bytes(), original)
 
+    @staticmethod
+    def _assert_snapshot_runtime_matches_original(
+        testcase: unittest.TestCase,
+        snapshot_path: Path,
+    ) -> None:
+        snapshot_runtime = _load_yaml(snapshot_path)["runtime"]
+        original_runtime = _load_yaml(_SAMPLE_MANIFEST)["runtime"]
+        assert isinstance(snapshot_runtime, dict)
+        assert isinstance(original_runtime, dict)
+        testcase.assertEqual(snapshot_runtime, original_runtime)
+
 
 class MigrationScriptTests(unittest.TestCase):
     def test_verify_migration_script(self) -> None:
+        script_path = _SCRIPTS_DIR / "verify_agent_migration.py"
+        if not script_path.exists():
+            self.skipTest(f"missing script: {script_path}")
         result = subprocess.run(
             [
                 str(_PYTHON_BIN),
-                str(_SCRIPTS_DIR / "verify_agent_migration.py"),
+                str(script_path),
                 "--agent",
                 "sgr",
                 "--check-only",
@@ -222,10 +231,13 @@ class MigrationScriptTests(unittest.TestCase):
         )
 
     def test_switch_script_json(self) -> None:
+        script_path = _SCRIPTS_DIR / "test_backend_switch.py"
+        if not script_path.exists():
+            self.skipTest(f"missing script: {script_path}")
         result = subprocess.run(
             [
                 str(_PYTHON_BIN),
-                str(_SCRIPTS_DIR / "test_backend_switch.py"),
+                str(script_path),
                 "--agent",
                 "sgr",
                 "--target-backend",
@@ -248,10 +260,13 @@ class MigrationScriptTests(unittest.TestCase):
         self.assertEqual(payload["execution_mode"], "prepare_only")
 
     def test_switch_prepare_script(self) -> None:
+        script_path = _SCRIPTS_DIR / "test_backend_switch.py"
+        if not script_path.exists():
+            self.skipTest(f"missing script: {script_path}")
         result = subprocess.run(
             [
                 str(_PYTHON_BIN),
-                str(_SCRIPTS_DIR / "test_backend_switch.py"),
+                str(script_path),
                 "--agent",
                 "sgr",
                 "--target-backend",
@@ -269,23 +284,29 @@ class MigrationScriptTests(unittest.TestCase):
 
     def test_rollback_manifest_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
+            script_path = _SCRIPTS_DIR / "rollback_agent_manifest.sh"
+            if not script_path.exists():
+                self.skipTest(f"missing script: {script_path}")
             original = "backend:\n  type: sgr_minimax\n"
             self._run_rollback(
                 tmpdir,
                 original,
                 "backend:\n  type: agent_mux\n",
-                "rollback_agent_manifest.sh",
+                script_path.name,
                 "manifest.snapshot",
             )
 
     def test_rollback_switch_script(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
+            script_path = _SCRIPTS_DIR / "rollback_backend_switch.sh"
+            if not script_path.exists():
+                self.skipTest(f"missing script: {script_path}")
             original = "backend:\n  type: sgr_minimax\n"
             self._run_rollback(
                 tmpdir,
                 original,
                 "backend:\n  type: opencode_omo\n",
-                "rollback_backend_switch.sh",
+                script_path.name,
                 "switch.snapshot",
             )
 

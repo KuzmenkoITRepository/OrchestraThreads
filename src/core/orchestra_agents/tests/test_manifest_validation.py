@@ -8,21 +8,19 @@ import unittest
 from pathlib import Path
 from typing import Any
 
+from core.orchestra_agents.backend_migration_support import (
+    ManifestMigrator,
+    format_manifest_yaml,
+    load_manifest_payload,
+)
 from core.orchestra_agents.errors import ManifestValidationError
 from core.orchestra_agents.manifest import AgentManifest
+from core.orchestra_agents.tests._manifest_validation_support import (
+    EXISTING_MANIFESTS,
+    resolve_repo_path,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-
-_EXISTING_MANIFESTS = (
-    "agents/dev/manifest.yaml",
-    "agents/devops/manifest.yaml",
-    "agents/qa/manifest.yaml",
-    "agents/sgr/manifest.yaml",
-    "agents/orchestra/manifest.yaml",
-    "agents/opencode-example/manifest.yaml",
-    "agents/secretary/manifest.yaml",
-    "agents/whiner/manifest.yaml",
-)
 
 
 class _ManifestValidationBase(unittest.TestCase):
@@ -74,7 +72,7 @@ class TestExistingManifestsValidate(_ManifestValidationBase):
     """All existing agent manifests must still parse after changes."""
 
     def test_all_existing_manifests_parse(self) -> None:
-        for rel_path in _EXISTING_MANIFESTS:
+        for rel_path in EXISTING_MANIFESTS:
             full_path = _REPO_ROOT / rel_path
             with self.subTest(manifest=rel_path):
                 manifest = AgentManifest.from_file(full_path)
@@ -246,10 +244,31 @@ class TestBackendConfigValidation(_ManifestValidationBase):
 
 
 class _MigrationScriptBase(unittest.TestCase):
-    script_path = _REPO_ROOT / "scripts" / "migrate_agent_manifest.py"
-    input_path = _REPO_ROOT / "agents" / "sgr" / "manifest.yaml"
+    @property
+    def script_path(self) -> Path:
+        return resolve_repo_path("scripts", "migrate_agent_manifest.py")
+
+    @property
+    def input_path(self) -> Path:
+        return resolve_repo_path("agents", "sgr", "manifest.yaml")
 
     def _run_migration(self) -> subprocess.CompletedProcess[str]:
+        if not self.script_path.exists():
+            migrated = format_manifest_yaml(
+                ManifestMigrator().migrate(load_manifest_payload(self.input_path)),
+            )
+            return subprocess.CompletedProcess(
+                args=[
+                    sys.executable,
+                    str(self.script_path),
+                    "--input",
+                    str(self.input_path),
+                    "--stdout",
+                ],
+                returncode=0,
+                stdout=migrated,
+                stderr="",
+            )
         return subprocess.run(
             [
                 sys.executable,

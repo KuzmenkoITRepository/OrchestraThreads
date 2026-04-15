@@ -1,0 +1,22 @@
+"""Backward-compatible re-export surface for launch field helpers."""
+
+from core.orchestra_agents.launch import _field_env_mounts as _env_mounts
+from core.orchestra_agents.launch import _field_health as _field_health
+from core.orchestra_agents.launch import _field_names as _field_names
+from core.orchestra_agents.launch import _field_paths as _field_paths
+
+LaunchPathContext = _field_paths.LaunchPathContext
+RenderedMount = _env_mounts.RenderedMount
+RuntimeTemplateContext = _env_mounts.RuntimeTemplateContext
+render_mount = _env_mounts.render_mount
+render_runtime_environment = _env_mounts.render_runtime_environment
+resolve_bind_source_path = _field_paths.resolve_bind_source_path
+resolve_agent_environment = _env_mounts.resolve_agent_environment
+resolve_compose_file_path = _field_paths.resolve_compose_file_path
+resolve_compose_service_name = _field_names.resolve_compose_service_name
+resolve_container_manifest_path = _field_paths.resolve_container_manifest_path
+resolve_container_name = _field_names.resolve_container_name
+resolve_healthcheck_command = _field_health.resolve_healthcheck_command
+resolve_http_endpoint = _field_health.resolve_http_endpoint
+resolve_internal_health_url = _field_health.resolve_internal_health_url
+runtime_template_context = _env_mounts.runtime_template_context

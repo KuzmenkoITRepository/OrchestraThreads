@@ -1,31 +1,40 @@
-"""Known backend runtime specifications for Docker-managed agents."""
+"""Known backend launch profiles for pure launch spec building."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
 
 @dataclass(frozen=True)
-class BackendRuntimeSpec:
-    """Platform-managed runtime defaults for a known backend."""
+class BackendProfile:
+    """Platform-managed runtime defaults and build metadata for a backend."""
 
     image: str
     command: tuple[str, ...]
-    dockerfile: str
+    build_dockerfile: str | None = None
     entrypoint: str | None = None
     env: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
     env_passthrough: tuple[str, ...] = ()
 
 
-BACKEND_RUNTIME_SPECS = MappingProxyType(
+def _mapping_proxy(values: dict[str, str]) -> Mapping[str, str]:
+    return MappingProxyType(values)
+
+
+KNOWN_BACKEND_PROFILES = MappingProxyType(
     {
-        "sgr_minimax": BackendRuntimeSpec(
+        "example": BackendProfile(
+            image="orchestra-agent-runtime:latest",
+            command=("python", "-m", "core.orchestra_agents.backends.example.main"),
+            build_dockerfile="docker/backends/sgr/Dockerfile",
+        ),
+        "sgr_minimax": BackendProfile(
             image="orchestra-sgr-runtime:latest",
             command=("python", "-m", "core.orchestra_agents.backends.sgr.main"),
-            dockerfile="docker/backends/sgr/Dockerfile",
-            env=MappingProxyType({"PYTHONPATH": "/workspace/src:/workspace"}),
+            build_dockerfile="docker/backends/sgr/Dockerfile",
+            env=_mapping_proxy({"PYTHONPATH": "/workspace/src:/workspace"}),
             env_passthrough=(
                 "OMNIROUTE_URL",
                 "OMNIROUTE_API_KEY",
@@ -41,11 +50,11 @@ BACKEND_RUNTIME_SPECS = MappingProxyType(
                 "LOG_LEVEL",
             ),
         ),
-        "agent_mux": BackendRuntimeSpec(
+        "agent_mux": BackendProfile(
             image="orchestra-agent-mux-runtime:latest",
             command=("python", "-m", "core.orchestra_agents.backends.agent_mux.main"),
-            dockerfile="docker/backends/agent_mux/Dockerfile",
-            env=MappingProxyType(
+            build_dockerfile="docker/backends/agent_mux/Dockerfile",
+            env=_mapping_proxy(
                 {
                     "PYTHONPATH": "/workspace/src",
                     "ORCHESTRA_THREADS_URL": "http://orchestra-threads:8788",
@@ -60,11 +69,11 @@ BACKEND_RUNTIME_SPECS = MappingProxyType(
                 "LOG_LEVEL",
             ),
         ),
-        "opencode_omo": BackendRuntimeSpec(
+        "opencode_omo": BackendProfile(
             image="orchestra-opencode-runtime:latest",
             command=("python", "-m", "core.orchestra_agents.backends.opencode.main"),
-            dockerfile="docker/backends/opencode/Dockerfile",
-            env=MappingProxyType(
+            build_dockerfile="docker/backends/opencode/Dockerfile",
+            env=_mapping_proxy(
                 {
                     "PYTHONPATH": "/workspace/src",
                     "ORCHESTRA_THREADS_URL": "http://orchestra-threads:8788",
@@ -84,13 +93,35 @@ BACKEND_RUNTIME_SPECS = MappingProxyType(
 
 LOCAL_RUNTIME_IMAGE_DOCKERFILES = MappingProxyType(
     {
-        **{spec.image: spec.dockerfile for spec in BACKEND_RUNTIME_SPECS.values()},
-        "orchestra-agent-runtime:latest": "docker/backends/sgr/Dockerfile",
+        **{
+            profile.image: profile.build_dockerfile
+            for profile in KNOWN_BACKEND_PROFILES.values()
+            if profile.build_dockerfile is not None
+        },
     }
 )
 
 
+def backend_profile(backend_type: str) -> BackendProfile | None:
+    """Return profile for a known backend type."""
+
+    return KNOWN_BACKEND_PROFILES.get(str(backend_type).strip())
+
+
 def local_runtime_dockerfile(image: str) -> str | None:
-    """Return the Dockerfile used to build a known local runtime image."""
+    """Return Dockerfile path used to build a known local image."""
 
     return LOCAL_RUNTIME_IMAGE_DOCKERFILES.get(str(image).strip())
+
+
+def merge_env_passthrough(
+    defaults: Sequence[str],
+    overrides: Sequence[str],
+) -> tuple[str, ...]:
+    """Merge passthrough keys while preserving first-seen order."""
+
+    merged = list(defaults)
+    for key in overrides:
+        if key not in merged:
+            merged.append(key)
+    return tuple(merged)

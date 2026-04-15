@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from core.orchestra_agents.docker_driver.driver import resolve_backend_runtime
 from core.orchestra_agents.manifest import AgentManifest
+from core.orchestra_agents.service_state import ServiceState
 
 
 @dataclass(frozen=True)
@@ -54,8 +54,8 @@ class MigrationCheckSummary:
             "migrated_backend": self.migrated_backend,
             "source_runtime": self.source_runtime.to_dict(),
             "migrated_runtime": self.migrated_runtime.to_dict(),
-            "output_path": _optional_path(self.output_path),
-            "snapshot_path": _optional_path(self.snapshot_path),
+            "output_path": str(self.output_path) if self.output_path else None,
+            "snapshot_path": str(self.snapshot_path) if self.snapshot_path else None,
             "switch_subset_supported": self.switch_subset_supported,
             "supported_subset": (
                 "controlled temporary manifests only; clean-state restart required"
@@ -85,7 +85,31 @@ class BackendSwitchSummary:
     contract_checks: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return _switch_summary_dict(self)
+        return {
+            "agent_slug": self.agent_slug,
+            "source_manifest_path": str(self.source_manifest_path),
+            "temp_manifest_path": str(self.temp_manifest_path),
+            "snapshot_path": str(self.snapshot_path),
+            "source_backend": self.source_backend,
+            "target_backend": self.target_backend,
+            "mutated_fields": list(self.mutated_fields),
+            "elapsed_ms": round(self.elapsed_ms, 3),
+            "max_prepare_ms": self.max_prepare_ms,
+            "threshold_ok": self.threshold_ok,
+            "verified": self.verified,
+            "restart_required": True,
+            "clean_state_only": True,
+            "execution_mode": self.execution_mode,
+            "mutation_scope": "controlled_temp_manifest",
+            "supported_subset": (
+                "controlled temporary manifests only; validate contract"
+                " surfaces and platform-derived runtime defaults"
+            ),
+            "runtime": self.runtime.to_dict(),
+            "restart_result": self.restart_result,
+            "status_result": self.status_result,
+            "contract_checks": self.contract_checks,
+        }
 
 
 @dataclass(frozen=True)
@@ -96,48 +120,45 @@ class SwitchPrepareOptions:
     max_prepare_ms: float = 1500.0
 
 
+@dataclass(frozen=True)
+class _RuntimeEvidenceBuilder:
+    """Service-state-backed runtime evidence builder."""
+
+    state: ServiceState
+
+    @classmethod
+    def from_manifest(cls, manifest: AgentManifest) -> _RuntimeEvidenceBuilder:
+        manifest_path = _require_manifest_path(manifest)
+        return cls(
+            state=ServiceState.create(
+                manifests_root=str(manifest_path.parent.parent),
+            ),
+        )
+
+    def build(self, manifest: AgentManifest) -> RuntimeResolutionSummary:
+        spec = self.state.build_spec(manifest)
+        resolved = self.state.builder.runtime_profile(manifest)
+        return RuntimeResolutionSummary(
+            image=resolved.image,
+            command=tuple(resolved.command),
+            entrypoint=resolved.entrypoint,
+            env=dict(resolved.env),
+            env_passthrough=tuple(resolved.env_passthrough),
+            http_endpoint=manifest.resolve_http_endpoint(
+                container_name=spec.container_name,
+            ),
+        )
+
+
 def runtime_summary(manifest: AgentManifest) -> RuntimeResolutionSummary:
-    """Build runtime resolution evidence from a manifest."""
-    resolved = resolve_backend_runtime(manifest)
-    return RuntimeResolutionSummary(
-        image=resolved.image,
-        command=tuple(resolved.command),
-        entrypoint=resolved.entrypoint,
-        env=dict(resolved.env),
-        env_passthrough=tuple(resolved.env_passthrough),
-        http_endpoint=manifest.resolve_http_endpoint(),
-    )
+    """Build runtime evidence from launch profile resolution."""
+    return _RuntimeEvidenceBuilder.from_manifest(manifest).build(manifest)
 
 
-def _optional_path(path: Path | None) -> str | None:
-    return str(path) if path else None
-
-
-def _switch_summary_dict(
-    summary: BackendSwitchSummary,
-) -> dict[str, object]:
-    return {
-        "agent_slug": summary.agent_slug,
-        "source_manifest_path": str(summary.source_manifest_path),
-        "temp_manifest_path": str(summary.temp_manifest_path),
-        "snapshot_path": str(summary.snapshot_path),
-        "source_backend": summary.source_backend,
-        "target_backend": summary.target_backend,
-        "mutated_fields": list(summary.mutated_fields),
-        "elapsed_ms": round(summary.elapsed_ms, 3),
-        "max_prepare_ms": summary.max_prepare_ms,
-        "threshold_ok": summary.threshold_ok,
-        "verified": summary.verified,
-        "restart_required": True,
-        "clean_state_only": True,
-        "execution_mode": summary.execution_mode,
-        "mutation_scope": "controlled_temp_manifest",
-        "supported_subset": (
-            "controlled temporary manifests only; validate contract"
-            " surfaces and platform-derived runtime defaults"
-        ),
-        "runtime": summary.runtime.to_dict(),
-        "restart_result": summary.restart_result,
-        "status_result": summary.status_result,
-        "contract_checks": summary.contract_checks,
-    }
+def _require_manifest_path(manifest: AgentManifest) -> Path:
+    manifest_path = manifest.manifest_path
+    if manifest_path is None:
+        raise RuntimeError(
+            "runtime summary requires manifest_path for launch builder resolution",
+        )
+    return manifest_path

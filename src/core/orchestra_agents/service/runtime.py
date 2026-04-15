@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 from aiohttp import web
 
 from core.orchestra_agents.service_routes import register_service_routes
-from core.orchestra_agents.service_state import ServiceState
+from core.orchestra_agents.service_state import ServiceState, ServiceStateDeps
 
 if TYPE_CHECKING:
     from core.orchestra_agents._service_read_ops import ServiceReadOps as _ServiceReadOpsBase
@@ -31,11 +31,13 @@ class OrchestraAgentsService(_ServiceReadOpsBase, _ServiceWriteOpsBase):
         cls,
         *,
         manifests_root: str | None = None,
-        registry: Any = None,
-        driver: Any = None,
+        deps: ServiceStateDeps | None = None,
     ) -> OrchestraAgentsService:
         return cls(
-            ServiceState.create(manifests_root=manifests_root, registry=registry, driver=driver)
+            ServiceState.create(
+                manifests_root=manifests_root,
+                deps=deps,
+            )
         )
 
 

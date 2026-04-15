@@ -13,8 +13,8 @@ from core.orchestra_agents._migration_contract import (
     status_ok,
 )
 from core.orchestra_agents._migration_types import BackendSwitchSummary
-from core.orchestra_agents.docker_driver.driver import DockerDriver
 from core.orchestra_agents.manifest import AgentManifest
+from core.orchestra_agents.service_state import ServiceState
 
 
 @dataclass(frozen=True)
@@ -28,6 +28,46 @@ class ResolvedHooks:
         dict[str, Any],
     ]
     name_fn: Callable[[str], str]
+
+
+@dataclass(frozen=True)
+class _ServiceStateVerificationHooks:
+    """Migration-specific verification hooks backed by service seams."""
+
+    state: ServiceState
+
+    @classmethod
+    def from_manifest_path(
+        cls,
+        manifest_path: Path,
+    ) -> _ServiceStateVerificationHooks:
+        return cls(
+            state=ServiceState.create(
+                manifests_root=str(manifest_path.parent.parent),
+            ),
+        )
+
+    def restart(self, manifest: AgentManifest) -> dict[str, Any]:
+        return self._runtime_action(manifest, operation="restart")
+
+    def status(self, manifest: AgentManifest) -> dict[str, Any]:
+        return self._runtime_action(manifest, operation="status")
+
+    def container_name(self, slug: str) -> str:
+        manifest = self.state.require_manifest(slug)
+        return self.state.build_spec(manifest).container_name
+
+    def _runtime_action(
+        self,
+        manifest: AgentManifest,
+        *,
+        operation: str,
+    ) -> dict[str, Any]:
+        spec = self.state.build_spec(manifest)
+        runtime = self.state.resolve_runtime(spec, operation=operation)
+        if operation == "restart":
+            return runtime.restart(spec).to_dict()
+        return runtime.status(spec).to_dict()
 
 
 def resolve_hooks(
@@ -50,14 +90,14 @@ def resolve_hooks(
     container_name_for: Callable[[str], str] | None = None,
 ) -> ResolvedHooks:
     """Build resolved hooks from optional overrides or defaults."""
-    driver = DockerDriver(
-        manifests_root=manifest_path.parent.parent,
+    service_hooks = _ServiceStateVerificationHooks.from_manifest_path(
+        manifest_path,
     )
     return ResolvedHooks(
-        restart=restart_agent or driver.restart,
-        status=status_agent or driver.status,
+        restart=restart_agent or service_hooks.restart,
+        status=status_agent or service_hooks.status,
         probe=contract_probe or default_contract_probe,
-        name_fn=container_name_for or driver.container_name,
+        name_fn=container_name_for or service_hooks.container_name,
     )
 
 

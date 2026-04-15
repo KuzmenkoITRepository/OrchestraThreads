@@ -22,5 +22,6 @@ SUPPORTED_SWITCH_BACKENDS = _switch_config.SUPPORTED_SWITCH_BACKENDS
 BackendSwitchSummary = _types.BackendSwitchSummary
 MigrationCheckSummary = _types.MigrationCheckSummary
 RuntimeResolutionSummary = _types.RuntimeResolutionSummary
+runtime_summary = _types.runtime_summary
 
 verify_manifest_migration = _verify.verify_manifest_migration

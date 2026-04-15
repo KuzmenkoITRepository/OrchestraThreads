@@ -18,7 +18,6 @@ def manifest_payload() -> dict[str, Any]:
             "system_prompt_file": "system_prompt.md",
         },
         "runtime": {
-            const.DRIVER_KEY: const.DOCKER,
             const.IMAGE_KEY: const.AGENT_IMAGE,
             "command": ["python", "-m", "core.orchestra_agents.backends.example.main"],
             "mounts": [
@@ -53,6 +52,43 @@ def create_manifest(
     return AgentManifest.from_dict(payload, manifest_path=manifest_path)
 
 
+def create_characterization_manifest(manifests_root: Path) -> AgentManifest:
+    agent_dir = manifests_root / "coding_agent"
+    logs_dir = agent_dir / "logs" / "coding_agent"
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = agent_dir / "manifest.yaml"
+    manifest_path.write_text("{}", encoding="utf-8")
+    (agent_dir / "system_prompt.md").write_text("prompt", encoding="utf-8")
+    payload = manifest_payload()
+    payload["agent"]["working_dir"] = "/workspace/project"
+    payload["runtime"] = {
+        const.IMAGE_KEY: const.AGENT_IMAGE,
+        "entrypoint": "/bin/sh",
+        "command": ["-lc", "python app.py"],
+        "mounts": [
+            {
+                "type": "bind",
+                "source": ".",
+                "target": "/workspace/project",
+                "mode": "rw",
+            },
+            {
+                "type": "bind",
+                "source": "./logs/{slug}",
+                "target": "/var/log/{container_name}",
+                "mode": "ro",
+            },
+        ],
+        "env": {
+            "LOG_LEVEL": "DEBUG",
+            "RUNTIME_TAG": "{slug}:{container_name}:{backend_type}:{working_dir}",
+        },
+        "env_passthrough": [const.OPENAI_API_KEY],
+    }
+    return AgentManifest.from_dict(payload, manifest_path=manifest_path)
+
+
 def unified_manifest_payload(*, backend_type: str) -> dict[str, Any]:
     return {
         "slug": "coding_agent",
@@ -64,7 +100,6 @@ def unified_manifest_payload(*, backend_type: str) -> dict[str, Any]:
             "system_prompt_file": "system_prompt.md",
         },
         "runtime": {
-            const.DRIVER_KEY: const.DOCKER,
             "mounts": [
                 {
                     "type": "bind",

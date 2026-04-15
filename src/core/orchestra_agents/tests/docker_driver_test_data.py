@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from core.orchestra_agents.tests import _docker_driver_test_compose as compose
+from pathlib import Path
+
 from core.orchestra_agents.tests import _docker_driver_test_constants as const
 from core.orchestra_agents.tests import _docker_driver_test_payloads as payloads
 from core.orchestra_agents.tests import _docker_driver_test_types as types
@@ -25,13 +26,8 @@ RUNNING_KEY = const.RUNNING_KEY
 SGR_RUNTIME_IMAGE = const.SGR_RUNTIME_IMAGE
 STATUS_KEY = const.STATUS_KEY
 
-compose_driver = compose.compose_driver
-compose_file = compose.compose_file
-compose_labels = compose.compose_labels
-compose_status_payload = compose.compose_status_payload
-missing_build_status = compose.missing_build_status
-
 create_manifest = payloads.create_manifest
+create_characterization_manifest = payloads.create_characterization_manifest
 create_unified_manifest = payloads.create_unified_manifest
 manifest_payload = payloads.manifest_payload
 unified_backend_config = payloads.unified_backend_config
@@ -41,3 +37,30 @@ BuildCapture = types.BuildCapture
 ComposeCapture = types.ComposeCapture
 DockerCommand = types.DockerCommand
 DockerCommands = types.DockerCommands
+
+
+def compose_file(root: Path) -> Path:
+    return root / "compose-runtime" / COMPOSE_FILE_NAME
+
+
+def compose_labels() -> dict[str, str]:
+    return {
+        "com.docker.compose.project": COMPOSE_PROJECT,
+        "com.docker.compose.service": "agent-coding-agent",
+    }
+
+
+def compose_status_payload() -> dict[str, bool]:
+    return {
+        EXISTS_KEY: True,
+        RUNNING_KEY: True,
+        HEALTHY_KEY: True,
+    }
+
+
+def missing_build_status() -> dict[str, bool]:
+    return {
+        EXISTS_KEY: True,
+        RUNNING_KEY: True,
+        HEALTHY_KEY: False,
+    }
